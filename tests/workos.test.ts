@@ -74,7 +74,7 @@ test("WorkOS gates APIs, uses PKCE and rejects forged callbacks", async () => {
   }
 });
 
-test("WorkOS identities retain their owner ID and do not claim legacy roster names", () => {
+test("WorkOS identities retain their owner ID and do not accept password login", () => {
   const path = join(
     mkdtempSync(join(tmpdir(), "proof-workos-account-")),
     "accounts.json",
@@ -82,13 +82,13 @@ test("WorkOS identities retain their owner ID and do not claim legacy roster nam
   const accounts = accountStore(path);
   const workos = accounts.workos("user_synthetic_workos", "Adam");
   assert.equal(workos.id, "user_synthetic_workos");
-  assert.equal(accounts.claimed("Adam"), false);
   assert.equal(accounts.login("Adam", "any-password"), undefined);
+  assert.equal(accounts.create("Adam", "legacy-password"), undefined);
+  accounts.charge(workos.id, 1000, 0.001);
+  assert.equal(accounts.workos(workos.id, "Adam Updated").inputTokens, 1000);
   const legacy = accounts.create("Adam", "legacy-password")!;
   assert.ok(legacy);
   assert.equal(accounts.login("Adam", "legacy-password")?.id, legacy.id);
-  accounts.charge(workos.id, 1000, 0.001);
-  assert.equal(accounts.workos(workos.id, "Adam Updated").inputTokens, 1000);
   assert.equal(accountStore(path).get(workos.id)?.name, "Adam Updated");
 });
 

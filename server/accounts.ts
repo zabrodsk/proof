@@ -34,10 +34,7 @@ export function accountStore(
     renameSync(path + ".tmp", path);
   };
   const find = (name: string) =>
-    accounts.find(
-      (a) =>
-        a.hash.length === 128 && a.name.toLowerCase() === name.toLowerCase(),
-    );
+    accounts.find((a) => a.name.toLowerCase() === name.toLowerCase());
   return {
     workos(id: string, name: string) {
       let account = accounts.find((a) => a.id === id);
