@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
+  CheckCircle2,
   ChevronDown,
   FileText,
   LoaderCircle,
@@ -88,113 +89,6 @@ export default function NewStudioWork({
           onCreate(title.trim(), text, icon);
       }}
     >
-      <div className="ps-import-tabs" aria-label="Document input">
-        <button
-          type="button"
-          className={mode === "upload" ? "active" : ""}
-          aria-pressed={mode === "upload"}
-          onClick={() => setMode("upload")}
-          disabled={importing || busy}
-        >
-          <Upload size={16} /> Upload document
-        </button>
-        <button
-          type="button"
-          className={mode === "paste" ? "active" : ""}
-          aria-pressed={mode === "paste"}
-          onClick={() => setMode("paste")}
-          disabled={importing || busy}
-        >
-          <FileText size={16} /> Paste text
-        </button>
-      </div>
-      {mode === "upload" && (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            className="ps-upload-input"
-            aria-label="Choose document file"
-            accept=".pdf,.docx,.txt,.md"
-            disabled={busy || importing}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void importFile(file);
-            }}
-          />
-          <button
-            type="button"
-            className={`ps-upload-drop ${dragging ? "dragging" : ""}`}
-            disabled={busy || importing}
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(event) => {
-              event.preventDefault();
-              if (!busy && !importing) setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              const files = event.dataTransfer.files;
-              if (files.length > 1) {
-                setError("Add one document at a time.");
-                return;
-              }
-              if (files[0]) void importFile(files[0]);
-            }}
-          >
-            <span className="ps-upload-icon">
-              {importing ? (
-                <LoaderCircle size={26} className="ps-import-spinner" />
-              ) : (
-                <Upload size={26} />
-              )}
-            </span>
-            <strong>
-              {importing
-                ? "Reading your document..."
-                : filename
-                  ? "Choose a different document"
-                  : "Drop your document here"}
-            </strong>
-            <span>
-              {importing
-                ? "Extracting the text for your preview."
-                : "or click to browse"}
-            </span>
-            <small>PDF, Word, TXT, Markdown · Up to 12 MB</small>
-          </button>
-        </>
-      )}
-      {error && (
-        <p className="ps-live-error" role="alert">
-          {error}
-        </p>
-      )}
-      {filename && (
-        <div className="ps-import-file">
-          <FileText size={18} />
-          <span>
-            {filename}
-            <small>
-              {text.trim().split(/\s+/).filter(Boolean).length} words extracted
-            </small>
-          </span>
-          <button
-            type="button"
-            className="ps-icon-button"
-            aria-label="Remove imported document"
-            disabled={busy || importing}
-            onClick={() => {
-              setFilename("");
-              setText("");
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
       <label className="ps-field-label" htmlFor="new-work-title">
         Work title
       </label>
@@ -227,6 +121,7 @@ export default function NewStudioWork({
           <ChevronDown size={13} />
         </button>
         <input
+          autoFocus
           id="new-work-title"
           className="ps-field ps-new-work-title"
           placeholder="Give your work a name"
@@ -262,6 +157,131 @@ export default function NewStudioWork({
           </div>
         )}
       </div>
+      <div className="ps-attachment-label">
+        <span>Document</span>
+        <span>Optional</span>
+      </div>
+      <div className="ps-import-tabs" aria-label="Document input">
+        <button
+          type="button"
+          className={mode === "upload" ? "active" : ""}
+          aria-pressed={mode === "upload"}
+          onClick={() => setMode("upload")}
+          disabled={importing || busy}
+        >
+          <Upload size={16} /> Upload document
+        </button>
+        <button
+          type="button"
+          className={mode === "paste" ? "active" : ""}
+          aria-pressed={mode === "paste"}
+          onClick={() => setMode("paste")}
+          disabled={importing || busy}
+        >
+          <FileText size={16} /> Paste text
+        </button>
+      </div>
+      {mode === "upload" && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            className="ps-upload-input"
+            aria-label="Choose document file"
+            accept=".pdf,.docx,.txt,.md"
+            disabled={busy || importing}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void importFile(file);
+            }}
+          />
+          {(!filename || importing) && (
+            <button
+              type="button"
+              className={`ps-upload-drop ${dragging ? "dragging" : ""}`}
+              disabled={busy || importing}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (!busy && !importing) setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragging(false);
+                const files = event.dataTransfer.files;
+                if (files.length > 1) {
+                  setError("Add one document at a time.");
+                  return;
+                }
+                if (files[0]) void importFile(files[0]);
+              }}
+            >
+              <span className="ps-upload-icon">
+                {importing ? (
+                  <LoaderCircle size={26} className="ps-import-spinner" />
+                ) : (
+                  <Upload size={26} />
+                )}
+              </span>
+              <strong>
+                {importing
+                  ? "Reading your document..."
+                  : filename
+                    ? "Choose a different document"
+                    : "Drop your document here"}
+              </strong>
+              <span>
+                {importing
+                  ? "Extracting the text for your preview."
+                  : "or click to browse"}
+              </span>
+              <small>PDF, DOCX, TXT or Markdown · Up to 12 MB</small>
+            </button>
+          )}
+        </>
+      )}
+      {error && (
+        <p className="ps-live-error" role="alert">
+          {error}
+        </p>
+      )}
+      {filename && (
+        <div className="ps-import-file">
+          <span className="ps-import-file-check">
+            <CheckCircle2 size={20} />
+          </span>
+          <span>
+            {filename}
+            <small>
+              {text.trim().split(/\s+/).filter(Boolean).length} words extracted
+            </small>
+          </span>
+          {mode === "upload" && (
+            <button
+              type="button"
+              className="ps-import-replace"
+              disabled={busy || importing}
+              onClick={() => inputRef.current?.click()}
+            >
+              Change
+            </button>
+          )}
+          <button
+            type="button"
+            className="ps-icon-button"
+            aria-label="Remove imported document"
+            disabled={busy || importing}
+            onClick={() => {
+              setFilename("");
+              setText("");
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {(mode === "paste" || text) && (
         <div className="ps-import-preview">
           <label className="ps-field-label" htmlFor="new-work-text">
@@ -295,11 +315,7 @@ export default function NewStudioWork({
           className="ps-primary"
           disabled={busy || importing || !title.trim()}
         >
-          {busy
-            ? "Creating..."
-            : text.trim()
-              ? "Create work"
-              : "Create blank work"}
+          {busy ? "Creating..." : "Create work"}
           <ArrowRight size={16} />
         </button>
       </div>
