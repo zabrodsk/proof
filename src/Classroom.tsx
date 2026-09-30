@@ -103,6 +103,7 @@ export default function Classroom() {
   const [session, setSession] = useState<{
     authenticated: boolean;
     hosted: boolean;
+    provider?: "workos";
     user?: { id: string; name: string; jevUsd: number; inputTokens: number };
   } | null>(null);
   const [name, setName] = useState("");
@@ -405,7 +406,16 @@ export default function Classroom() {
               {error}
             </p>
           )}
-          {session ? (
+          {session?.provider === "workos" ? (
+            <div>
+              <a className="button primary" href="/auth/login">
+                <LockKeyhole size={16} /> Sign in
+              </a>
+              <a className="button" href="/auth/login?screen=sign-up">
+                Create account
+              </a>
+            </div>
+          ) : session ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -541,6 +551,10 @@ export default function Classroom() {
               aria-label="Sign out"
               title="Sign out"
               onClick={async () => {
+                if (session.provider === "workos") {
+                  location.assign("/auth/logout");
+                  return;
+                }
                 await fetch("/api/session", { method: "DELETE" });
                 location.reload();
               }}

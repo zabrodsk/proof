@@ -1,3 +1,8 @@
+import {
+  providerFetch as fetch,
+  openAlexUrl,
+  providerContext,
+} from "./backend/providers.js";
 import { randomUUID } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
 import type { Source } from "../shared/types.js";

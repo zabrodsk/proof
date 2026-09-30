@@ -36,3 +36,20 @@ test("accounts hash passwords, isolate costs, and retain balances after restart"
   assert.equal(reopened.get(bob.id)?.inputTokens, 2000);
   assert.ok(Math.abs(reopened.get(alice.id)!.jevUsd - 0.000063) < 1e-12);
 });
+
+test("WorkOS identities retain usage and cannot use legacy password login", () => {
+  const path = join(
+    mkdtempSync(join(tmpdir(), "proof-workos-account-")),
+    "accounts.json",
+  );
+  const store = accountStore(path);
+  const first = store.workos("user_workos_1", "Alice");
+  store.charge(first.id, 500, 0.002);
+  const renamed = store.workos("user_workos_1", "Alice Updated");
+  assert.equal(renamed.id, first.id);
+  assert.equal(renamed.inputTokens, 500);
+  assert.equal(renamed.jevUsd, 0.002);
+  assert.equal(store.login("Alice Updated", "any-password"), undefined);
+  assert.equal(accountStore(path).get(first.id)?.name, "Alice Updated");
+  assert.equal(store.workos("user_workos_2", "Alice Updated").jevUsd, 0);
+});
