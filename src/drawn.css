@@ -1,11 +1,7 @@
-/* Pen accents belong to navigation and illustrations. The manuscript stays clear. */
-.drawn-icon {
+/* Keep Lucide motif icons from shrinking inside flex rows. */
+.lucide-icon {
   flex-shrink: 0;
   overflow: visible;
-}
-.drawn-fill {
-  fill: #d8e8dd;
-  stroke: none;
 }
 .document-illustration {
   display: block;

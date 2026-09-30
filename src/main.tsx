@@ -11,8 +11,17 @@ import "@fontsource/newsreader/400-italic.css";
 import Landing from "./Landing";
 const Workspace = lazy(() => import("./Workspace"));
 const Classroom = lazy(() => import("./Classroom"));
-const inWorkspace = /^\/app(?:\/|$)/.test(window.location.pathname);
-if (inWorkspace) document.title = "Proof · Check your evidence";
+const Studio = lazy(() => import("./Studio"));
+const path = window.location.pathname;
+const inWorkspace = /^\/app(?:\/|$)/.test(path);
+if (inWorkspace) document.title = "Proof · My work";
+const workspace = path.startsWith("/app/evidence") ? (
+  <Workspace />
+) : path.startsWith("/app/class") ? (
+  <Classroom />
+) : (
+  <Studio />
+);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {inWorkspace ? (
@@ -23,11 +32,7 @@ createRoot(document.getElementById("root")!).render(
           </div>
         }
       >
-        {window.location.pathname.startsWith("/app/evidence") ? (
-          <Workspace />
-        ) : (
-          <Classroom />
-        )}
+        {workspace}
       </Suspense>
     ) : (
       <Landing />
