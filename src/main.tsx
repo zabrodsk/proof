@@ -12,8 +12,19 @@ import Landing from "./Landing";
 const Workspace = lazy(() => import("./Workspace"));
 const Classroom = lazy(() => import("./Classroom"));
 const IntegrationWorkspace = lazy(() => import("./IntegrationWorkspace"));
-const inWorkspace = /^\/app(?:\/|$)/.test(window.location.pathname);
-if (inWorkspace) document.title = "Proof · Check your evidence";
+const Studio = lazy(() => import("./StudioSession"));
+const path = window.location.pathname;
+const inWorkspace = /^\/app(?:\/|$)/.test(path);
+if (inWorkspace) document.title = "Proof · My work";
+const workspace = /^\/app\/(integrations|checks)(?:\/|$)/.test(path) ? (
+  <IntegrationWorkspace />
+) : path.startsWith("/app/evidence") ? (
+  <Workspace />
+) : path.startsWith("/app/class") ? (
+  <Classroom />
+) : (
+  <Studio />
+);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {inWorkspace ? (
@@ -24,15 +35,7 @@ createRoot(document.getElementById("root")!).render(
           </div>
         }
       >
-        {/^\/app\/(checks|integrations)(?:\/|$)/.test(
-          window.location.pathname,
-        ) ? (
-          <IntegrationWorkspace />
-        ) : window.location.pathname.startsWith("/app/evidence") ? (
-          <Workspace />
-        ) : (
-          <Classroom />
-        )}
+        {workspace}
       </Suspense>
     ) : (
       <Landing />

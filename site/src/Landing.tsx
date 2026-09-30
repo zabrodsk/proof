@@ -1,24 +1,57 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
-  BookOpen,
   Check,
-  CheckCheck,
-  CircleAlert,
-  CircleCheck,
+  FilePenLine,
   FileText,
-  Highlighter,
+  Files,
+  FolderOpen,
+  GraduationCap,
   LoaderCircle,
   Menu,
+  Newspaper,
   Plus,
-  Quote,
   ShieldCheck,
+  Sparkles,
   X,
+  type LucideIcon,
 } from "lucide-react";
+import "@fontsource/newsreader/700.css";
 import "./landing.css";
-import { DocumentIllustration, DrawnIcon, InkFrame } from "./Drawn";
+import { MotifIcon, InkFrame } from "./Drawn";
+
+const appHref =
+  import.meta.env.VITE_PROOF_APP_URL || "https://app-proof.up.railway.app/app";
+
+const documentTypes = [
+  { kind: "papers", label: "Research papers" },
+  { kind: "essays", label: "Essays" },
+  { kind: "theses", label: "Theses" },
+  { kind: "reports", label: "Reports & articles" },
+  { kind: "other", label: "Other projects" },
+] as const;
+
+type UseKind = (typeof documentTypes)[number]["kind"];
+const useForIcons: Record<UseKind, LucideIcon> = {
+  papers: Files,
+  essays: FilePenLine,
+  theses: GraduationCap,
+  reports: Newspaper,
+  other: FolderOpen,
+};
+
+function UseForIcon({ kind }: { kind: UseKind }) {
+  const Icon = useForIcons[kind];
+  return (
+    <Icon
+      className="lp-use-icon"
+      size={76}
+      strokeWidth={1.5}
+      aria-hidden="true"
+    />
+  );
+}
 
 function Wordmark() {
   return (
@@ -163,372 +196,275 @@ function HeroArtwork() {
   return (
     <div
       className="lp-art"
-      aria-label="Illustration of Proof finding an exaggerated claim in a fictional paper"
+      aria-label="Illustration of Proof matching a draft citation to its source"
     >
-      <div className="lp-source-slip">
-        <InkFrame />
-        <div>
-          <span className="lp-mini-icon">
-            <DrawnIcon name="book" size={19} />
-          </span>
-          Original source<span className="lp-source-year">2025</span>
-        </div>
-        <p>
-          “Tasks were completed
-          <br />
-          <mark>18% faster, on average.</mark>”
-        </p>
-        <small>Rivera et al. · Illustrative study</small>
-      </div>
-      <div className="lp-art-paper">
-        <InkFrame />
-        <div className="lp-art-paper-top">
-          <span>Your draft</span>
-          <DrawnIcon name="document" size={19} />
-        </div>
-        <h2>
-          Hybrid work
-          <br />
-          and collaboration.
-        </h2>
-        <div className="lp-paper-rule" />
-        <p>The study compared how six teams completed the same tasks.</p>
-        <p className="lp-paper-claim">
-          Teams completed their work{" "}
-          <mark>
-            twice
-            <br />
-            as fast.
-          </mark>
-          <sup> [1]</sup>
-        </p>
-        <div className="lp-paper-lines">
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
-        <div className="lp-art-paper-bottom">
-          <span>1. Rivera et al., 2025</span>
-          <span>01</span>
-        </div>
-      </div>
-      <svg
-        className="lp-annotation-path"
-        viewBox="0 0 540 570"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M410 125C509 148 509 263 393 279"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeDasharray="4 5"
-        />
-        <path
-          d="m402 270-10 9 12 4"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="lp-proof-note">
-        <InkFrame />
-        <div className="lp-proof-note-top">
-          <span>
-            <CircleAlert size={15} />
-            Overstated claim
-          </span>
-          <DrawnIcon name="pen" size={22} />
-        </div>
-        <p>18% faster ≠ twice as fast.</p>
-        <span>Use the figure from the source.</span>
-      </div>
-      <span className="lp-handwritten">
-        Compare the claim
-        <br />
-        with its source.
-      </span>
-      <svg
-        className="lp-hand-arrow"
-        viewBox="0 0 90 50"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M3 5C13 40 53 50 84 18M68 19l18-4-4 18"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <img
+        className="lp-art-scene"
+        src="/images/hero-citations-transparent-v2.png"
+        alt=""
+        width="1024"
+        height="1024"
+      />
     </div>
   );
 }
 
-const documentTypes = [
-  "Research papers",
-  "Essays",
-  "Theses",
-  "Reports & articles",
-];
+const compareQuestion =
+  "What are the effects of social media on teenage sleep?";
 
-function DocumentMarquee() {
+function AnswerCompare() {
   return (
-    <div className="lp-document-strip">
-      <div className="lp-container lp-document-strip-inner">
-        <span className="lp-document-strip-label">For your</span>
-        <div
-          className="lp-marquee-window"
-          tabIndex={0}
-          role="region"
-          aria-label="Document types. Focus or hover to pause scrolling."
-        >
-          <div className="lp-marquee-track">
-            {[0, 1, 2].map((copy) => (
-              <ul
-                className="lp-marquee-group"
-                key={copy}
-                aria-hidden={copy > 0 ? true : undefined}
-              >
-                {documentTypes.map((label, index) => (
-                  <li key={label}>
-                    <span
-                      className={`lp-document-illustration lp-document-illustration-${index}`}
-                      aria-hidden="true"
-                    />
-                    <span>{label}</span>
-                  </li>
-                ))}
-              </ul>
+    <div
+      className="lp-compare-grid"
+      aria-label="Example comparison of a typical LLM answer and a Proof answer"
+    >
+      <article className="lp-compare-card lp-compare-llm">
+        <header className="lp-compare-card-head">
+          <span className="lp-compare-avatar" aria-hidden="true">
+            <Sparkles size={18} />
+          </span>
+          <h3>Typical LLM</h3>
+        </header>
+        <div className="lp-compare-question">
+          <FileText size={22} aria-hidden="true" />
+          <p>{compareQuestion}</p>
+        </div>
+        <p className="lp-compare-answer">
+          Social media significantly reduces sleep quality in teenagers, leading
+          to shorter sleep duration, increased sleep disturbances, and greater
+          daytime fatigue.
+        </p>
+        <div className="lp-compare-citations">
+          <ul>
+            {["Missing source", "Unverified reference"].map((citation) => (
+              <li key={citation}>
+                <FileText size={21} aria-hidden="true" />
+                {citation}
+              </li>
             ))}
+          </ul>
+        </div>
+        <div className="lp-compare-problems">
+          <span className="lp-compare-verdict-icon" aria-hidden="true">
+            <X size={38} strokeWidth={3} />
+          </span>
+          <div>
+            <h4>What’s wrong</h4>
+            <ul>
+              <li>
+                <X size={17} aria-hidden="true" />
+                Made-up citations
+              </li>
+              <li>
+                <X size={17} aria-hidden="true" />
+                No source checking
+              </li>
+              <li>
+                <X size={17} aria-hidden="true" />
+                Can be misleading
+              </li>
+            </ul>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-const examples = [
-  {
-    label: "The number is off",
-    short: "Numbers",
-    status: "Numeric mismatch",
-    tone: "amber",
-    claim: (
-      <>
-        The study included <mark>240 participants</mark> from six teams.
-      </>
-    ),
-    source: (
-      <>
-        “A total of <mark>120 participants</mark> across six teams completed the
-        study.”
-      </>
-    ),
-    explanation: "The source reports 120 participants. Your draft says 240.",
-    correction: "The study included 120 participants from six teams.",
-  },
-  {
-    label: "The claim holds up",
-    short: "Supported",
-    status: "Supported",
-    tone: "green",
-    claim: (
-      <>
-        Participants completed the task <mark>18% faster, on average.</mark>
-      </>
-    ),
-    source: (
-      <>
-        “Task completion was <mark>18% faster</mark> relative to the control
-        group.”
-      </>
-    ),
-    explanation:
-      "The direction and size of the result match the source. This claim is supported by the passage.",
-    correction: null,
-  },
-  {
-    label: "The wording goes too far",
-    short: "Overstated",
-    status: "Overstated",
-    tone: "rose",
-    claim: (
-      <>
-        The study proves that <mark>every team is more productive</mark> with a
-        hybrid schedule.
-      </>
-    ),
-    source: (
-      <>
-        “Findings suggest improved task completion{" "}
-        <mark>among the teams studied.</mark> Broader effects remain unclear.”
-      </>
-    ),
-    explanation:
-      "Six teams cannot speak for every team. The source also describes a possible effect, not a proven rule.",
-    correction:
-      "The study suggests a hybrid schedule may improve task completion among the teams studied.",
-  },
-];
-
-function EvidenceDemo() {
-  const [active, setActive] = useState(0);
-  const [applied, setApplied] = useState(false);
-  const item = examples[active];
-  const choose = (index: number) => {
-    setActive(index);
-    setApplied(false);
-  };
-  return (
-    <div className="lp-demo" id="demo">
-      <div className="lp-demo-topbar">
-        <div>
-          <span className="lp-demo-file">
-            <DrawnIcon name="document" size={23} />
+      </article>
+      <article className="lp-compare-card lp-compare-proof">
+        <header className="lp-compare-card-head">
+          <span className="lp-compare-avatar" aria-hidden="true">
+            <MotifIcon name="book" size={18} />
           </span>
-          <span>
-            Hybrid work and collaboration
-            <span className="lp-example-tag">Fictional example</span>
-          </span>
-        </div>
-      </div>
-      <div className="lp-demo-body">
-        <div className="lp-demo-document">
-          <div className="lp-demo-doc-meta">
-            <span>Research note</span>
-            <span>1 of 1</span>
-          </div>
           <h3>
-            Hybrid work and
-            <br />
-            team performance.
+            proof<span>.</span>
           </h3>
-          <p>
-            This study compared task completion across six teams working
-            different schedules.
-          </p>
-          <div
-            className={`lp-demo-claim lp-tone-${applied ? "green" : item.tone}`}
-            aria-live="polite"
-          >
-            <p>
-              {applied ? item.correction : item.claim}
-              <sup> [1]</sup>
-            </p>
-            <span>
-              {applied ? <Check size={15} /> : <Highlighter size={15} />}
-            </span>
-          </div>
-          <p>
-            Results varied between teams. The study measured task completion
-            time, rather than overall productivity.
-          </p>
-          <div className="lp-demo-reference">
-            <span>References</span>
-            <p>
-              [1] Rivera, A., et al. “Hybrid work and team collaboration.” 2025.
-            </p>
-          </div>
+        </header>
+        <div className="lp-compare-question">
+          <FileText size={22} aria-hidden="true" />
+          <p>{compareQuestion}</p>
         </div>
-        <div className="lp-demo-findings">
-          <div className="lp-demo-findings-heading">
-            <CheckCheck size={21} />
-            <h3>A closer look</h3>
-            <span>3 claims</span>
-          </div>
-          <div
-            className="lp-demo-tabs"
-            role="tablist"
-            aria-label="Example claims"
-          >
-            {examples.map((example, index) => (
-              <button
-                key={example.short}
-                id={`claim-tab-${index}`}
-                role="tab"
-                aria-selected={active === index}
-                aria-controls="claim-panel"
-                tabIndex={active === index ? 0 : -1}
-                onClick={() => choose(index)}
-                onKeyDown={(event) => {
-                  if (
-                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                      event.key,
-                    )
-                  ) {
-                    event.preventDefault();
-                    const next =
-                      event.key === "Home"
-                        ? 0
-                        : event.key === "End"
-                          ? 2
-                          : (active +
-                              (event.key === "ArrowRight" ? 1 : -1) +
-                              examples.length) %
-                            examples.length;
-                    choose(next);
-                    document.getElementById(`claim-tab-${next}`)?.focus();
-                  }
-                }}
-              >
-                {example.short}
-              </button>
-            ))}
-          </div>
-          <div
-            id="claim-panel"
-            role="tabpanel"
-            aria-labelledby={`claim-tab-${active}`}
-            tabIndex={0}
-            className="lp-demo-result"
-            aria-live="polite"
-          >
-            <span className={`lp-result-status lp-tone-${item.tone}`}>
-              {item.tone === "green" ? (
-                <CircleCheck size={15} />
-              ) : (
-                <CircleAlert size={15} />
-              )}{" "}
-              {item.status}
-            </span>
-            <h4>{item.label}.</h4>
-            <p>{item.explanation}</p>
-            <div className="lp-evidence-excerpt">
-              <span>
-                <DrawnIcon name="book" size={21} />
-                What the source says
-              </span>
-              <blockquote>{item.source}</blockquote>
-              <small>Rivera et al., 2025 · Source passage</small>
-            </div>
-            {item.correction ? (
-              <button
-                className={`lp-apply-button${applied ? " lp-applied" : ""}`}
-                onClick={() => setApplied(!applied)}
-              >
-                {applied ? (
-                  <>
-                    <Check size={15} />
-                    Wording applied<span>Undo</span>
-                  </>
-                ) : (
-                  <>
-                    Try the source wording
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            ) : (
-              <div className="lp-supported-note">
-                <ShieldCheck size={16} />
-                The evidence backs your words.
-              </div>
+        <p className="lp-compare-answer">
+          Higher social media use is associated with shorter sleep duration and
+          poorer sleep quality in teenagers, particularly due to increased
+          nighttime use and later bedtimes.
+        </p>
+        <div className="lp-compare-citations">
+          <ul>
+            {["Original source passage", "Evidence access details"].map(
+              (citation) => (
+                <li key={citation}>
+                  <FileText size={21} aria-hidden="true" />
+                  {citation}
+                </li>
+              ),
             )}
+          </ul>
+        </div>
+        <div className="lp-compare-strengths">
+          <span className="lp-compare-verdict-icon" aria-hidden="true">
+            <Check size={38} strokeWidth={3} />
+          </span>
+          <div>
+            <h4>What Proof does right</h4>
+            <ul>
+              <li>
+                <Check size={17} aria-hidden="true" />
+                Shows available sources
+              </li>
+              <li>
+                <Check size={17} aria-hidden="true" />
+                Checks claims
+              </li>
+              <li>
+                <Check size={17} aria-hidden="true" />
+                Shows the evidence
+              </li>
+            </ul>
           </div>
         </div>
+      </article>
+    </div>
+  );
+}
+
+function UsedForRow() {
+  return (
+    <ul className="lp-used-row" aria-label="Document types Proof can check">
+      {documentTypes.map((item) => (
+        <li key={item.kind}>
+          <UseForIcon kind={item.kind} />
+          <span>{item.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ProcessDrawing({ step }: { step: number }) {
+  return (
+    <svg
+      className="lp-process-drawing"
+      viewBox="0 0 180 140"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {step === 0 && (
+        <>
+          <path className="lp-process-paper" d="m51 23 66-2 20 20-2 87-84 2Z" />
+          <path d="m117 21-1 22 21-2M51 31l-10 2 1 103 84-2M65 59l49-1M65 70l46 1M65 82l51-1M65 105l30-1" />
+          <path className="lp-process-highlight" d="m62 89 57-1-1 9-55 1Z" />
+          <path d="M67 94l47-1M90 41l-1-27m-9 9 9-10 10 9" />
+        </>
+      )}
+      {step === 1 && (
+        <>
+          <path className="lp-process-paper" d="m28 26 42 1-1 60-41-2Z" />
+          <path className="lp-process-paper" d="m84 17 43-1 1 60-44 1Z" />
+          <path className="lp-process-paper" d="m111 89 43-1-1 40-42 1Z" />
+          <path d="m37 39 23 1M37 48l22 1M37 58l16 1M94 29l23-1M94 39h23M94 49l16-1M121 101l22-1M121 111l17-1" />
+          <path d="M70 57c11 0 7-14 14-14M107 77c-1 11 15 5 17 11M44 88c0 21 24 27 43 17" />
+          <circle className="lp-process-highlight" cx="69" cy="101" r="21" />
+          <path d="m60 102 7 7 12-15M151 49l7-3M149 37l5-6" />
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <path
+            className="lp-process-paper"
+            d="m18 31 60-2 1 88-60 2ZM102 26l59 2-2 89-59-2Z"
+          />
+          <path d="m29 46 35-1M29 58h34M29 82l34-1M29 96h25M113 43l34 1M113 55l34 1M113 80l32 1M113 96l25 1" />
+          <path
+            className="lp-process-highlight"
+            d="m25 65 45-1v10l-44 1ZM109 62l43 1-1 10-42-1Z"
+          />
+          <path d="M31 70h31M116 68h28M72 70c15 0 14-3 36-2m-7-6 7 6-8 6" />
+          <path d="M79 19c9-5 17-5 24-2M83 129c10 3 19 3 29-1" />
+        </>
+      )}
+      {step === 3 && (
+        <>
+          <path className="lp-process-paper" d="m43 18 86 2-2 110-82-1Z" />
+          <path d="m57 33 45 1M78 56l36-1M78 78l34 1M78 104l28-1" />
+          <path className="lp-process-highlight" d="m75 96 42 1v13l-43-1Z" />
+          <path d="m55 54 5 5 9-12M55 78l5 5 9-12M55 102l5 5 9-12M80 103l28 1" />
+          <path d="m139 39 12 7-36 58-16 11 4-19 36-57Zm-36 57 12 8M135 46l11 7M99 115l7-4M29 27l-9-3M30 40l-12 1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function CitationProcess({ href }: { href: string }) {
+  const steps = [
+    {
+      title: "Upload your paper",
+      detail: "Paste your writing or add a PDF, Word document, or text file.",
+    },
+    {
+      title: "Find the sources",
+      detail: "Proof finds the academic sources behind your citations.",
+    },
+    {
+      title: "Check each claim",
+      detail: "Compare your words with the evidence in the original passages.",
+    },
+    {
+      title: "Review the findings",
+      detail: "See what holds up, what needs a change, and why.",
+    },
+  ];
+  return (
+    <div className="lp-process">
+      <ol
+        className="lp-process-steps"
+        aria-label="How Proof checks your citations"
+      >
+        {steps.map((step, index) => (
+          <li key={step.title}>
+            <span className="lp-process-number" aria-hidden="true">
+              0{index + 1}
+            </span>
+            <ProcessDrawing step={index} />
+            <h3>{step.title}</h3>
+            <p>{step.detail}</p>
+            {index < steps.length - 1 && (
+              <svg
+                className="lp-process-arrow"
+                viewBox="0 0 80 40"
+                fill="none"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M4 25C21 8 44 9 73 19m-11-9 12 9-14 7" />
+              </svg>
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="lp-process-finish">
+        <svg
+          className="lp-process-return"
+          viewBox="0 0 1000 100"
+          preserveAspectRatio="none"
+          fill="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M875 3c4 57-43 55-112 54L550 55c-43 0-51 6-50 37m-8-11 8 12 8-12" />
+        </svg>
+        <span className="lp-process-note">
+          Your sources. Your say. Your final draft.
+        </span>
+        <a className="lp-process-cta" href={href}>
+          <InkFrame />
+          <Check size={22} aria-hidden="true" />
+          Check your citations
+          <ArrowRight size={21} aria-hidden="true" />
+        </a>
+        <p>Review and approve the edits. Keep your voice.</p>
       </div>
     </div>
   );
@@ -563,7 +499,7 @@ const faqs = [
   {
     question: "When can I try it?",
     answer:
-      "Join the waitlist and we will email you when early access opens. We have not announced a launch date or pricing yet.",
+      "Open the workspace to sign in. You can also join the waitlist for early-access updates.",
   },
 ];
 
@@ -619,13 +555,14 @@ export default function Landing() {
           <Wordmark />
           <nav className="lp-desktop-nav" aria-label="Main navigation">
             <a href="#how-it-works">How it works</a>
-            <a href="#in-the-details">Why Proof</a>
             <a href="#questions">Questions</a>
           </nav>
           <div className="lp-nav-actions">
-            <a className="lp-nav-cta" href="#waitlist">
-              Get early access
-              <ArrowUpRight size={15} />
+            <a className="lp-nav-ghost" href={appHref}>
+              Log in
+            </a>
+            <a className="lp-nav-cta" href={appHref}>
+              Get started
             </a>
             <button
               className="lp-menu-toggle"
@@ -647,11 +584,14 @@ export default function Landing() {
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>
               How it works
             </a>
-            <a href="#in-the-details" onClick={() => setMobileOpen(false)}>
-              Why Proof
-            </a>
             <a href="#questions" onClick={() => setMobileOpen(false)}>
               Questions
+            </a>
+            <a href={appHref} onClick={() => setMobileOpen(false)}>
+              Log in
+            </a>
+            <a href={appHref} onClick={() => setMobileOpen(false)}>
+              Get started
             </a>
           </nav>
         )}
@@ -659,178 +599,65 @@ export default function Landing() {
       <main id="main">
         <section className="lp-hero">
           <div className="lp-container lp-hero-grid">
+            <HeroArtwork />
             <div className="lp-hero-copy">
               <h1>
-                Check your
-                <br />
-                <span>
-                  paper's citations.
-                  <svg
-                    viewBox="0 0 530 30"
-                    preserveAspectRatio="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M5 18Q230 -1 522 11M65 26Q277 10 465 22"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </span>
+                <span className="lp-hero-kicker">Trust your</span>
+                <span className="lp-hero-highlight">citations</span>
               </h1>
               <p className="lp-hero-description">
-                Upload your paper. See whether your cited sources support what
-                you've written.
+                Proof checks your cited sources, verifies claims, and helps you
+                build stronger, more credible academic writing.
               </p>
-              <WaitlistForm placement="hero" />
-              <a href="#how-it-works" className="lp-see-how">
-                See how it works
-                <ArrowDown size={15} />
+              <a className="lp-hero-cta" href={appHref}>
+                Get started
+                <ArrowRight size={18} />
               </a>
-            </div>
-            <HeroArtwork />
-          </div>
-          <DocumentMarquee />
-        </section>
-        <section className="lp-statement lp-container lp-reveal">
-          <div className="lp-statement-symbol" aria-hidden="true">
-            <Quote />
-          </div>
-          <p>
-            A citation needs to support
-            <br />
-            <span>the claim</span> <em>you're making.</em>
-          </p>
-          <div className="lp-statement-bottom">
-            <p>
-              Proof checks the evidence behind your sentences.
-              <br />
-              See what each source actually says before you submit your paper.
-            </p>
-          </div>
-        </section>
-        <section className="lp-how-section" id="how-it-works">
-          <div className="lp-container">
-            <div className="lp-section-heading lp-reveal">
-              <div>
-                <h2>
-                  Check the claim.
-                  <br />
-                  <em>Read the evidence.</em>
-                </h2>
-              </div>
-              <p>
-                Compare a claim with its source.
-                <br />
-                See the issue and review a change.
-                <br />
-                <span className="lp-demo-invitation">
-                  Select a claim below.
-                  <ArrowDown size={14} />
-                </span>
-              </p>
-            </div>
-            <div className="lp-reveal">
-              <EvidenceDemo />
-            </div>
-            <div className="lp-steps lp-reveal">
-              <div>
-                <DrawnIcon name="upload" size={34} />
-                <div>
-                  <h3>Upload your paper.</h3>
-                  <p>
-                    Paste your writing or upload a PDF, Word document, or text
-                    file.
-                  </p>
-                </div>
-              </div>
-              <div>
-                <DrawnIcon name="book" size={34} />
-                <div>
-                  <h3>Check each cited claim.</h3>
-                  <p>
-                    Proof finds cited sources and compares your claims with
-                    their passages.
-                  </p>
-                </div>
-              </div>
-              <div>
-                <DrawnIcon name="pen" size={34} />
-                <div>
-                  <h3>Review the findings.</h3>
-                  <p>Read the source passage and decide what to change.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="in-the-details" className="lp-details-section">
-          <div className="lp-container lp-details-grid">
-            <div className="lp-details-copy lp-reveal">
-              <h2>
-                Every finding.
-                <br />
-                <em>With its source.</em>
-              </h2>
-              <p>Read the original passage before you change your draft.</p>
-              <a href="#waitlist" className="lp-text-link">
-                Get early access <ArrowUpRight size={18} />
-              </a>
-            </div>
-            <div className="lp-evidence-details lp-reveal">
-              <article
-                className="lp-source-review"
-                aria-label="Example source and suggested edit"
-              >
-                <InkFrame />
-                <header className="lp-source-review-header">
-                  <DocumentIllustration kind="paper" />
-                  <div>
-                    <h3>Hybrid work and team collaboration</h3>
-                    <p>Rivera et al., 2025 · Fictional example</p>
-                  </div>
-                </header>
-                <div className="lp-source-review-passage">
-                  <div className="lp-source-review-label">
-                    <h4>Source passage</h4>
-                    <span>
-                      <Check size={14} aria-hidden="true" />
-                      Full text
-                    </span>
-                  </div>
-                  <blockquote>
-                    "A total of <mark>120 participants</mark> across six teams
-                    completed the study."
-                  </blockquote>
-                </div>
-                <div className="lp-source-review-edit">
-                  <h4>Suggested edit</h4>
-                  <p>
-                    The study included <del aria-label="replace 240">240</del>{" "}
-                    <ins aria-label="with 120">120</ins> participants from six
-                    teams.
-                  </p>
-                </div>
-                <footer className="lp-source-review-footer">
-                  <div>
-                    <h4>Source access</h4>
-                    <p>Full text, abstract, or unavailable.</p>
-                  </div>
-                  <div>
-                    <h4>You approve edits</h4>
-                    <p>Apply a suggestion or keep your wording.</p>
-                  </div>
-                </footer>
-              </article>
             </div>
           </div>
         </section>
         <section
-          className="lp-faq-section lp-container lp-reveal"
-          id="questions"
+          className="lp-used-for lp-container"
+          aria-labelledby="used-for"
         >
+          <h2 id="used-for" className="lp-used-heading">
+            <span className="lp-used-title">
+              Used for
+              <Sparkles
+                className="lp-used-spark"
+                size={24}
+                aria-hidden="true"
+              />
+            </span>
+          </h2>
+          <UsedForRow />
+        </section>
+        <section
+          className="lp-compare lp-container"
+          aria-labelledby="compare-heading"
+        >
+          <header className="lp-compare-intro">
+            <h2 id="compare-heading">Same question. Different answers.</h2>
+            <p>Illustrative example of a claim and its evidence review.</p>
+          </header>
+          <AnswerCompare />
+        </section>
+        <section className="lp-how-section lp-container" id="how-it-works">
+          <div className="lp-ink-panel lp-how-panel">
+            <div className="lp-how-intro">
+              <h2>
+                Check the claim.
+                <span> Read the evidence.</span>
+              </h2>
+              <p>
+                From your first draft to your final citations. Follow the
+                evidence, one step at a time.
+              </p>
+            </div>
+            <CitationProcess href={appHref} />
+          </div>
+        </section>
+        <section className="lp-faq-section lp-container" id="questions">
           <div className="lp-faq-intro">
             <h2>
               Questions about <em>Proof.</em>
@@ -848,14 +675,13 @@ export default function Landing() {
             ))}
           </div>
         </section>
-        <section className="lp-final-section" id="waitlist">
-          <div className="lp-container lp-final-content">
+        <section className="lp-final-section lp-container" id="waitlist">
+          <div className="lp-ink-panel lp-final-content">
             <h2>
               Check your citations
-              <br />
-              <em>before you submit.</em>
+              <span> before you submit.</span>
             </h2>
-            <p>Join the waitlist. We will email you when Proof is ready.</p>
+            <p>Join the waitlist for early-access updates.</p>
             <WaitlistForm placement="footer" />
           </div>
         </section>
@@ -898,7 +724,7 @@ export default function Landing() {
           access. We save your email address, signup time, and this permission.
         </p>
         <p>
-          The interactive example uses a fictional study. Trying it does not
+          The comparison on this page is an illustration. Viewing it does not
           upload a document or send its content anywhere.
         </p>
         <button

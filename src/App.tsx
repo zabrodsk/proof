@@ -38,7 +38,7 @@ import type { Audit, Finding, Mode, Source, Status } from "../shared/types";
 import { labels, accessLabels } from "../shared/types";
 import { demoText, demoTitle } from "../shared/demo";
 import FindingDetail from "./FindingDetail";
-import { DocumentIllustration, DrawnIcon, InkUnderline } from "./Drawn";
+import { DocumentIllustration, MotifIcon, InkUnderline } from "./Drawn";
 import MlaCitations, { CitationText } from "./MlaCitations";
 import { uniqueMlaSources, type MlaSource } from "../shared/mla";
 
@@ -467,7 +467,7 @@ export default function App() {
             aria-pressed={view === "document"}
             onClick={() => goView("document")}
           >
-            <DrawnIcon name="document" size={23} />
+            <MotifIcon name="document" size={23} />
             My document
           </button>
           <button
@@ -475,7 +475,7 @@ export default function App() {
             aria-pressed={view === "sources"}
             onClick={() => goView("sources")}
           >
-            <DrawnIcon name="library" size={23} />
+            <MotifIcon name="library" size={23} />
             Sources<span className="nav-count">{sources.length}</span>
           </button>
         </nav>
@@ -610,7 +610,7 @@ export default function App() {
                   {importBusy ? (
                     <LoaderCircle className="spin" size={16} />
                   ) : (
-                    <DrawnIcon name="upload" size={21} />
+                    <MotifIcon name="upload" size={21} />
                   )}
                   Import document
                 </button>
@@ -638,7 +638,7 @@ export default function App() {
                       aria-pressed={!editing}
                       onClick={() => setEditing(false)}
                     >
-                      <DrawnIcon name="book" size={18} />
+                      <MotifIcon name="book" size={18} />
                       Read
                     </button>
                     <button
@@ -650,7 +650,7 @@ export default function App() {
                         setSelected(null);
                       }}
                     >
-                      <DrawnIcon name="pen" size={18} />
+                      <MotifIcon name="pen" size={18} />
                       Edit
                     </button>
                   </div>
@@ -765,7 +765,7 @@ export default function App() {
               <aside className="audit-panel" aria-label="Evidence audit">
                 <div className="audit-panel-head">
                   <span className="audit-symbol">
-                    <DrawnIcon name="pen" size={23} />
+                    <MotifIcon name="pen" size={23} />
                   </span>
                   <h3>Evidence check</h3>
                   {audit && !busy && (
@@ -837,15 +837,15 @@ export default function App() {
                     </button>
                     <div className="empty-steps">
                       <span>
-                        <DrawnIcon name="book" size={20} />
+                        <MotifIcon name="book" size={20} />
                         Find the cited source
                       </span>
                       <span>
-                        <DrawnIcon name="document" size={20} />
+                        <MotifIcon name="document" size={20} />
                         Compare the evidence
                       </span>
                       <span>
-                        <DrawnIcon name="pen" size={20} />
+                        <MotifIcon name="pen" size={20} />
                         Review, then revise
                       </span>
                     </div>
@@ -1128,7 +1128,7 @@ export default function App() {
                   .map((source) => (
                     <article className="source-card" key={source.id}>
                       <span className="source-card-icon">
-                        <DrawnIcon name="book" size={28} />
+                        <MotifIcon name="book" size={28} />
                       </span>
                       <div>
                         <span className="source-card-meta">
@@ -1412,7 +1412,7 @@ function NewDocumentModal({
             className="button secondary"
             onClick={importFile}
           >
-            <DrawnIcon name="upload" size={20} />
+            <MotifIcon name="upload" size={20} />
             Import a file
           </button>
           <button className="button primary" disabled={text.trim().length < 20}>
@@ -1559,7 +1559,7 @@ function AddSourceModal({
               </label>
             </div>
             <label className="file-picker">
-              <DrawnIcon name="upload" size={26} />
+              <MotifIcon name="upload" size={26} />
               <span>
                 {file ? file.name : "Choose a PDF, Word, or text file"}
               </span>

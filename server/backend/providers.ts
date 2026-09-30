@@ -1,8 +1,8 @@
+import { reserveConnectorCall } from "../integrations/budgets.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Database } from "./db.js";
-import { reserveConnectorCall } from "../integrations/budgets.js";
 import { HttpError, notFound } from "./config.js";
 export const providerContext = new AsyncLocalStorage<{
   db: Database;
@@ -77,7 +77,7 @@ export async function providerFetch(
       ctx.ws,
       ctx.run,
       provider,
-      typeof options.body === "string" ? Buffer.byteLength(options.body) : 0,
+      Buffer.byteLength(typeof options.body === "string" ? options.body : ""),
     );
     const id = randomUUID();
     await ctx.db.transaction(async (tx) => {

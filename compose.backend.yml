@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: proof
+      POSTGRES_USER: proof
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proof-local-only}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - proof-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proof -d proof"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    build: .
+    command: ["npm", "start"]
+    env_file:
+      - path: .env
+        required: false
+    environment: &backend-environment
+      DATABASE_URL: postgres://proof:${POSTGRES_PASSWORD:-proof-local-only}@postgres:5432/proof
+      PROOF_PERSISTENT_BACKEND: "true"
+      PROOF_HOSTED: "false"
+      PROOF_USE_KEYCHAIN: "false"
+      PROOF_STORAGE_DIR: /app/.data/library
+      PROOF_BIND_HOST: 0.0.0.0
+      PORT: "4317"
+    ports:
+      - "127.0.0.1:4317:4317"
+    volumes:
+      - proof-library:/app/.data/library
+    depends_on:
+      postgres:
+        condition: service_healthy
+  worker:
+    build: .
+    command: ["npm", "run", "worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment: *backend-environment
+    volumes:
+      - proof-library:/app/.data/library
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  proof-postgres:
+  proof-library:

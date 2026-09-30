@@ -13,15 +13,16 @@ import { installAccess } from "./access.js";
 import { classroomRouter } from "./classroom.js";
 import { evidenceRouter } from "./evidence.js";
 import { discoveryRouter } from "./discovery.js";
-import { migrate, postgres } from "./integrations/database.js";
+import { database } from "./backend/db.js";
+import { migrate } from "./integrations/database.js";
 import { IntegrationStore } from "./integrations/store.js";
 import { IntegrationService } from "./integrations/service.js";
 import { OAuthVerifier, oauthConfig } from "./integrations/auth.js";
 import { mcpRouter } from "./integrations/mcp.js";
-import { storage } from "./backend/storage.js";
-import { backendRouter } from "./backend/router.js";
-import { compatibilityRouter } from "./backend/compatibility.js";
 import { integrationApi, integrationErrors } from "./integrations/http.js";
+import { storage } from "./backend/storage.js";
+import { compatibilityRouter } from "./backend/compatibility.js";
+import { backendRouter } from "./backend/router.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
 if (hosted) app.set("trust proxy", 1);
@@ -65,7 +66,7 @@ if (
   process.env.DATABASE_URL ||
   process.env.PROOF_INTEGRATIONS_ENABLED === "true"
 ) {
-  const db = postgres();
+  const db = database();
   await migrate(db);
   integrations = new IntegrationService(
     new IntegrationStore(db, storage()),
@@ -99,20 +100,23 @@ if (integrations) {
   );
   if (process.env.PROOF_INTEGRATIONS_ENABLED === "true")
     app.use("/api/integrations", integrationApi(integrations, oauth));
-  else
-    app.use("/api/integrations", (_req, res) =>
-      res
-        .status(503)
-        .json({
-          error: "Durable integrations are not enabled on this deployment.",
-        }),
-    );
 } else
-  app.use("/api/integrations", (_req, res) =>
-    res.status(503).json({
+  app.use("/api/v1", (_req, res) =>
+    res
+      .status(503)
+      .json({
+        error:
+          "The persistent backend requires DATABASE_URL and a running worker.",
+      }),
+  );
+app.use("/api/integrations", (_req, res) =>
+  res
+    .status(503)
+    .json({
       error: "Durable integrations are not enabled on this deployment.",
     }),
-  );
+);
+
 if (hosted) app.get("/", (_req, res) => res.redirect("/app"));
 app.use("/api/class", classroomRouter());
 app.use("/api/class", discoveryRouter());
@@ -269,11 +273,15 @@ app.use(
     });
   },
 );
-app.listen(port, hosted ? "0.0.0.0" : "127.0.0.1", (error?: Error) => {
-  if (error) {
-    console.error(`Proof could not start: ${error.message}`);
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`Proof is ready at http://127.0.0.1:${port}`);
-});
+app.listen(
+  port,
+  process.env.PROOF_BIND_HOST || (hosted ? "0.0.0.0" : "127.0.0.1"),
+  (error?: Error) => {
+    if (error) {
+      console.error(`Proof could not start: ${error.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Proof is ready at http://127.0.0.1:${port}`);
+  },
+);

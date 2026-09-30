@@ -13,6 +13,7 @@ import {
   Download,
   LockKeyhole,
   LogOut,
+  X,
 } from "lucide-react";
 import {
   classMla,
@@ -100,9 +101,9 @@ function Checks({ items }: { items: Check[] }) {
 }
 export default function Classroom() {
   const [session, setSession] = useState<{
-    provider?: string;
     authenticated: boolean;
     hosted: boolean;
+    provider?: "workos";
     user?: { id: string; name: string; jevUsd: number; inputTokens: number };
   } | null>(null);
   const [name, setName] = useState("");
@@ -406,9 +407,14 @@ export default function Classroom() {
             </p>
           )}
           {session?.provider === "workos" ? (
-            <a className="class-primary" href="/auth/login">
-              Continue to sign in
-            </a>
+            <div>
+              <a className="button primary" href="/auth/login">
+                <LockKeyhole size={16} /> Sign in
+              </a>
+              <a className="button" href="/auth/login?screen=sign-up">
+                Create account
+              </a>
+            </div>
           ) : session ? (
             <form
               onSubmit={(e) => {
@@ -489,12 +495,9 @@ export default function Classroom() {
   return (
     <div className="class-shell">
       <header className="class-header">
-        <a className="class-brand" href="/app">
+        <a className="class-brand" href="/app/class">
           <img src="/images/proof-logo-drawn-v1.png" width="42" alt="" />
           proof<span>.</span>
-        </a>
-        <a className="class-connection-link" href="/app/integrations">
-          Connections
         </a>
         <nav aria-label="Class workspace" data-tour="navigation">
           {(["draft", "find", "sources", "review"] as const).map((name) => (
@@ -548,6 +551,10 @@ export default function Classroom() {
               aria-label="Sign out"
               title="Sign out"
               onClick={async () => {
+                if (session.provider === "workos") {
+                  location.assign("/auth/logout");
+                  return;
+                }
                 await fetch("/api/session", { method: "DELETE" });
                 location.reload();
               }}
@@ -597,7 +604,7 @@ export default function Classroom() {
           <div className="class-error" role="alert">
             {error}
             <button aria-label="Dismiss error" onClick={() => setError("")}>
-              ×
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         )}
