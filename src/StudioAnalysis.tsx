@@ -1,3 +1,10 @@
+import {
+  runStatusLabel,
+  runStageLabel,
+  citationLabel,
+  processingLabel,
+  eligibilityLabel,
+} from "./studio-status";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -357,7 +364,7 @@ export default function StudioAnalysis({
                   : active
                     ? "Check in progress"
                     : run
-                      ? run.status.replaceAll("_", " ")
+                      ? runStatusLabel(run.status)
                       : "Not checked yet"}
               </>
             )}
@@ -380,7 +387,7 @@ export default function StudioAnalysis({
               >
                 {history.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.status} · {r.id.slice(0, 8)}
+                    {runStatusLabel(r.status)}
                     {r.document_version_id !== work.documentVersionId
                       ? " · previous draft"
                       : ""}
@@ -411,9 +418,9 @@ export default function StudioAnalysis({
                   <FileText size={18} />
                 )}
                 <div>
-                  <strong>{run.status.replaceAll("_", " ")}</strong>
+                  <strong>{runStatusLabel(run.status)}</strong>
                   <span>
-                    {run.stage.replaceAll("_", " ")} · {findings.length}{" "}
+                    {runStageLabel(run.stage)} · {findings.length}{" "}
                     {findings.length === 1 ? "finding" : "findings"}
                   </span>
                 </div>
@@ -463,9 +470,9 @@ export default function StudioAnalysis({
                   </div>
                   <blockquote>{finding.claim.text}</blockquote>
                   <p className="ps-analysis-finding-meta">
-                    Citation {finding.citation.replaceAll("_", " ")} ·
-                    Processing {finding.processing} · Eligibility{" "}
-                    {finding.eligibility}
+                    {citationLabel(finding.citation)} ·{" "}
+                    {processingLabel(finding.processing)} ·{" "}
+                    {eligibilityLabel(finding.eligibility)}
                   </p>
                   {finding.explanation.map((text, i) => (
                     <p key={i}>{text}</p>

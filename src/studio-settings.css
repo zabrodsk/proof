@@ -1,0 +1,224 @@
+.ps-settings {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.ps-settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  margin: -4px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.ps-settings-back:hover {
+  color: var(--forest);
+}
+.ps-settings-heading {
+  margin-bottom: 24px;
+}
+.ps-settings-heading h1 {
+  margin-bottom: 0;
+}
+.ps-settings-card {
+  padding: 26px 28px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+.ps-settings-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--forest);
+  margin-bottom: 24px;
+}
+.ps-settings-card-heading h2 {
+  font:
+    400 26px/1.2 "Newsreader",
+    Georgia,
+    serif;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+.ps-settings-account {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.ps-settings-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: var(--forest);
+  font-size: 16px;
+}
+.ps-settings-account > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ps-settings-account strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.ps-settings-account > div > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.ps-settings-account-details {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+.ps-settings-account-details > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  font-size: 13px;
+}
+.ps-settings-account-details dt {
+  color: var(--muted);
+}
+.ps-settings-account-details dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: right;
+  margin: 0;
+}
+.ps-settings-account-details dd svg {
+  color: var(--forest);
+  flex-shrink: 0;
+}
+.ps-settings-account-actions {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.ps-settings-account-actions .ps-outline {
+  height: 40px;
+  font-size: 13px;
+}
+.ps-settings-preference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.ps-settings-card-heading + .ps-settings-preference {
+  border-top: 0;
+  padding-top: 0;
+}
+.ps-settings-preference label {
+  display: grid;
+  gap: 6px;
+}
+.ps-settings-preference label strong {
+  font-size: 14px;
+}
+.ps-settings-preference label span {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ps-settings-preference select {
+  flex: 0 0 205px;
+  min-height: 42px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 11px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.ps-settings-preference select:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+.ps-settings-save-status {
+  min-height: 20px;
+  margin-top: 8px;
+}
+.ps-settings-save-status p {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.ps-settings-save-status svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--forest);
+}
+.ps-settings-error {
+  color: #8c3c30 !important;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ps-settings-connect .ps-settings-card-heading {
+  margin-bottom: 20px;
+}
+.ps-settings-connect > a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.ps-settings-connect > a > span {
+  display: grid;
+  gap: 6px;
+}
+.ps-settings-connect > a strong {
+  font-size: 14px;
+}
+.ps-settings-connect > a > span > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.ps-settings-connect > a > svg {
+  flex-shrink: 0;
+  color: var(--forest);
+}
+.ps-settings-connect > a:hover strong {
+  color: var(--forest);
+}
+@media (max-width: 600px) {
+  .ps-settings-card {
+    padding: 22px 20px;
+  }
+  .ps-settings-card-heading {
+    margin-bottom: 22px;
+  }
+  .ps-settings-preference {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ps-settings-preference select {
+    flex-basis: auto;
+    width: 100%;
+  }
+  .ps-settings-account-details > div {
+    gap: 14px;
+  }
+  .ps-settings-account-details dd {
+    max-width: 65%;
+  }
+}
