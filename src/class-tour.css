@@ -1,0 +1,132 @@
+.pip-roamer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 96px;
+  height: 96px;
+  z-index: 20;
+  pointer-events: none;
+  background: transparent;
+  font-family: "DM Sans", sans-serif;
+  will-change: transform;
+}
+.pip-avatar {
+  width: 96px;
+  height: 96px;
+  position: relative;
+  pointer-events: none;
+}
+.pip-render {
+  position: absolute;
+  width: 192px;
+  height: 192px;
+  left: -48px;
+  top: -48px;
+  transform: scale(0.5);
+  transform-origin: center;
+}
+.pip-avatar canvas {
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 40px;
+}
+.pip-avatar canvas:focus-visible {
+  outline: 2px dashed #78977d;
+  outline-offset: -24px;
+}
+.pip-speech {
+  position: absolute;
+  width: min(225px, calc(100vw - 40px));
+  bottom: 98px;
+  left: var(--pip-speech-left, -129px);
+  color: #254b39;
+  pointer-events: auto;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+
+  border-radius: 16px;
+  text-shadow:
+    0 1px 3px #fff,
+    0 0 9px #fff;
+}
+.pip-roamer[data-vertical="below"] .pip-speech {
+  bottom: auto;
+  top: 105px;
+}
+.pip-speech p {
+  margin: 0;
+  font:
+    500 17px/1.35 Newsreader,
+    serif;
+}
+.pip-replies {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 7px;
+}
+.pip-replies button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 0;
+  background: transparent;
+  border: 0;
+  color: #496a55;
+  font:
+    12px "DM Sans",
+    sans-serif;
+  cursor: pointer;
+  text-shadow: 0 1px 3px #fff;
+}
+.pip-replies button:hover {
+  color: #172f21;
+  text-decoration: underline;
+}
+.pip-replies button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.pip-replies button:focus-visible,
+.pip-return:focus-visible {
+  outline: 2px solid #78977d;
+  outline-offset: 4px;
+}
+.pip-pointer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 19;
+  color: #64876a;
+  overflow: visible;
+}
+.pip-return {
+  position: fixed;
+  bottom: 14px;
+  right: 20px;
+  z-index: 12;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: #496a55;
+  font:
+    italic 16px Newsreader,
+    serif;
+  cursor: pointer;
+}
+.pip-return[hidden] {
+  display: none;
+}
+@media (max-width: 600px) {
+  .pip-speech {
+    width: 210px;
+  }
+}
+
+.pip-roamer[data-vertical="side"] .pip-speech {
+  bottom: auto;
+  top: 6px;
+}

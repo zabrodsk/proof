@@ -1,0 +1,13 @@
+:root {
+  --proof-ink: #1d3027;
+  --proof-muted: #5c6d63;
+  --proof-accent: #245c48;
+  --proof-accent-dark: #174533;
+  --proof-tint: #e7efe9;
+  --proof-paper: #fafbf9;
+  --proof-line: #dce5df;
+  --proof-surface: #f3f7f4;
+  --proof-line-strong: #b0cdb9;
+  --proof-focus: #8fc5ab;
+  --proof-selection: #d8ebe2;
+}

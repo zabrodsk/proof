@@ -1,0 +1,13 @@
+FROM node:22-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json vite.config.ts index.html ./
+COPY src ./src
+COPY server ./server
+COPY shared ./shared
+COPY public ./public
+RUN npm run build
+ENV NODE_ENV=production PROOF_HOSTED=true PROOF_USE_KEYCHAIN=false
+RUN mkdir -p /app/.data && chown node:node /app/.data
+CMD ["sh", "-c", "chown node:node /app/.data && exec runuser -u node -- npm start"]

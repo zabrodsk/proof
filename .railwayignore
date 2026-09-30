@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.git/
+.data/
+.env*
+site/
+output/
+.playwright-mcp/
+*.tar.gz
+tests/

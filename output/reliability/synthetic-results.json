@@ -1,0 +1,407 @@
+{
+  "date": "2026-09-29T14:29:35.831Z",
+  "seconds": 4.415,
+  "usage": {
+    "requests": 39,
+    "inputTokens": 44484,
+    "outputTokens": 8955,
+    "unmeteredRequests": 0,
+    "estimatedUsd": 0.0018683280000000003,
+    "pricePerMillion": 0.042
+  },
+  "results": [
+    {
+      "case": "Faithful qualified result",
+      "repeat": 1,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.99,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Faithful null finding",
+      "repeat": 1,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.96,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Exact supported result",
+      "repeat": 1,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong number",
+      "repeat": 1,
+      "positive": false,
+      "status": "numeric_mismatch",
+      "method": "Jev",
+      "confidence": 0.95,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong population",
+      "repeat": 1,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.69,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Negation reversal",
+      "repeat": 1,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong outcome",
+      "repeat": 1,
+      "positive": false,
+      "status": "not_addressed",
+      "method": "Jev",
+      "confidence": 0.85,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Causal overclaim",
+      "repeat": 1,
+      "positive": false,
+      "status": "overstated",
+      "method": "Jev",
+      "confidence": 0.93,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Time extrapolation",
+      "repeat": 1,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.29,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Universal overclaim",
+      "repeat": 1,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.78,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in claim",
+      "repeat": 1,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.93,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Uncertainty erased",
+      "repeat": 1,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.53,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in source",
+      "repeat": 1,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.75,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Faithful null finding",
+      "repeat": 2,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.96,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Faithful qualified result",
+      "repeat": 2,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.98,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Exact supported result",
+      "repeat": 2,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong number",
+      "repeat": 2,
+      "positive": false,
+      "status": "numeric_mismatch",
+      "method": "Jev",
+      "confidence": 0.92,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong population",
+      "repeat": 2,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.68,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Negation reversal",
+      "repeat": 2,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong outcome",
+      "repeat": 2,
+      "positive": false,
+      "status": "not_addressed",
+      "method": "Jev",
+      "confidence": 0.88,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Time extrapolation",
+      "repeat": 2,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.25,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Causal overclaim",
+      "repeat": 2,
+      "positive": false,
+      "status": "overstated",
+      "method": "Jev",
+      "confidence": 0.94,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Universal overclaim",
+      "repeat": 2,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.8,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Uncertainty erased",
+      "repeat": 2,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.5,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in claim",
+      "repeat": 2,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.92,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in source",
+      "repeat": 2,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.73,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Faithful qualified result",
+      "repeat": 3,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.99,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Exact supported result",
+      "repeat": 3,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Faithful null finding",
+      "repeat": 3,
+      "positive": true,
+      "status": "supported",
+      "method": "Jev",
+      "confidence": 0.96,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Negation reversal",
+      "repeat": 3,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 1,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong population",
+      "repeat": 3,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.72,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong number",
+      "repeat": 3,
+      "positive": false,
+      "status": "numeric_mismatch",
+      "method": "Jev",
+      "confidence": 0.95,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Causal overclaim",
+      "repeat": 3,
+      "positive": false,
+      "status": "overstated",
+      "method": "Jev",
+      "confidence": 0.93,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Wrong outcome",
+      "repeat": 3,
+      "positive": false,
+      "status": "not_addressed",
+      "method": "Jev",
+      "confidence": 0.89,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Time extrapolation",
+      "repeat": 3,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.2,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Universal overclaim",
+      "repeat": 3,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.81,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Uncertainty erased",
+      "repeat": 3,
+      "positive": false,
+      "status": "uncertain",
+      "method": "Jev",
+      "confidence": 0.54,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in claim",
+      "repeat": 3,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.92,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    },
+    {
+      "case": "Prompt injection in source",
+      "repeat": 3,
+      "positive": false,
+      "status": "contradicted",
+      "method": "Jev",
+      "confidence": 0.71,
+      "quoteIsVerbatim": true,
+      "falseSupport": false
+    }
+  ],
+  "falseSupports": 0,
+  "positiveSupports": 9,
+  "unverified": 0
+}

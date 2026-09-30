@@ -1,0 +1,11 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: Primary symbol for Proof, an academic citation-checking app and landing page.
+Primary request: Create one distinctive, minimal hand-drawn logo symbol. A small open book with two gently curved pages; the central fold and a single confident proofreading check on the right page make one compact, balanced silhouette. The mark should suggest reading a source and checking a claim.
+Style/medium: Editorial pen-and-ink drawing, restrained and precise with slight human variation in the contours. Broad, clean ink strokes that remain readable when displayed at 32 pixels. Only a few lines, no dense detail. The existing site has fine green ink illustrations of papers, books and fountain pens, ivory surfaces and sage accents.
+Color palette: Deep forest green #245c48 outlines, a very small pale sage #dce9dd accent on one page. Mostly open transparent negative space.
+Composition/framing: One centered, nearly square logo symbol, front view, balanced and compact. Fill about 84 percent of the canvas. Full mark visible with equal clear margin. Transparent background with genuine alpha.
+Text: None. Symbol only; the wordmark will be typeset separately.
+Constraints: Original design, flat graphic, clean silhouette, transparent PNG. Keep it simple enough for a favicon and a website header.
+Avoid: mockups, brand sheets, multiple options, lettering, sparkles, stars, circles around the mark, badges, rounded-square containers, gradients, shadows, 3D, photoreal paper, ornate engraving, scratchy hairlines, decorative clutter.

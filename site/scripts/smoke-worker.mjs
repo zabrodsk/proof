@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { readFileSync, readdirSync } from 'node:fs';
+import worker from '../dist/server/index.js';
+const sqlite = new DatabaseSync(':memory:');
+for (const file of readdirSync('drizzle').filter(name => name.endsWith('.sql')).sort()) sqlite.exec(readFileSync(`drizzle/${file}`, 'utf8'));
+const DB = { prepare(sql) { let values = []; const query = { bind(...args) { values = args; return query; }, async run() { return sqlite.prepare(sql).run(...values); }, async first() { return sqlite.prepare(sql).get(...values) || null; } }; return query; } };
+const origin='https://proof.example';
+const post = (body, headers={}) => worker.fetch(new Request(`${origin}/api/waitlist`, {method:'POST', headers:{'Content-Type':'application/json',Origin:origin,'CF-Connecting-IP':'192.0.2.3',...headers},body:typeof body==='string'?body:JSON.stringify(body)}),{DB});
+try {
+  const response=await worker.fetch(new Request(origin),{DB});
+  assert.equal(response.status,200);assert.match(await response.text(),/Proof/);
+  assert.equal((await post({email:' Reader@Example.com ',consent:true,source:'hero'})).status,200);
+  assert.equal((await post({email:'reader@example.com',consent:true,source:'footer'})).status,200);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM waitlist').get().count,1);
+  assert.equal(sqlite.prepare('SELECT email FROM waitlist').get().email,'reader@example.com');
+  assert.equal((await post({email:'invalid',consent:true})).status,400);
+  assert.equal((await post({email:'new@example.com',consent:false})).status,400);
+  assert.equal((await post({email:'new@example.com',consent:true},{Origin:'https://elsewhere.example'})).status,403);
+  assert.equal((await post('{')).status,400);
+  assert.equal((await post('x'.repeat(5000))).status,413);
+  assert.equal((await post({email:'bot@example.com',consent:true,website:'spam'})).status,200);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM waitlist').get().count,1);
+  for (let i=0;i<8;i++)assert.equal((await post({email:'reader@example.com',consent:true})).status,200);
+  assert.equal((await post({email:'limited@example.com',consent:true})).status,429);
+  assert.equal((await worker.fetch(new Request(`${origin}/api/waitlist`),{DB})).status,405);
+  assert.equal((await worker.fetch(new Request(`${origin}/api/audit`),{DB})).status,404);
+  const failure=await worker.fetch(new Request(`${origin}/api/waitlist`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'error@example.com',consent:true})}),{});
+  assert.equal(failure.status,503);
+  console.log('Built Worker checks passed: page, signup, persistence, deduplication, validation, rate limit, origin protection, storage failure.');
+} finally {sqlite.close();}

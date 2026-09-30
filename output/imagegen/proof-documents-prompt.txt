@@ -1,0 +1,16 @@
+Mode: built-in image_gen
+Asset: public/images/proof-documents.png
+Hosted copy: site/public/images/proof-documents.png
+Dimensions: 2172 x 724
+
+Use case: product-mockup
+Asset type: one raster contact sheet for four 64px document thumbnails on Proof, an academic citation-checking landing page.
+Primary request: a wide contact sheet of exactly four miniature editorial paper objects in a single horizontal row, left to right: loose research paper sheets with subtle reference marks; open essay notebook; closed forest-green clothbound thesis book; folded printed report with a tiny simple chart.
+Scene/backdrop: seamless pure consistent very pale green-white background #f8faf8 across the entire image.
+Style/medium: premium minimalist editorial still-life product photography, tangible real paper and book cloth, calm and restrained.
+Composition/framing: widest available landscape canvas, preferably 4:1, otherwise 3:1. Four exactly equal-width horizontal quarters. The center of each object must be at 12.5%, 37.5%, 62.5%, and 87.5% of image width, all centered at 50% of image height. Every object entirely contained within a centered square crop in its own quarter, generous empty margins, equal visual weight, no overlap. View slightly above the objects. No cell borders or dividers.
+Lighting/mood: diffuse soft light, tiny realistic soft shadows close beneath each object.
+Color palette: white and off-white paper, restrained forest-green accents; forest-green cloth on the closed thesis.
+Materials/textures: subtle paper grain, fine cloth weave, real folded paper edges.
+Text: no legible text, no words, no labels, no letters, no numerals. Research marks and notebook writing are only faint abstract short rules or lines. Report chart has simple small bars with no axes text.
+Constraints: exactly these four objects, no extra motifs, no interface elements, no pens, no desk decoration, no hands, no logos, no watermark. Avoid cartoon styling, glossy plastic, exaggerated 3D, dramatic perspective, strong shadows.
