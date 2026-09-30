@@ -1,0 +1,16 @@
+{
+  "modern-language-association.csl": {
+    "repository": "https://github.com/citation-style-language/styles",
+    "commit": "c0c8fd69fb7222b81cfd068d3bccfdb17b833045",
+    "url": "https://raw.githubusercontent.com/citation-style-language/styles/c0c8fd69fb7222b81cfd068d3bccfdb17b833045/modern-language-association.csl",
+    "sha256": "e1432698ef28938d044b06bd45ddcc57d6b974cec25f71007075646a11f99484",
+    "license": "CC-BY-SA-3.0"
+  },
+  "locales-en-US.xml": {
+    "repository": "https://github.com/citation-style-language/locales",
+    "commit": "938c09c164a60b3cfeabe61089f1bf4c3ea6a4ed",
+    "url": "https://raw.githubusercontent.com/citation-style-language/locales/938c09c164a60b3cfeabe61089f1bf4c3ea6a4ed/locales-en-US.xml",
+    "sha256": "ac864c7c21166b4390d82c31792cdc509400727fa0060b43d8aa17e07f9cb079",
+    "license": "CC-BY-SA-3.0"
+  }
+}

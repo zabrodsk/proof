@@ -1,3 +1,8 @@
+import {
+  providerFetch as fetch,
+  openAlexUrl,
+  providerContext,
+} from "./backend/providers.js";
 import { clean, resolveDOI } from "./sources.js";
 import { readPdfPages } from "./documents.js";
 import { remoteFile } from "./remote.js";
@@ -6,13 +11,16 @@ import { judgeClaim } from "./judge.js";
 import type { Claim, Finding, Source } from "../shared/types.js";
 
 async function json(url: string) {
-  const r = await fetch(url, {
-    signal: AbortSignal.timeout(20000),
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Proof/0.3 scholarly-verification",
+  const r = await fetch(
+    url.includes("api.openalex.org") ? openAlexUrl(url) : url,
+    {
+      signal: AbortSignal.timeout(20000),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Proof/0.3 scholarly-verification",
+      },
     },
-  });
+  );
   if (!r.ok)
     throw new Error(
       `Scholarly verification service returned HTTP ${r.status}. Try again later.`,

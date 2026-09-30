@@ -10,7 +10,6 @@ test("hosted API requires a signed session and limits failed access attempts", a
   const original = {
     hosted: process.env.PROOF_HOSTED,
     key: process.env.PROOF_ACCESS_KEY,
-    accountsFile: process.env.PROOF_ACCOUNTS_FILE,
   };
   process.env.PROOF_HOSTED = "true";
   process.env.PROOF_ACCESS_KEY = "a-test-only-key-with-at-least-24-characters";
@@ -30,31 +29,31 @@ test("hosted API requires a signed session and limits failed access attempts", a
   try {
     assert.equal((await fetch(base + "/health")).status, 200);
     assert.equal((await fetch(base + "/api/private")).status, 401);
-    const invalid = await fetch(base + "/api/session", {
+    const badCode = await fetch(base + "/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "A",
+        name: "Adam",
         password: "test-password-only",
         register: true,
+        key: "autofilled-password",
       }),
     });
-    assert.equal(invalid.status, 400);
-    assert.match((await invalid.json()).error, /username/);
+    assert.equal(badCode.status, 401);
+    assert.match((await badCode.json()).error, /join code is incorrect/);
 
     const login = await fetch(base + "/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "  Hackathon visitor  ",
+        key: `  ${process.env.PROOF_ACCESS_KEY}\n`,
+        name: "Adam",
         password: "test-password-only",
         register: true,
       }),
     });
     assert.equal(login.status, 200);
     const authBody = await login.json();
-    assert.equal(authBody.user.name, "Hackathon visitor");
-    assert.equal(authBody.user.jevUsd, 0);
     const claim = (name: string, password = "replacement-password") =>
       fetch(base + "/api/session", {
         method: "POST",
@@ -62,22 +61,22 @@ test("hosted API requires a signed session and limits failed access attempts", a
         body: JSON.stringify({
           name,
           password,
+          key: process.env.PROOF_ACCESS_KEY,
           register: true,
         }),
       });
-    assert.equal((await claim("HACKATHON VISITOR")).status, 409);
-    assert.equal((await claim("Another public visitor")).status, 200);
+    assert.equal((await claim("Adam")).status, 409);
+    assert.equal((await claim("Not in class")).status, 400);
     const names = await (await fetch(base + "/api/session")).json();
-    assert.equal(names.authenticated, false);
-    assert.equal("roster" in names, false);
-    assert.equal("user" in names, false);
+    assert.equal(names.roster.length, 21);
+    assert.equal(
+      names.roster.find((p: any) => p.name === "Adam").claimed,
+      true,
+    );
     const relogin = await fetch(base + "/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "hackathon visitor",
-        password: "test-password-only",
-      }),
+      body: JSON.stringify({ name: "Adam", password: "test-password-only" }),
     });
     assert.equal((await relogin.json()).user.id, authBody.user.id);
     const cookie = login.headers.get("set-cookie")!;
@@ -91,15 +90,6 @@ test("hosted API requires a signed session and limits failed access attempts", a
       ).status,
       200,
     );
-    const signedSession = await (
-      await fetch(base + "/api/session", {
-        headers: { Cookie: cookie.split(";")[0] },
-      })
-    ).json();
-    assert.equal(signedSession.user.id, authBody.user.id);
-    assert.equal("roster" in signedSession, false);
-    const logout = await fetch(base + "/api/session", { method: "DELETE" });
-    assert.match(logout.headers.get("set-cookie")!, /Max-Age=0/);
     assert.equal(
       (
         await fetch(base + "/api/private", {
@@ -113,7 +103,7 @@ test("hosted API requires a signed session and limits failed access attempts", a
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Hackathon visitor",
+          name: "Adam",
           password: "incorrect-password",
         }),
       });
@@ -123,7 +113,7 @@ test("hosted API requires a signed session and limits failed access attempts", a
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: "Hackathon visitor",
+            name: "Adam",
             password: "incorrect-password",
           }),
         })
@@ -136,8 +126,5 @@ test("hosted API requires a signed session and limits failed access attempts", a
     else process.env.PROOF_HOSTED = original.hosted;
     if (original.key === undefined) delete process.env.PROOF_ACCESS_KEY;
     else process.env.PROOF_ACCESS_KEY = original.key;
-    if (original.accountsFile === undefined)
-      delete process.env.PROOF_ACCOUNTS_FILE;
-    else process.env.PROOF_ACCOUNTS_FILE = original.accountsFile;
   }
 });

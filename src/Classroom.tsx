@@ -1,3 +1,4 @@
+import { classRoster } from "../shared/class-roster";
 import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
@@ -102,11 +103,14 @@ export default function Classroom() {
   const [session, setSession] = useState<{
     authenticated: boolean;
     hosted: boolean;
+    provider?: "workos";
+    roster?: { name: string; claimed: boolean }[];
     user?: { id: string; name: string; jevUsd: number; inputTokens: number };
   } | null>(null);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [register, setRegister] = useState(false);
+  const [key, setKey] = useState("");
   const [workspace, setWorkspace] = useState<Workspace>(initial);
   const [ready, setReady] = useState(false);
   const [saveState, setSaveState] = useState("Loading saved work");
@@ -356,95 +360,73 @@ export default function Classroom() {
   if (!session?.authenticated)
     return (
       <main className="class-login">
-        <section
-          className="proof-login-intro"
-          aria-labelledby="proof-intro-title"
-        >
-          <a className="class-brand" href="/">
-            <img src="/images/proof-logo-drawn-v1.png" width="42" alt="" />
-            proof<span>.</span>
-          </a>
-          <h1 id="proof-intro-title">Does your evidence back your writing?</h1>
-          <p>
-            Proof checks your claims against published research. Read the source
-            passages, spot unsupported statements, and decide what to change.
-          </p>
-          <div className="proof-login-capabilities">
-            <div>
-              <BookOpen size={21} aria-hidden="true" />
-              <p>
-                <strong>Find research for a claim</strong>
-                Search journal articles and inspect the evidence.
-              </p>
-            </div>
-            <div>
-              <CheckCheck size={21} aria-hidden="true" />
-              <p>
-                <strong>Check your writing against sources</strong>
-                Review findings alongside the passages behind them.
-              </p>
-            </div>
-          </div>
-          <p className="proof-login-demo">Hackathon demo</p>
-        </section>
-        <section
-          className="class-login-card"
-          aria-labelledby="proof-login-title"
-        >
-          <h2 id="proof-login-title">
-            {register ? "Create your account" : "Sign in to Proof"}
-          </h2>
-          <p>
-            {register
-              ? "Choose a username and password to start checking evidence."
-              : "Open your workspace and continue your research."}
-          </p>
+        <div className="class-login-card">
+          <img src="/images/proof-logo-drawn-v1.png" width="58" alt="" />
+          <h1>Proof for your class</h1>
+          <p>Review your writing, evidence, and MLA citations.</p>
           {error && (
             <p role="alert" className="class-error">
               {error}
             </p>
           )}
-          {session ? (
+          {session?.provider === "workos" ? (
+            <div>
+              <a className="button primary" href="/auth/login">
+                <LockKeyhole size={16} /> Sign in
+              </a>
+              <a className="button" href="/auth/login?screen=sign-up">
+                Create account
+              </a>
+            </div>
+          ) : session ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void act(
-                  register ? "Creating account" : "Signing in",
-                  async () => {
-                    const signed = await request<NonNullable<typeof session>>(
-                      "/api/session",
-                      { name, password, register },
-                    );
-                    setPassword("");
-                    setSession(signed);
-                  },
-                );
+                void act("Signing in", async () => {
+                  const signed = await request<NonNullable<typeof session>>(
+                    "/api/session",
+                    { name, password, register, key },
+                  );
+                  setKey("");
+                  setPassword("");
+                  setSession(signed);
+                });
               }}
             >
               <label>
-                Username
-                <input
-                  type="text"
-                  name="username"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
+                First name
+                <select
+                  autoFocus
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  minLength={2}
-                  maxLength={60}
                   required
-                />
-                {register && (
-                  <small>2 to 60 characters. Use this to sign in.</small>
-                )}
+                >
+                  <option value="">Choose your name</option>
+                  {(
+                    session.roster ||
+                    classRoster.map((name) => ({ name, claimed: false }))
+                  ).map((person) => (
+                    <option
+                      key={person.name}
+                      value={person.name}
+                      disabled={register && person.claimed}
+                    >
+                      {person.name}
+                      {register && person.claimed ? " · already claimed" : ""}
+                    </option>
+                  ))}
+                </select>
               </label>
+              {register && (
+                <p>
+                  Pick your name. Make a password. The join code is a one-time
+                  thing.
+                </p>
+              )}
               <label>
                 Password
                 <input
                   type="password"
-                  name="password"
                   autoComplete={register ? "new-password" : "current-password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -452,32 +434,50 @@ export default function Classroom() {
                   maxLength={128}
                   required
                 />
-                {register && <small>At least 10 characters.</small>}
               </label>
+              {register && (
+                <label>
+                  Class join code
+                  <input
+                    type="text"
+                    name="class-join-code"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Paste the class join code"
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    required
+                  />
+                  <small>Use the code Dusan shared.</small>
+                </label>
+              )}
               <button className="button primary" disabled={!!busy}>
                 <LockKeyhole size={16} />
-                {busy || (register ? "Create account" : "Sign in")}
+                {busy || (register ? "Claim my account" : "Sign in")}
               </button>
               <button
                 type="button"
                 className="button"
-                disabled={!!busy}
                 onClick={() => {
                   setRegister(!register);
                   setName("");
-                  setPassword("");
+                  void request<NonNullable<typeof session>>("/api/session")
+                    .then(setSession)
+                    .catch(() => {});
                   setError("");
                 }}
               >
                 {register
                   ? "Already have an account? Sign in"
-                  : "New to Proof? Create an account"}
+                  : "First visit? Claim your account"}
               </button>
             </form>
           ) : (
-            <p role="status">Connecting to Proof…</p>
+            <p>Connecting to Proof…</p>
           )}
-        </section>
+        </div>
       </main>
     );
   const report = workspace.report;
@@ -540,6 +540,10 @@ export default function Classroom() {
               aria-label="Sign out"
               title="Sign out"
               onClick={async () => {
+                if (session.provider === "workos") {
+                  location.assign("/auth/logout");
+                  return;
+                }
                 await fetch("/api/session", { method: "DELETE" });
                 location.reload();
               }}
