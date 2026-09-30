@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  ArrowUpRight,
   CheckCircle2,
   CircleHelp,
   FileText,
@@ -43,6 +44,28 @@ export default function StudioDocument({
   const highlights = documentHighlights(text, findings, stale);
   const current = findings.find((f) => f.id === selected) || findings[0];
   useEffect(() => setSelected(undefined), [text, status === undefined]);
+  const stateLabel = stale
+    ? "Draft changed"
+    : status === "complete"
+      ? "Checked"
+      : status === "running"
+        ? "Checking..."
+        : status === "queued"
+          ? "Queued"
+          : status === "failed"
+            ? "Check failed"
+            : status === "cancelled"
+              ? "Cancelled"
+              : "Not checked";
+  const citationLabel = (finding: BackendFinding) =>
+    ({
+      correct: "Citation matches",
+      wrong_source: "Wrong source",
+      wrong_locator: "Check the page reference",
+      missing: "Citation missing",
+      ambiguous: "Citation unclear",
+      not_checked: "Citation not checked",
+    })[finding.citation];
   const fragments: ReactNode[] = [];
   let cursor = 0;
   for (const finding of highlights) {
@@ -58,6 +81,15 @@ export default function StudioDocument({
         onClick={() => {
           setSelected(finding.id);
           detailRef.current?.focus({ preventScroll: true });
+          if (window.matchMedia("(max-width: 1100px)").matches) {
+            detailRef.current?.scrollIntoView({
+              block: "start",
+              behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                .matches
+                ? "instant"
+                : "smooth",
+            });
+          }
         }}
       >
         {finding.claim.text}
@@ -113,7 +145,9 @@ export default function StudioDocument({
       >
         <header>
           <h2>Evidence check</h2>
-          <span>{status ? status.replaceAll("_", " ") : "Not checked"}</span>
+          <span className={`ps-reading-state ${stale ? "stale" : ""}`}>
+            {stateLabel}
+          </span>
         </header>
         {findings.length > 0 && !stale && (
           <div className="ps-evidence-counts">
@@ -145,8 +179,12 @@ export default function StudioDocument({
               </span>
               <blockquote>{current.claim.text}</blockquote>
               <p className="ps-evidence-facts">
-                Citation {current.citation.replaceAll("_", " ")} ·{" "}
-                {current.processing.replaceAll("_", " ")}
+                {citationLabel(current)} ·{" "}
+                {current.processing === "complete"
+                  ? "Check complete"
+                  : current.processing === "partial"
+                    ? "Partial check"
+                    : "Check incomplete"}
               </p>
               {current.explanation.map((explanation, i) => (
                 <p key={i}>{explanation}</p>
@@ -198,7 +236,14 @@ export default function StudioDocument({
                     setSelected(f.id);
                     document
                       .getElementById(`ps-claim-${f.id}`)
-                      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+                      ?.scrollIntoView({
+                        block: "center",
+                        behavior: window.matchMedia(
+                          "(prefers-reduced-motion: reduce)",
+                        ).matches
+                          ? "instant"
+                          : "smooth",
+                      });
                   }}
                 >
                   <span className={`ps-evidence-label ${findingTone(f)}`}>
@@ -226,7 +271,8 @@ export default function StudioDocument({
                 : "Run an analysis to see claims highlighted here. Select a claim to read its source passages."}
             </p>
             <button className="ps-primary" onClick={onAnalyze}>
-              Open analysis <ArrowRight size={16} />
+              {stale ? "Check again" : "Set up a check"}{" "}
+              <ArrowUpRight size={16} />
             </button>
           </div>
         )}

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
+import type { BackendFinding } from "../shared/backend";
+import { findingTone, findingLabel } from "./studio-document";
 import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
   BarChart3,
-  Bell,
   Check,
   ChevronDown,
   FileText,
@@ -49,9 +50,16 @@ import {
 type Section = "dashboard" | "analysis" | "citations";
 type Work = StudioWork;
 type Route = { workId: string | null; section: Section };
-type Menu = "profile" | "notifications" | "project" | "document" | null;
+type Menu = "profile" | "help" | "project" | "document" | null;
 
 const sectionOrder: Section[] = ["dashboard", "analysis", "citations"];
+
+function matchingWorks(works: Work[], query: string) {
+  const normalized = query.trim().toLowerCase();
+  return normalized
+    ? works.filter((work) => work.title.toLowerCase().includes(normalized))
+    : works;
+}
 
 function parseRoute(pathname: string): Route {
   const match = pathname.match(
@@ -164,7 +172,10 @@ export default function Studio({ session }: { session: Session }) {
     }
   }
   const [search, setSearch] = useState("");
+  const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
+  const workspaceSearchRef = useRef<HTMLDivElement>(null);
   const [modal, setModal] = useState<"new" | "document" | null>(null);
+  const [newWorkMode, setNewWorkMode] = useState<"upload" | "paste">("upload");
   const [draft, setDraft] = useState("");
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
@@ -199,7 +210,11 @@ export default function Studio({ session }: { session: Session }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (modal) dialog?.showModal();
+    if (modal) {
+      dialog?.showModal();
+      if (modal === "new")
+        dialog?.querySelector<HTMLInputElement>("#new-work-title")?.focus();
+    }
     return () => dialog?.close();
   }, [modal]);
   const contentRef = useRef<HTMLElement>(null);
@@ -235,6 +250,7 @@ export default function Studio({ session }: { session: Session }) {
         setPath(next);
         setSidebarOpen(false);
         setRailSearchOpen(false);
+        setWorkspaceSearchOpen(false);
         setOpenMenu(null);
         if (!destination.workId) {
           setSearch("");
@@ -327,6 +343,7 @@ export default function Studio({ session }: { session: Session }) {
         setOpenMenu(null);
         setSidebarOpen(false);
         setRailSearchOpen(false);
+        setWorkspaceSearchOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -377,19 +394,24 @@ export default function Studio({ session }: { session: Session }) {
     document.title = `Proof · ${page} · ${activeWork.title}`;
   }, [focused, route.section, activeWork?.title]);
 
-  const filtered = useMemo(() => {
-    if (activeWork) return [activeWork];
-    const query = search.trim().toLowerCase();
-    const list = query
-      ? works.filter((work) => work.title.toLowerCase().includes(query))
-      : works;
-    return list;
-  }, [works, search, activeWork]);
+  const filtered = useMemo(
+    () => (activeWork ? [activeWork] : matchingWorks(works, search)),
+    [works, search, activeWork],
+  );
+  const searchResults = useMemo(
+    () => matchingWorks(works, search),
+    [works, search],
+  );
+  const railResults = useMemo(
+    () => matchingWorks(works, railQuery),
+    [works, railQuery],
+  );
 
   const openWork = (id: string, section: Section = "dashboard") => {
     go(workPath(id, section));
     setSearch("");
     setRailSearchOpen(false);
+    setWorkspaceSearchOpen(false);
     setRailQuery("");
   };
 
@@ -477,13 +499,30 @@ export default function Studio({ session }: { session: Session }) {
   if (!ready)
     return (
       <main className="proof-studio ps-signin">
-        <section className="ps-modal">
-          <h1>Opening your workspace</h1>
+        <section className="ps-workspace-loading" aria-busy={!error}>
+          <img
+            src="/images/proof-logo-drawn-v1.png"
+            alt=""
+            width={48}
+            height={48}
+          />
+          <h1>{error ? "Workspace unavailable" : "Opening your workspace"}</h1>
           <p role={error ? "alert" : "status"}>
-            {error || "Loading documents..."}
+            {error || "Loading your saved documents..."}
           </p>
-          {error && (
-            <button onClick={() => window.location.reload()}>Try again</button>
+          {error ? (
+            <button
+              className="ps-primary"
+              onClick={() => window.location.reload()}
+            >
+              Try again
+            </button>
+          ) : (
+            <div className="ps-loading-lines" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
           )}
         </section>
       </main>
@@ -559,7 +598,10 @@ export default function Studio({ session }: { session: Session }) {
               className="ps-rail-button ps-rail-add"
               aria-label="Add new work"
               data-sidebar-tooltip="Add new work"
-              onClick={() => setModal("new")}
+              onClick={() => {
+                setNewWorkMode("upload");
+                setModal("new");
+              }}
             >
               <Plus size={22} />
             </button>
@@ -610,32 +652,38 @@ export default function Studio({ session }: { session: Session }) {
                       placeholder="Search your work..."
                       value={railQuery}
                       onChange={(event) => setRailQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && railResults[0])
+                          openWork(railResults[0].id);
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          railSearchRef.current
+                            ?.querySelector<HTMLButtonElement>(
+                              ".ps-rail-search-results button",
+                            )
+                            ?.focus();
+                        }
+                      }}
                     />
                   </div>
-                  {railQuery.trim() && (
-                    <div className="ps-rail-search-results">
-                      {works
-                        .filter((work) =>
-                          work.title
-                            .toLowerCase()
-                            .includes(railQuery.trim().toLowerCase()),
-                        )
-                        .map((work) => (
-                          <button
-                            key={work.id}
-                            onClick={() => openWork(work.id)}
-                          >
-                            <StudioWorkIcon name={work.icon} size={16} />
-                            <span>{work.title}</span>
-                          </button>
-                        ))}
-                      {!works.some((work) =>
-                        work.title
-                          .toLowerCase()
-                          .includes(railQuery.trim().toLowerCase()),
-                      ) && <p role="status">No matching work</p>}
-                    </div>
-                  )}
+                  <div
+                    className="ps-rail-search-results"
+                    aria-label="Matching work"
+                  >
+                    {railResults.map((work) => (
+                      <button key={work.id} onClick={() => openWork(work.id)}>
+                        <StudioWorkIcon name={work.icon} size={16} />
+                        <span>{work.title}</span>
+                      </button>
+                    ))}
+                    {!railResults.length && (
+                      <p role="status">
+                        {railQuery.trim()
+                          ? "No matching work"
+                          : "Your saved work will appear here."}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -725,7 +773,7 @@ export default function Studio({ session }: { session: Session }) {
                 className="ps-rail-button"
                 aria-label="Help"
                 data-sidebar-tooltip="Help"
-                onClick={() => setOpenMenu("notifications")}
+                onClick={() => setOpenMenu("help")}
               >
                 <CircleHelp size={21} />
               </button>
@@ -775,7 +823,13 @@ export default function Studio({ session }: { session: Session }) {
             </button>
           </div>
           <div className="ps-sidebar-inner">
-            <button className="ps-add" onClick={() => setModal("new")}>
+            <button
+              className="ps-add"
+              onClick={() => {
+                setNewWorkMode("upload");
+                setModal("new");
+              }}
+            >
               <Plus size={18} />
               Add new work
             </button>
@@ -789,17 +843,32 @@ export default function Studio({ session }: { session: Session }) {
                       placeholder="Search..."
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setSearch("");
+                        if (event.key === "Enter" && searchResults[0])
+                          openWork(searchResults[0].id);
+                      }}
                     />
+                    {search && (
+                      <button
+                        className="ps-search-clear"
+                        aria-label="Clear search"
+                        onClick={() => setSearch("")}
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
                   </div>
                   <div className="ps-work-label">
                     <span>My work</span>
+                    <span>{works.length}</span>
                   </div>
                 </>
               )}
               {focused && (
                 <button className="ps-back" onClick={() => go("/app")}>
                   <ArrowLeft size={16} />
-                  Go back
+                  All work
                 </button>
               )}
               <div
@@ -807,15 +876,18 @@ export default function Studio({ session }: { session: Session }) {
                 className={`ps-work-list ${focused ? "focused" : "divided"}`}
               >
                 {filtered.length === 0 && (
-                  <div className="ps-empty-search">No matching work</div>
+                  <div className="ps-empty-search" role="status">
+                    {search.trim()
+                      ? "No matching work"
+                      : "Your documents will appear here."}
+                  </div>
                 )}
                 {filtered.map((work) => {
                   const open = focused && work.id === activeWork?.id;
-                  const selected = !focused && work.id === works[0]?.id;
                   return (
                     <div
                       key={work.id}
-                      className={`ps-work ${open ? "open" : ""} ${selected ? "selected" : ""}`}
+                      className={`ps-work ${open ? "open" : ""}`}
                     >
                       <div className="ps-work-top">
                         <button
@@ -930,7 +1002,7 @@ export default function Studio({ session }: { session: Session }) {
                 <button onClick={() => setOpenMenu("profile")}>
                   <Settings size={21} /> Settings
                 </button>
-                <button onClick={() => setOpenMenu("notifications")}>
+                <button onClick={() => setOpenMenu("help")}>
                   <CircleHelp size={21} /> Help
                 </button>
               </div>
@@ -965,13 +1037,39 @@ export default function Studio({ session }: { session: Session }) {
           >
             <Menu size={20} />
           </button>
-          <div className="ps-search-wrap">
+          <div
+            className="ps-search-wrap"
+            ref={workspaceSearchRef}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget))
+                setWorkspaceSearchOpen(false);
+            }}
+          >
             <Search size={18} />
             <input
               aria-label="Search your work"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search your work..."
+              aria-expanded={workspaceSearchOpen}
+              aria-controls="ps-workspace-search-results"
+              onFocus={() => setWorkspaceSearchOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setWorkspaceSearchOpen(false);
+                }
+                if (event.key === "Enter" && searchResults[0])
+                  openWork(searchResults[0].id);
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  workspaceSearchRef.current
+                    ?.querySelector<HTMLButtonElement>(
+                      ".ps-workspace-search-results button",
+                    )
+                    ?.focus();
+                }
+              }}
             />
             {search && (
               <button
@@ -982,6 +1080,27 @@ export default function Studio({ session }: { session: Session }) {
                 <X size={16} />
               </button>
             )}
+            {workspaceSearchOpen && (
+              <div
+                id="ps-workspace-search-results"
+                className="ps-workspace-search-results ps-rail-search-results"
+                aria-label="Matching work"
+              >
+                {searchResults.map((work) => (
+                  <button key={work.id} onClick={() => openWork(work.id)}>
+                    <StudioWorkIcon name={work.icon} size={18} />
+                    <span>{work.title}</span>
+                  </button>
+                ))}
+                {!searchResults.length && (
+                  <p role="status">
+                    {search.trim()
+                      ? "No matching work"
+                      : "Your saved work will appear here."}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <div className="ps-top-actions">
             <div
@@ -990,18 +1109,14 @@ export default function Studio({ session }: { session: Session }) {
             >
               <button
                 className="ps-icon-button ps-notification"
-                aria-label="Notifications"
-                onClick={() =>
-                  setOpenMenu(
-                    openMenu === "notifications" ? null : "notifications",
-                  )
-                }
+                aria-label="Help"
+                onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}
               >
-                <Bell size={20} />
+                <CircleHelp size={20} />
               </button>
-              {openMenu === "notifications" && (
+              {openMenu === "help" && (
                 <div className="ps-popover ps-top-popover ps-notes">
-                  <div className="ps-notes-heading">Notifications</div>
+                  <div className="ps-notes-heading">Help with Proof</div>
                   <p>
                     Open a document to upload sources, run analysis, and inspect
                     the evidence.
@@ -1085,25 +1200,37 @@ export default function Studio({ session }: { session: Session }) {
           {!focused ? (
             <LibraryDashboard
               works={filtered}
+              allWorks={works}
+              totalCount={works.length}
+              searchQuery={search}
+              onClearSearch={() => setSearch("")}
               onOpen={openWork}
-              onNew={() => setModal("new")}
+              onNew={(mode = "upload") => {
+                setNewWorkMode(mode);
+                setModal("new");
+              }}
             />
           ) : (
             <>
               <div className="ps-page-heading">
                 <div className="ps-heading-copy">
-                  <div className="ps-type">{activeWork.type}</div>
+                  <div className="ps-type">
+                    {route.section === "dashboard"
+                      ? "Document"
+                      : route.section === "analysis"
+                        ? "Analysis"
+                        : "Citations"}
+                  </div>
                   <h1>{activeWork.title}</h1>
                   <div className="ps-meta">
                     Last edited {activeWork.edited} <span>·</span>{" "}
-                    {activeWork.words.toLocaleString()} words <span>·</span> MLA
-                    9
+                    {activeWork.words.toLocaleString()} words
                   </div>
                 </div>
                 <div className="ps-heading-actions">
                   <button className="ps-outline" onClick={openDocument}>
-                    <FileText size={18} />
-                    Open document
+                    <Pencil size={18} />
+                    Edit document
                   </button>
                   <div
                     className="ps-menu"
@@ -1186,6 +1313,7 @@ export default function Studio({ session }: { session: Session }) {
           </div>
           {modal === "new" && (
             <NewStudioWork
+              initialMode={newWorkMode}
               busy={busy}
               onCreate={addWork}
               onCancel={() => setModal(null)}
@@ -1328,62 +1456,386 @@ function SubLink({
   );
 }
 
+function DashboardIcon({
+  kind,
+}: {
+  kind: "document" | "verified" | "review" | "incorrect";
+}) {
+  const Icon =
+    kind === "document"
+      ? FileText
+      : kind === "verified"
+        ? BadgeCheck
+        : kind === "review"
+          ? TriangleAlert
+          : CircleX;
+  return (
+    <span className={`ps-home-icon ${kind}`} aria-hidden="true">
+      <Icon size={24} strokeWidth={1.8} />
+    </span>
+  );
+}
+
+function DocumentIllustration() {
+  return (
+    <svg
+      className="ps-document-illustration"
+      viewBox="0 0 220 190"
+      fill="none"
+      aria-hidden="true"
+    >
+      <g
+        stroke="#17392f"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        <g transform="rotate(-17 84 105)">
+          <rect x="42" y="46" width="88" height="123" fill="#f7faf7" />
+          <path d="M55 68h28M55 84h51M55 100h40M55 116h54M55 132h38" />
+        </g>
+        <g transform="rotate(-11 158 100)">
+          <rect x="113" y="39" width="78" height="129" fill="#f7faf7" />
+          <path d="M126 62h42M126 78h50M126 94h42M126 110h48M126 126h29M126 142h44" />
+        </g>
+        <g transform="rotate(-15 107 86)">
+          <rect x="62" y="19" width="90" height="123" fill="#f7faf7" />
+          <path d="M78 43h24M78 61h53M78 77h38M78 94h51M78 110h31M117 118h18" />
+        </g>
+        <path d="m180 13 5-19M193 24l18-22M202 39l20-8" />
+      </g>
+    </svg>
+  );
+}
+
+type DashboardRun = {
+  id: string;
+  status: string;
+  invalidated: boolean;
+  document_version_id: string;
+  created_at: string;
+};
+type WorkSummary = {
+  run?: DashboardRun;
+  findings: BackendFinding[];
+  unavailable?: boolean;
+};
+
 function LibraryDashboard({
   works,
+  allWorks,
+  totalCount,
+  searchQuery,
+  onClearSearch,
   onOpen,
   onNew,
 }: {
   works: Work[];
+  allWorks: Work[];
+  totalCount: number;
+  searchQuery: string;
+  onClearSearch: () => void;
   onOpen: (id: string, section?: Section) => void;
-  onNew: () => void;
+  onNew: (mode?: "upload" | "paste") => void;
 }) {
+  const [summaries, setSummaries] = useState<Record<string, WorkSummary>>({});
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let disposed = false;
+    setLoading(true);
+    setSummaries({});
+    void (async () => {
+      const next: Record<string, WorkSummary> = {};
+      for (let start = 0; start < allWorks.length; start += 8) {
+        const batch = allWorks.slice(start, start + 8);
+        const results = await Promise.allSettled(
+          batch.map(async (work): Promise<WorkSummary> => {
+            if (!work.documentVersionId) return { findings: [] };
+            const history = await api<{ items: DashboardRun[] }>(
+              `/api/v1/documents/${work.id}/runs`,
+            );
+            const run = history.items.find(
+              (item) =>
+                !item.invalidated &&
+                item.document_version_id === work.documentVersionId,
+            );
+            if (!run) return { findings: [] };
+            const findings: BackendFinding[] = [];
+            for (let offset = 0; ; offset += 100) {
+              const page = await api<{ items: BackendFinding[] }>(
+                `/api/v1/runs/${run.id}/findings?limit=100&offset=${offset}`,
+              );
+              findings.push(...page.items);
+              if (page.items.length < 100) break;
+            }
+            return { run, findings };
+          }),
+        );
+        if (disposed) return;
+        results.forEach((result, index) => {
+          next[batch[index].id] =
+            result.status === "fulfilled"
+              ? result.value
+              : { findings: [], unavailable: true };
+        });
+      }
+      if (!disposed) {
+        setSummaries(next);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [allWorks]);
+
+  const searching = !!searchQuery.trim();
+  const featured = works[0];
+  const featuredSummary = featured ? summaries[featured.id] : undefined;
+  const rows = works.flatMap((work) =>
+    (summaries[work.id]?.findings || []).map((finding) => ({ work, finding })),
+  );
+  const attention = rows.filter(
+    ({ finding }) => findingTone(finding) !== "supported",
+  );
+  const unavailable = works.some((work) => summaries[work.id]?.unavailable);
+  const stats = [
+    { kind: "document", value: rows.length, label: "Claims reviewed" },
+    {
+      kind: "verified",
+      value: rows.filter(({ finding }) => findingTone(finding) === "supported")
+        .length,
+      label: "Supported",
+    },
+    {
+      kind: "review",
+      value: rows.filter(({ finding }) => findingTone(finding) === "review")
+        .length,
+      label: "Need review",
+    },
+    {
+      kind: "incorrect",
+      value: rows.filter(({ finding }) => findingTone(finding) === "unverified")
+        .length,
+      label: "Not verified",
+    },
+  ] as const;
+  const active =
+    featuredSummary?.run &&
+    ["queued", "running"].includes(featuredSummary.run.status);
   return (
     <div className="ps-home">
       <div className="ps-home-heading">
-        <h1>My work</h1>
-        <p>Open a draft to check its claims and citations.</p>
+        <h1>Welcome back.</h1>
+        <p>
+          {searching
+            ? `${works.length} results for "${searchQuery.trim()}"`
+            : "Here is what needs attention."}
+        </p>
       </div>
-      {!works.length && (
-        <section className="ps-featured ps-featured-empty">
+      {searching && (
+        <button className="ps-dashboard-clear-search" onClick={onClearSearch}>
+          Clear search <X size={15} />
+        </button>
+      )}
+      {featured ? (
+        <section className="ps-featured">
+          <DashboardIcon kind="document" />
           <div className="ps-featured-copy">
-            <h2>Start your first work</h2>
-            <p>Add a draft, upload sources, and inspect the evidence.</p>
+            <h2>{featured.title}</h2>
+            <p>
+              {featured.words.toLocaleString()} words <span>·</span> Last edited{" "}
+              {featured.edited}
+            </p>
+            <div className="ps-featured-progress">
+              <span>
+                {loading
+                  ? "Loading analysis..."
+                  : featuredSummary?.unavailable
+                    ? "Analysis unavailable"
+                    : active
+                      ? "Analysis in progress"
+                      : featuredSummary?.run
+                        ? `${featuredSummary.findings.length} claims reviewed`
+                        : "No analysis yet"}
+              </span>
+            </div>
           </div>
-          <button className="ps-featured-action" onClick={onNew}>
-            Add new work <Plus size={18} />
+          <button
+            className="ps-featured-action"
+            onClick={() => onOpen(featured.id, "analysis")}
+          >
+            {featuredSummary?.run ? "Continue analysis" : "Start analysis"}{" "}
+            <ArrowRight size={19} />
+          </button>
+          <DocumentIllustration />
+        </section>
+      ) : (
+        <section className="ps-featured ps-featured-empty">
+          <DashboardIcon kind="document" />
+          <div className="ps-featured-copy">
+            <h2>{searching ? "No matching work" : "Start your first work"}</h2>
+            <p>
+              {searching
+                ? "Try a different title or clear your search."
+                : "Upload a paper or paste your draft to begin."}
+            </p>
+          </div>
+          <button
+            className="ps-featured-action"
+            onClick={() => (searching ? onClearSearch() : onNew())}
+          >
+            {searching ? "Clear search" : "Add new work"}{" "}
+            <ArrowRight size={19} />
           </button>
         </section>
       )}
-      <div className="ps-home-panels">
-        {works.map((work) => (
-          <button
-            className="ps-home-panel ps-work-card"
-            key={work.id}
-            onClick={() => onOpen(work.id)}
-          >
-            <StudioWorkIcon name={work.icon} size={24} />
-            <h2>{work.title}</h2>
-            <p>
-              {work.words} words · Last edited {work.edited}
-            </p>
-            <span>
-              Open draft <ArrowRight size={16} />
-            </span>
-          </button>
+      <section
+        className="ps-home-stats"
+        aria-label="Evidence overview"
+        aria-busy={loading}
+      >
+        {stats.map((stat) => (
+          <div className="ps-home-stat" key={stat.label}>
+            <DashboardIcon kind={stat.kind} />
+            <div className="ps-home-stat-copy">
+              <strong>{loading ? "..." : stat.value}</strong>
+              <span>{stat.label}</span>
+            </div>
+          </div>
         ))}
+      </section>
+      {unavailable && (
+        <p className="ps-dashboard-status" role="status">
+          Some analysis reports could not load. These totals include the
+          available reports.
+        </p>
+      )}
+      {!loading && !!works.length && !rows.length && !unavailable && (
+        <p className="ps-dashboard-status">
+          Run an analysis to see evidence findings for your current drafts.
+        </p>
+      )}
+      <div className="ps-home-panels">
+        <section className="ps-home-panel ps-attention-panel">
+          <div className="ps-home-panel-heading">
+            <h2>Needs your attention</h2>
+            {attention[0] && (
+              <button onClick={() => onOpen(attention[0].work.id, "analysis")}>
+                View analysis <ArrowRight size={19} />
+              </button>
+            )}
+          </div>
+          <div className="ps-home-rows">
+            {loading ? (
+              <p className="ps-home-empty" role="status">
+                Loading findings...
+              </p>
+            ) : attention.length ? (
+              attention.slice(0, 5).map(({ work, finding }) => (
+                <button
+                  className="ps-attention-row"
+                  key={`${work.id}:${finding.id}`}
+                  onClick={() => onOpen(work.id, "analysis")}
+                >
+                  <DashboardIcon
+                    kind={
+                      finding.support === "contradicted" ||
+                      finding.support === "overstated"
+                        ? "incorrect"
+                        : "review"
+                    }
+                  />
+                  <span className="ps-attention-copy">
+                    <strong>{finding.claim.text}</strong>
+                    <span>
+                      {work.title} <b>·</b> {findingLabel(finding)}
+                    </span>
+                  </span>
+                  <ChevronDown size={19} className="ps-row-chevron" />
+                </button>
+              ))
+            ) : (
+              <p className="ps-home-empty">
+                {unavailable
+                  ? "Analysis reports are unavailable."
+                  : rows.length
+                    ? "No findings need review."
+                    : "No analysis findings yet."}
+              </p>
+            )}
+          </div>
+        </section>
+        <section className="ps-home-panel ps-activity-panel">
+          <div className="ps-home-panel-heading">
+            <h2>Recent activity</h2>
+          </div>
+          <div className="ps-home-rows">
+            {works.length ? (
+              works.slice(0, 5).map((work) => (
+                <button
+                  className="ps-activity-row ps-activity-button"
+                  key={work.id}
+                  onClick={() => onOpen(work.id)}
+                >
+                  <DashboardIcon kind="document" />
+                  <span>{work.title}</span>
+                  <time>{work.edited}</time>
+                </button>
+              ))
+            ) : (
+              <p className="ps-home-empty">
+                Your saved documents will appear here.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
       <section className="ps-quick-actions">
-        <h2>Tools</h2>
+        <h2>Quick actions</h2>
         <div className="ps-quick-grid">
-          <button onClick={onNew}>
-            <Plus />
+          <button onClick={() => onNew("upload")}>
             <span>
-              <strong>New draft</strong>
-              <small>Paste or upload your writing</small>
+              <Upload size={24} />
+            </span>
+            <span>
+              <strong>Upload paper</strong>
+              <small>PDF, DOCX, or text</small>
             </span>
           </button>
-          <a href="/app/class">Class tools</a>
-          <a href="/app/evidence">Evidence editor</a>
+          <button onClick={() => onNew("paste")}>
+            <span>
+              <FileText size={24} />
+            </span>
+            <span>
+              <strong>Paste text</strong>
+              <small>Check claims and citations</small>
+            </span>
+          </button>
+          <button
+            onClick={() => featured && onOpen(featured.id, "citations")}
+            disabled={!featured}
+          >
+            <span>
+              <Link2 size={24} />
+            </span>
+            <span>
+              <strong>Add source</strong>
+              <small>Open your bibliography</small>
+            </span>
+          </button>
+          <button
+            onClick={() => featured && onOpen(featured.id, "analysis")}
+            disabled={!featured}
+          >
+            <span>
+              <Play size={24} />
+            </span>
+            <span>
+              <strong>Start citation check</strong>
+              <small>Choose sources and run</small>
+            </span>
+          </button>
         </div>
       </section>
     </div>
