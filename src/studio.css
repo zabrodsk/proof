@@ -1393,6 +1393,28 @@
   padding: 20px;
 }
 
+.ps-signin {
+  min-height: 100vh;
+  background: var(--paper, #f4efe6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.ps-signin .ps-modal h1 {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.4px;
+  margin: 12px 0 16px;
+}
+
+.ps-signin a.ps-primary,
+.ps-signin a.ps-outline {
+  text-decoration: none;
+}
+
 .ps-modal {
   width: min(100%, 500px);
   max-height: min(90vh, 850px);

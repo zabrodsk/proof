@@ -36,6 +36,39 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       limits,
     }),
   );
+  r.get("/documents", async (req, res) => {
+    const result = await db.query(
+      "SELECT d.id,d.title,d.current_version_id,v.text,v.created_at FROM documents d JOIN document_versions v ON v.workspace_id=d.workspace_id AND v.id=d.current_version_id WHERE d.workspace_id=$1 AND d.archived_at IS NULL ORDER BY v.created_at DESC LIMIT $2 OFFSET $3",
+      [
+        res.locals.workspace,
+        page(req.query.limit, 100, 100),
+        page(req.query.offset, 0, 1_000_000),
+      ],
+    );
+    res.json({ items: result.rows });
+  });
+  r.post("/documents/:id/archive", async (req, res) => {
+    const result = await db.query(
+      "UPDATE documents SET archived_at=now() WHERE workspace_id=$1 AND id=$2 AND archived_at IS NULL RETURNING id",
+      [res.locals.workspace, uuid(req.params.id)],
+    );
+    if (!result.rows.length) throw notFound();
+    res.status(204).end();
+  });
+  r.get("/documents/:id/runs", async (req, res) => {
+    const ws = res.locals.workspace,
+      id = uuid(req.params.id);
+    const doc = await db.query(
+      "SELECT id FROM documents WHERE workspace_id=$1 AND id=$2 AND archived_at IS NULL",
+      [ws, id],
+    );
+    if (!doc.rows.length) throw notFound();
+    const result = await db.query(
+      "SELECT r.* FROM runs r JOIN document_versions v ON v.workspace_id=r.workspace_id AND v.id=r.document_version_id WHERE r.workspace_id=$1 AND v.document_id=$2 ORDER BY r.created_at DESC LIMIT 50",
+      [ws, id],
+    );
+    res.json({ items: result.rows });
+  });
   r.post("/documents", async (req, res) => {
     const { title, text } = z
       .object({

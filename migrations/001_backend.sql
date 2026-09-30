@@ -29,3 +29,5 @@ CREATE TABLE IF NOT EXISTS deletion_jobs (id uuid PRIMARY KEY, workspace_id uuid
 CREATE TABLE IF NOT EXISTS compatibility_jobs (id uuid PRIMARY KEY, workspace_id uuid NOT NULL REFERENCES workspaces(id), kind text NOT NULL, input jsonb NOT NULL, status text NOT NULL DEFAULT 'queued', progress text NOT NULL DEFAULT 'Queued', result jsonb NOT NULL DEFAULT '{}', run_id uuid, error text, idempotency_key text, request_hash text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(workspace_id,id), UNIQUE(workspace_id,idempotency_key), FOREIGN KEY(workspace_id,run_id) REFERENCES runs(workspace_id,id) ON DELETE CASCADE);
 
 CREATE TABLE IF NOT EXISTS asset_provider_calls (id uuid PRIMARY KEY, workspace_id uuid NOT NULL, asset_id uuid NOT NULL, provider text NOT NULL, usage jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), FOREIGN KEY(workspace_id,asset_id) REFERENCES source_assets(workspace_id,id) ON DELETE CASCADE);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_at timestamptz;
