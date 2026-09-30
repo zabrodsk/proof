@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { chromium } from '/Users/dusanzabrodsky/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(dir,'../..');
 const font=(family,file,weight,style='normal')=>`@font-face{font-family:'${family}';src:url(data:font/woff2;base64,${fs.readFileSync(path.join(root,'node_modules/@fontsource',file)).toString('base64')}) format('woff2');font-weight:${weight};font-style:${style};}`;
