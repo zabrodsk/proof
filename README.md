@@ -1,231 +1,223 @@
-# Proof
+<p align="center">
+  <img src="docs/assets/readme/hero.png" alt="Proof. Trace the claim. Read the evidence. A manuscript connected to its source passages." width="100%">
+</p>
 
-A web app for AP Seminar draft review, scholarly source discovery, and MLA citations, with a separate landing page and waitlist.
+<p align="center">
+  <a href="https://app-proof.up.railway.app/app"><strong>Open Proof ↗</strong></a>
+  &nbsp; · &nbsp;
+  <a href="#follow-a-claim">Follow a claim</a>
+  &nbsp; · &nbsp;
+  <a href="#inside-proof">Architecture</a>
+  &nbsp; · &nbsp;
+  <a href="#run-it-locally">Run locally</a>
+</p>
 
-## Class workspace
+# Writing with evidence attached.
 
-`/app` opens Studio. `/app/class` retains the class workspace and `/app/evidence` retains the evidence editor.
+Proof checks the claims in your writing against source passages. Keep the draft in view, inspect what supports it, and apply a proposed correction with one click. You decide what changes.
 
-Studio uses the existing WorkOS or username session. With the persistent backend configured, documents, versions, source uploads, analysis runs, and findings belong to the signed-in account. The dashboard starts empty. Results come from the worker, and old reports are marked stale after draft changes. Suggested edits require explicit approval. Archiving a document hides it from the library while retaining its analysis history.
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Studio supports supplied-source checks, research discovery, public fact checks, bibliography imports and MLA formatting. Processing consent is required and resets when the check type changes. Uploads without external-processing permission use local extraction. Bibliography formatting does not certify the evidence.
+### Read the text
 
-Without the persistent backend, the local development server can save drafts in account-scoped browser storage. Hosted Studio reports the service error instead of silently switching storage. It does not display mock analysis results. Existing class drafts remain in the class workspace; they are not silently copied into cloud storage.
+Import a document or paste a draft. Select the source files and pages that the check should use.
 
-The archived static landing site uses `VITE_PROOF_APP_URL` for application links, defaulting to the existing Railway application domain. The Railway landing service uses `PROOF_APP_URL`.
+</td>
+<td width="33%" valign="top">
 
-- Import a read-only Google Doc snapshot, upload a document, or paste text. Google Docs requiring sign-in must be exported and uploaded. Proof does not write back to Google Docs.
-- Find sources for an exact sentence. Crossref supplies candidate scholarly records; Jev compares available source passages with the claim. Correction notices link back to the original article. Search is not an exhaustive literature review, and metadata-only results are not supporting evidence.
-- Add articles by DOI with a full PDF upload or direct PDF URL. Some publishers block downloads; uploading a legitimately obtained PDF remains available. Confirm printed page mapping yourself, including cover sheets and discontinuous pagination.
-- Run a review covering every body sentence, the class assignment checks, source metadata, and cited PDF pages. It also checks selected passages elsewhere in each article for context. Figures, tables, peer-review status, publisher notices, formatting, and editing history still need manual review.
-- Generate class MLA citations, including access dates and the specific author convention shown in the supplied slides. The general MLA tool keeps its separate standard formatting.
-- Browser IndexedDB preserves the class draft, source page text, and completed report. No cloud document library is created. Review jobs expire after one hour and on server restart. Five signed browser sessions can review simultaneously; each can access only its own jobs.
-- Current class limits: 100,000 draft characters, 1,000 sentences, eight papers, 100 PDF pages per paper, 12 MB per file, and two million source characters per review. Large text reviews use nearby context around each sentence batch; they do not establish consistency between every pair of distant paragraphs.
-- Provider failures trigger bounded retries with smaller batches. Remaining gaps are labeled incomplete. Reports show provider-returned input tokens and estimated Jev cost at the published $0.042 per million input tokens, verified September 29, 2026.
+### Inspect the evidence
 
-The source of class requirements is the [assignment guide](https://docs.google.com/document/d/1Vfe0zLMhFVVwSM7_AOoramuV4IbiFIn8Lr1Zh7mDp_k/edit), the [class slides](https://docs.google.com/presentation/d/1x2zkWkjGihCuyUmKibQGiAMwMrxN_C0Bf2a7hkLWM1o/edit), and the in-text guide linked from the assignment. The exploratory draft and earlier four-source bibliography are separate review modes.
+See each finding beside the sentence, with the source passage and an explanation you can check.
 
-## Hosted app
+</td>
+<td width="33%" valign="top">
 
-The Dockerfile runs the Node server on `0.0.0.0:$PORT`. Set `PROOF_HOSTED=true`, `PROOF_ACCESS_KEY` to a random value of at least 24 characters, `TYPESAFE_API_KEY` as a secret, and `PROOF_USE_KEYCHAIN=false`. Startup fails if hosted access protection is missing. `/health` is public; API actions require a signed, secure, HTTP-only session cookie. The root redirects to `/app` in hosted mode.
+### Make the correction
 
-The class app and landing page deploy to separate Railway services. The previous Sites landing remains available during the transition. Upload excludes credentials, `.data`, classroom files, recordings, dependencies, and build outputs.
+Review a proposed edit and apply it. Document versions preserve the history of your changes.
 
-To run the paid long-text stress checks explicitly:
+</td>
+</tr>
+</table>
 
-```sh
-PROOF_STRESS_LIVE=true node --import tsx scripts/class-stress.ts
-```
+## Follow a claim
 
-This uses synthetic test prose and records provider token counts to `/tmp/proof-class-stress-results.json`. It measures throughput, coverage, failure handling, and obvious planted language errors, not general factual accuracy.
+Choose a step to look inside the workflow.
 
-## Persistent backend on Railway
+<details open>
+<summary><strong>01 &nbsp; Start with your draft and sources</strong></summary>
 
-The analysis backend uses a separate worker, PostgreSQL with pgvector, and a private Railway S3 bucket. Both web and worker use the same Dockerfile and source revision. Creating the database, worker, or bucket adds billing and needs explicit owner approval.
+Upload a PDF, Word document, Markdown file, or plain text. Choose a supplied-source check, discover research for a claim, or check against public academic sources. Set the scope and grant processing permission before running the analysis.
 
-| Component    | Configuration                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------------- |
-| Web          | `railway.json`, Docker default command, public `/health` check                                                 |
-| Worker       | Set `PROOF_PROCESS=worker` and start `runuser -u node -- npm run worker`; no HTTP healthcheck or public domain |
-| PostgreSQL   | A PostgreSQL instance with pgvector; share its private `DATABASE_URL` with web and worker                      |
-| Source files | Private Railway S3 bucket; share the storage variables with both services                                      |
-| Accounts     | Keep the existing web volume mounted at `/app/.data`; the account store is still a file                        |
+The source library keeps uploaded documents and extracted passages attached to your account. Chapter checks use confirmed physical PDF page ranges.
 
-Configure the worker in Railway service settings. `railway.worker.json` is for services that still use legacy Config as Code. Keep one web replica while accounts use `/app/.data/accounts.json`. PostgreSQL stores runs, source metadata, passages, findings, and progress; object storage holds original files.
+</details>
 
-Set `DATABASE_URL`, `PROOF_HOSTED=true`, `PROOF_USE_KEYCHAIN=false`, the `STORAGE_*` bucket credentials, provider keys, `JEV_MODEL`, and `PROOF_WORKER_CONCURRENCY` on both services. The web service also needs `PROOF_ACCESS_KEY` (session signing) unless WorkOS is fully configured. Hosted startup requires private S3-compatible storage. Cloudflare R2 is supported if the `STORAGE_*` credentials are left unset and the complete `R2_*` set is supplied.
+<details>
+<summary><strong>02 &nbsp; Read the reason behind a finding</strong></summary>
 
-The Docker build bakes a pinned `Xenova/bge-small-en-v1.5` snapshot into `/app/models`. Set `PROOF_EMBEDDINGS=true`, `PROOF_MODEL_DIR=/app/models`, and `PROOF_EMBEDDING_REVISION=ea104dacec62c0de699686887e3f920caeb4f3e3` on both processes. `PROOF_EMBEDDINGS=false` selects text-only retrieval.
+A finding ties a claim to the passages used to assess it. **Supported** means the checked material supports the claim. **Unsupported** means that material does not establish it. An incomplete check explains what prevented a conclusion, such as unavailable source text or a provider failure.
 
-After deploy: check `/health`, confirm worker logs show it is consuming jobs, upload a small PDF, run a source check, and restart the worker during a test run to confirm resume.
+Agreement with uploaded material does not establish that the material itself is true. Bibliographic metadata, search snippets, and inaccessible papers cannot establish support.
 
-## Project layout
+</details>
 
-- `src/`, `server/`, and `shared/`: the React app, local Express server, and citation-checking logic.
-- `site/`: the hosted landing page, Cloudflare Worker, waitlist database schema, and migrations. Its source is included directly in this repository.
-- `public/images/`: the generated logo and document illustrations. Generation prompts are in `output/imagegen/`.
-- `tests/` and `site/tests/`: app and hosted waitlist tests.
+<details>
+<summary><strong>03 &nbsp; Review and apply a proposed change</strong></summary>
 
-The [landing page](https://proof-evidence.up.railway.app) and [class application](https://app-proof.up.railway.app) run on Railway. The landing page uses `Dockerfile.landing`, `npm run start:landing`, `PROOF_APP_URL=https://app-proof.up.railway.app`, and a persistent volume at `/app/.data` for new waitlist signups. Keep one replica with this file store. The landing page redirects `/app` to the app service. Prior Sites waitlist records remain in its D1 database; they have not been copied to Railway. The previous app URL was replaced by the cleaner app domain.
+Read the suggested change beside the original sentence and its evidence. Apply an available correction with one click, or edit the text yourself. Proof checks the document version before applying an edit. Changing the draft makes its previous analysis stale.
 
-## Run
+A finding without a safe correction stays available for manual review. Proof does not silently rewrite a document.
 
-Requires Node.js 22 or later.
+</details>
+
+<details>
+<summary><strong>04 &nbsp; Keep the sources and citation work together</strong></summary>
+
+Import a bibliography, resolve article metadata, and format MLA citations. Keep the source passages available while reviewing the wording and references.
+
+Citation formatting and evidence checking are separate. A correctly formatted reference does not establish the truth of its claim. Page locators and edition-specific mappings need the writer's confirmation.
+
+</details>
+
+## Inside Proof
+
+<a href="docs/assets/readme/architecture.svg">
+  <img src="docs/assets/readme/architecture.svg" alt="Excalidraw architecture map. React Studio connects to the Express API. PostgreSQL and pg-boss queue work for the analysis worker. Private storage holds sources, and provider adapters retrieve and compare evidence." width="100%">
+</a>
+
+[View the full diagram](docs/assets/readme/architecture.svg) · [Download the editable Excalidraw scene](docs/assets/readme/architecture.excalidraw)
+
+Open the scene in [Excalidraw](https://excalidraw.com) to move the components, annotate the flow, or export your own view.
+
+| Layer | What it does | Built with |
+| :--- | :--- | :--- |
+| Studio | Drafts, source library, findings, approved edits | React 19, TypeScript, Vite |
+| API | Sessions, ownership, consent, versioned runs | Express 5, WorkOS AuthKit |
+| Worker | Extraction, retrieval, evidence judgments | Node.js, pg-boss |
+| Data | Documents, runs, passages, job outbox | PostgreSQL, pgvector |
+| Files | Original source documents | Private S3-compatible storage |
+
+<details>
+<summary><strong>Explore the provider adapters</strong></summary>
+
+| Provider | Role |
+| :--- | :--- |
+| Exa | Web search and source discovery |
+| OpenAlex | Scholarly discovery and article records |
+| Crossref | DOI resolution and bibliographic metadata |
+| Europe PMC | Abstracts and available open-access full text |
+| DOAJ | Journal policy records for academic eligibility checks |
+| Firecrawl | Document extraction and OCR |
+| Jev / TypeSafe | Bounded judgments over claims and retrieved passages |
+
+Provider calls depend on the chosen mode, available credentials, source access, and the user's processing permission. Academic eligibility and supplied-material checks use different source policies. A failed provider call cannot become a supported finding.
+
+</details>
+
+<details>
+<summary><strong>Understand storage, consent, and check limits</strong></summary>
+
+The persistent backend stores account-owned documents, versions, source metadata, passages, findings, and progress in PostgreSQL. Private object storage holds original source files. A durable outbox and pg-boss queue connect the API to the worker.
+
+Each run freezes its selected sources. External research and provider processing follow the permissions selected for that run. The local extraction path remains available for uploads without external-processing permission.
+
+Text extraction can miss figures, tables, equations, and complex page layouts. Retrieved passages can omit context. Model judgments can be wrong. Read the original source before relying on a finding.
+
+See the [run contracts](shared/backend.ts), [backend configuration and limits](server/backend/config.ts), and [environment reference](.env.example).
+
+</details>
+
+## Run it locally
+
+Use **Node.js 22 or later**. Open the repository in Cursor to load the [project rules](.cursor/rules/proof.mdc).
 
 ```sh
 npm ci
-npm run dev
+cp .env.example .env
 ```
 
-Open http://127.0.0.1:4317 for the landing page or http://127.0.0.1:4317/app for the app. On macOS, Proof can use a TypeSafe credential from Keychain, service `typesafe.ai`, account `TYPESAFE_API_KEY`. It reads the credential into server memory and sends it only to the TypeSafe API. No credential is exposed to the browser or saved in the project.
-
-On another machine, supply `TYPESAFE_API_KEY` through the process environment. Optional settings are `JEV_MODEL`, `PORT`, and `PROOF_USE_KEYCHAIN=false`. Proof does not automatically load `.env` files. Without a key, source retrieval still works and claims remain explicitly unverified.
-
-For a production build on this computer:
+Set `TYPESAFE_API_KEY` in your local `.env` for Jev judgments. Configure optional provider keys for the workflows you want to use. Then start the app with explicit environment loading:
 
 ```sh
-npm run build
-npm start
+node --env-file=.env --import tsx server/index.ts
 ```
 
-The server binds to localhost and rejects cross-origin requests. This is a local single-user application, not an authenticated hosted service.
+Open [localhost:4317/app](http://127.0.0.1:4317/app). Without PostgreSQL, local Studio uses account-scoped browser drafts. Persistent analysis needs the database and worker below.
 
-To build and check the hosted landing page separately:
+<details>
+<summary><strong>Run the API, worker, and database with Docker</strong></summary>
+
+With Docker running and your `.env` configured:
 
 ```sh
-cd site
-npm ci
-npm test
-npm run build
+docker compose -f compose.backend.yml up --build
 ```
 
-The existing Sites deployment uses `site/.openai/hosting.json` and its managed `DB` binding. That manifest contains the project identifier, not a deployment credential. Publishing uses the separate Sites workflow and is not triggered by a GitHub push. See `site/README.md` for details.
+Compose starts the API, worker, and PostgreSQL with pgvector. It loads `.env` and shares a local source-file volume between the API and worker. This is the local development configuration. Hosted deployments require private object storage.
 
-## Use
+See [compose.backend.yml](compose.backend.yml) and [.env.example](.env.example).
 
-1. Try the example document, paste writing into New document, or import a `.docx`, `.pdf`, `.txt`, or `.md` file.
-2. Include author-year or MLA author-page citations and a Works cited, References, or Bibliography section. Put a DOI in each reference for reliable resolution. Exact quoted-title, author, and year matching is also supported when no DOI is present.
-3. Run Audit for existing citations. Strict mode also flags potentially uncited factual sentences.
-4. Select a highlighted claim to see its source, access level, checked passages, and judgment. Numeric corrections and source quotations can be applied with one click, previewed first, and undone. Edits invalidate the previous audit.
-5. Export the current text or a Markdown audit report. Sources can also be added by DOI or as uploaded/pasted source text.
-6. Open **MLA citations** above the document, or **Cite in MLA** on a source. Look up a journal article by DOI, choose an existing source, or enter its details. Preview and add its Works Cited entry, copy a formatted citation, or insert an in-text citation into a selected paragraph. The review tab checks the document or a pasted Works Cited entry and offers individual corrections with Undo.
+</details>
 
-MLA tools cover journal articles, author names, common author-year/page citation patterns, Works Cited headings, duplicates, ordering, and formatting against known metadata. Page locators are supplied by the writer, never invented. Metadata remains editable. Preview and rich clipboard output preserve journal italics; the plain-text draft represents italics with asterisks. Formatting a citation does not verify its claim. Guidance follows the [MLA Style Center](https://style.mla.org/works-cited/citations-by-format/) and its [in-text citation overview](https://style.mla.org/in-text-citations-overview/).
+<details>
+<summary><strong>Configure hosted sign-in and deployment</strong></summary>
 
-The working draft saves in browser local storage. Sources and results last for the current app session. Reloading retains the draft but requires a new audit or adding uploaded sources again.
+Deploy the web service and worker from the same revision. Share `DATABASE_URL`, provider configuration, and private bucket credentials between them. Set `PROOF_HOSTED=true` and `PROOF_USE_KEYCHAIN=false`.
 
-## Verification boundaries
+For AuthKit, configure all four settings: `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_REDIRECT_URI`, and `WORKOS_COOKIE_PASSWORD`. Register the exact callback URL with WorkOS. Partial configuration prevents startup.
 
-- Crossref resolves journal metadata. Europe PMC supplies abstracts and open-access full text when available. Metadata-only sources never produce a support judgment.
-- A journal-article record does not independently certify peer review. Uploaded text has an explicit unverified-provenance label.
-- Jev receives bounded questions over the claim and retrieved passages. Low confidence, malformed replies, unavailable providers, and ambiguous reference matches produce unverified results.
-- Number comparisons use candidate pairs with matching units. Jev checks whether the quantities refer to the same population and time; code compares the values. Unrelated numbers are not automatically called mismatches.
-- Numeric fixes change only a specific quantity confirmed by Jev and preserve the rest of the sentence. Other fixes use verbatim source sentences selected by Jev. No free-form paraphrases or silent edits are generated. If there is no safe suggested fix, the finding offers a manual edit or source action.
-- Full-text access means the article body was retrieved. The judgment covers the selected passages, not an exhaustive human review of the entire paper. Every checked passage is visible in the finding.
-- The parser is intentionally limited. It does not reliably resolve numeric citation styles, ambiguous author-only references, or combined citations. Author-only MLA citations are recognized when they match a known source. Missing-citation detection is a heuristic. MLA review covers common journal-article patterns, not every source type, layout requirement, or exception. Arbitrary web-page import and writing-editor integrations are not implemented.
-- PDF and Word imports extract text, not page layout. Complex PDF columns and equations may need correction in Edit. Scans need OCR first. Maximum upload is 12 MB; PDFs are limited to 100 pages; each audit accepts up to 60 candidate claims and resolves at most 30 bibliography entries.
+The worker uses `PROOF_PROCESS=worker` and `npm run worker`. It needs no public domain. The web service exposes `/health`. Hosted startup requires private S3-compatible storage. Legacy username accounts still use a file store, so keep one web replica and its persistent account volume.
 
-## Data flow
+Run the database migrations with `npm run db:migrate`. After deployment, check web health, worker job consumption, a source upload, and a completed analysis.
 
-The server keeps sources in memory. It sends bibliography queries to Crossref, DOI lookups to Europe PMC, and individual claims plus selected passages to TypeSafe. It does not persist documents on disk. Exports stay in memory for at most one minute and are removed after the download request. There is no analytics code.
+Configuration: [web](railway.json) · [worker](railway.worker.json) · [Docker image](Dockerfile) · [environment](.env.example)
 
-Local waitlist signups are stored in `.data/waitlist.json`, or the path supplied by `WAITLIST_FILE`. Hosted signups are stored in the Sites database. Signup data, credentials, `.env` files, dependency folders, build output, and browser captures are excluded from Git.
+</details>
 
-## Checks
+<details>
+<summary><strong>Enable integrations and remote MCP</strong></summary>
+
+Set `PROOF_INTEGRATIONS_ENABLED=true` to enable the integrations page and its API. Remote `/mcp` also requires `PROOF_MCP_ENABLED=true` and an OAuth server configured for authorization-code flow, S256 PKCE, platform clients, scopes, audience, and introspection.
+
+WorkOS browser sign-in alone does not configure connector OAuth. Platform grants share selected source IDs and can be revoked. ChatGPT and Claude certification remain release gates.
+
+See the [connector implementation record](docs/proof-connector-implementation.html) and [.env.example](.env.example).
+
+</details>
+
+## Work on Proof
 
 ```sh
 npm test
 npm run test:backend
 npm run build
 npm run format:check
-npm run test:live
-# With Proof running in another terminal:
-npm run test:api
 ```
 
-The persistent backend (`server/backend/`, `npm run worker`) stores analysis runs in PostgreSQL and original files in private object storage. It is optional: without `DATABASE_URL` the existing in-memory class app still runs. Local Compose is `compose.backend.yml`. Hosted web and worker share one image; the worker uses `PROOF_PROCESS=worker` and `railway.worker.json`.
+Regular tests use fixtures and stubbed provider responses. Opt-in live checks call real providers and consume API usage. Run `npm run test:live` or `npm run test:firecrawl` only with the corresponding credentials configured in the process environment.
 
-The regular tests use fixtures and stubbed provider responses without credentials or network access. The live test uses the public BMJ example and calls the real scholarly providers and Jev, which consumes API usage. It writes its result to `/tmp/proof-live-audit.json`.
+| Directory | Start here |
+| :--- | :--- |
+| [`src/`](src/) | Studio and the React interface |
+| [`server/backend/`](server/backend/) | Persistent analysis, retrieval, and storage |
+| [`server/integrations/`](server/integrations/) | Platform grants and connector APIs |
+| [`shared/`](shared/) | Shared types and run contracts |
+| [`tests/`](tests/) | Evidence, backend, and integration checks |
+| [`site/`](site/) | Separate landing page and waitlist |
+| [`docs/assets/readme/`](docs/assets/readme/) | Cover, editable diagram, and asset notes |
 
-The UI has been checked manually through the browser at desktop and mobile widths. The repository does not contain an automated browser test suite.
+The earlier class workspace remains at `/app/class`; the earlier evidence editor remains at `/app/evidence`. Their storage and limits differ from persistent Studio.
 
-API references: [TypeSafe](https://api.typesafe.ai/docs), [Crossref](https://www.crossref.org/documentation/retrieve-metadata/rest-api/), [Europe PMC](https://europepmc.org/RestfulWebService).
+---
 
-## Public accounts and Jev balances
-
-The public hackathon login accepts a username and password. Anyone can create an account without a class roster or join code. Usernames require 2–60 characters and are unique without regard to case; passwords require 10–128 characters and are stored as salted scrypt hashes. Existing accounts keep their passwords, browser workspaces, and usage. Existing access-code-only sessions must sign in again. `PROOF_ACCESS_KEY` remains a server-only session-signing secret and is never entered during registration.
-
-Accounts and cumulative Jev usage are stored in `.data/accounts.json`, configurable with `PROOF_ACCOUNTS_FILE`. Production mounts a persistent Railway volume at `/app/.data`. Use one app replica with this file store. Browser drafts use separate keys for each account; earlier anonymous drafts are not assigned to a named user automatically.
-
-The header shows `btw you owe me:` in USD to five decimal places. It includes reported Jev input-token charges from reviews, retries, searches, and the original evidence API. Output tokens are free at the configured rate of $0.042 per million input tokens. Hosting is excluded. Responses without returned usage cannot be included, so this is an estimate rather than an invoice. Accounts begin at zero; earlier anonymous usage is not backfilled.
-
-The login and session API do not publish the former class roster. Registration rejects duplicate usernames and never replaces an existing password or balance. Sign-in failures are limited to ten attempts per IP address in fifteen minutes.
-
-## Reliability audit, 29 September 2026
-
-The evidence adapter validates the full choice probability distribution, uses the lower of reported confidence and selected-choice probability, and requires a supported verdict, an aligned reason, and a strong passage selection before showing support. Known publication notices block positive clearance. Model-selected quotations must come from the displayed evidence passage. A supported cited-page result is downgraded when the broader article check does not confirm it.
-
-Source metadata is refreshed for class reviews. Failed refreshes block page judgments. Narrative citations use whole author tokens. Duplicate DOI copies do not count as distinct academic articles. PDF page indices must be consecutive; file identity, completeness, printed-page mapping, figures and tables remain human checks.
-
-Run `PROOF_RELIABILITY_LIVE=true node --import tsx scripts/reliability-live.ts` for three passes over thirteen controlled cases. This consumes Jev usage and writes `/tmp/proof-reliability-live.json`. The audit observed zero false-supported outcomes across thirty intentionally unsupported cases, and nine supported outcomes across nine faithful claims. This small synthetic suite is not an accuracy estimate or a guarantee against hallucination. Corrections absent from provider metadata or not yet discovered can still be missed. Source text extraction and selected-passage retrieval can omit crucial context. Read the cited original pages before submission.
-
-### Class workflows and source checks
-
-The class app has three paths: find articles for a sentence, check writing against selected articles, or check writing against public journal research. Links, uploaded files and pasted article text identify a paper; the server retrieves the published full text independently.
-
-Search uses OpenAlex, journal review-policy records use DOAJ, and article identity uses Crossref plus full-text DOI/title checks. DOAJ records must explicitly list peer review; editorial-only review does not qualify. Only matching research/review full-text XML or qualified accepted/published PDFs are used. Unconfirmed journals, abstracts, previews, publication notices and unreadable articles are excluded. This deliberately omits journals outside the verifiable DOAJ set, including many subscription journals.
-
-Evidence checks process every extracted text section and withhold a positive result when sections conflict or fail. Figures, image-only content, study quality, missing publication notices and semantic model mistakes still require human review. Neither source indexing nor this application guarantees accuracy. Results provide quoted passages and journal-policy/full-text links for inspection; no automatic factual rewrite is made.
-
-Supplied-source checks allow 100 sentences and eight articles; public checks allow 25 sentences per job because each sentence triggers full-article research. Completed job results expire after one hour. Saved reports from the older source policy are cleared on upgrade while drafts and source inputs are retained.
-
-### WorkOS sign-in
-
-Set `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_REDIRECT_URI`, and
-`WORKOS_COOKIE_PASSWORD` in the server environment. Proof does not load `.env`
-files. Generate the cookie password with `openssl rand -hex 32` and store it as a
-hosting secret. Register the exact callback URL in the WorkOS AuthKit dashboard,
-for example `http://127.0.0.1:4317/auth/callback` locally or
-`https://YOUR_APP_HOST/auth/callback` in production. Allow
-`https://YOUR_APP_HOST/app` as a sign-out redirect.
-
-With these variables set, `/app` uses hosted AuthKit sign-in and registration.
-The server verifies encrypted sessions, refreshes expired access tokens, and
-protects API requests. Partial configuration prevents startup. Without WorkOS
-configuration, the existing local and username/password modes still apply.
-WorkOS users get separate workspace and usage records keyed by their WorkOS user
-ID. Existing username accounts are not automatically linked to WorkOS identities.
-
-## Durable checks and remote MCP
-
-The connector shares the native persistent backend, outbox, private library and
-worker. Set a PostgreSQL `DATABASE_URL` with pgvector, configure private storage,
-then run `npm run db:migrate`. Start the API with `npm start` and a separate
-`npm run worker` using the same database, storage and provider settings.
-
-`PROOF_INTEGRATIONS_ENABLED=true` enables `/app/integrations` and its API.
-The authenticated report is `/app/checks/:id`. Browser imports accept real file
-bytes. Platform grants share only selected source IDs and can be revoked in the
-browser. Approved imports may finish after disconnect; unfinished checks cancel.
-
-Remote `/mcp` additionally requires `PROOF_MCP_ENABLED=true` and an established
-OAuth server configured for authorization-code + S256 PKCE, explicit platform
-clients, scopes, audience and introspection. See `.env.example`. WorkOS browser
-sign-in alone does not configure WorkOS Connect. Never put provider or OAuth
-credentials in tool arguments. The tools return structured results and text;
-actual ChatGPT/Claude certification and optional host UI remain release gates.
-
-Run `npm test`, `npm run build`, and the opt-in capped paid test
-`PROOF_INTEGRATION_LIVE=true npm run test:integration:live`.
-`npx tsx scripts/integration-ui-smoke.ts` starts a disposable, local-only browser
-fixture on port 4329 after a build. It is never installed by the production API.
-
-Confirm edition-specific chapter-to-page mappings in the browser source library.
-Chapter checks freeze the mapped physical PDF pages. Unmapped ranges fail explicitly.
-The detailed implementation record is `docs/proof-connector-implementation.html`.
-
-## Development in Cursor
-
-Open the repository folder in Cursor. Project rules in `.cursor/rules/proof.mdc` describe the app structure, evidence checks, UI conventions, and validation commands. Install dependencies with `npm ci`, copy `.env.example` to your local `.env`, and run `npm run dev`.
-
-Keep credentials, account data, temporary scripts, and generated artifacts out of commits. Run `npm test`, `npm run build`, and `npm run format:check` before publishing application changes.
+<p align="center">
+  <strong>Keep the sentence. Inspect the source. Decide what changes.</strong><br><br>
+  <a href="https://app-proof.up.railway.app/app">Open Proof ↗</a>
+  &nbsp; · &nbsp;
+  <a href="https://proof-evidence.up.railway.app">Visit the site</a>
+  &nbsp; · &nbsp;
+  <a href="docs/assets/readme/SOURCES.md">About the visuals</a>
+</p>
