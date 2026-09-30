@@ -3,19 +3,12 @@ import {
   ArrowRight,
   ArrowUpRight,
   Check,
-  FilePenLine,
   FileText,
-  Files,
-  FolderOpen,
-  GraduationCap,
   LoaderCircle,
   Menu,
-  Newspaper,
   Plus,
   ShieldCheck,
-  Sparkles,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
@@ -31,23 +24,9 @@ const documentTypes = [
 ] as const;
 
 type UseKind = (typeof documentTypes)[number]["kind"];
-const useForIcons: Record<UseKind, LucideIcon> = {
-  papers: Files,
-  essays: FilePenLine,
-  theses: GraduationCap,
-  reports: Newspaper,
-  other: FolderOpen,
-};
-
 function UseForIcon({ kind }: { kind: UseKind }) {
-  const Icon = useForIcons[kind];
   return (
-    <Icon
-      className="lp-use-icon"
-      size={76}
-      strokeWidth={1.5}
-      aria-hidden="true"
-    />
+    <span className={`lp-use-icon lp-use-icon-${kind}`} aria-hidden="true" />
   );
 }
 
@@ -218,8 +197,21 @@ function AnswerCompare() {
     >
       <article className="lp-compare-card lp-compare-llm">
         <header className="lp-compare-card-head">
-          <span className="lp-compare-avatar" aria-hidden="true">
-            <Sparkles size={18} />
+          <span
+            className="lp-compare-brands"
+            role="img"
+            aria-label="OpenAI, Anthropic, and Google"
+          >
+            {["openai", "anthropic", "google"].map((brand) => (
+              <span className="lp-compare-brand" key={brand}>
+                <img
+                  src={`/images/ai/${brand}.svg`}
+                  alt=""
+                  width="24"
+                  height="24"
+                />
+              </span>
+            ))}
           </span>
           <h3>Typical LLM</h3>
         </header>

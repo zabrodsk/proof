@@ -44,6 +44,9 @@ export async function api<T>(
     throw new ApiError(data.error || "Request failed.", response.status);
   return data as T;
 }
+export type WorkIconName =
+  "folder" | "document" | "book" | "notes" | "research" | "study" | "idea";
+
 export interface StudioWork {
   id: string;
   title: string;
@@ -52,6 +55,7 @@ export interface StudioWork {
   edited: string;
   content: string;
   documentVersionId?: string;
+  icon?: WorkIconName;
 }
 export function serverWork(row: {
   id: string;

@@ -36,12 +36,14 @@ import "./studio.css";
 import "./mcp-connect.css";
 import StudioAnalysis from "./StudioAnalysis";
 import NewStudioWork from "./NewStudioWork";
+import StudioWorkIcon from "./StudioWorkIcon";
 import {
   api,
   canUseLocalDrafts,
   serverWork,
   type Session,
   type StudioWork,
+  type WorkIconName,
 } from "./studio-api";
 
 type Section = "dashboard" | "analysis" | "citations";
@@ -75,6 +77,17 @@ function workPath(id: string, section: Section = "dashboard") {
 
 export default function Studio({ session }: { session: Session }) {
   const storageKey = `proof.works.v2:${session.user?.id || "local"}`;
+  const iconStorageKey = `proof.work-icons.v1:${session.user?.id || "local"}`;
+  const iconPreferences = useRef<Record<string, WorkIconName>>({});
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(iconStorageKey) || "{}");
+      if (saved && typeof saved === "object" && !Array.isArray(saved))
+        iconPreferences.current = saved;
+    } catch {
+      iconPreferences.current = {};
+    }
+  }, [iconStorageKey]);
   const [path, setPath] = useState(window.location.pathname);
   const route = parseRoute(path);
   const [works, setWorks] = useState<Work[]>([]);
@@ -88,7 +101,12 @@ export default function Studio({ session }: { session: Session }) {
       const result = await api<{ items: Parameters<typeof serverWork>[0][] }>(
         `/api/v1/documents?limit=100&offset=${offset}`,
       );
-      all.push(...result.items.map(serverWork));
+      all.push(
+        ...result.items.map((row) => ({
+          ...serverWork(row),
+          icon: iconPreferences.current[row.id],
+        })),
+      );
       if (result.items.length < 100) break;
     }
     setWorks(all);
@@ -152,6 +170,26 @@ export default function Studio({ session }: { session: Session }) {
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [railSearchOpen, setRailSearchOpen] = useState(false);
+  const [railQuery, setRailQuery] = useState("");
+  const railSearchRef = useRef<HTMLDivElement>(null);
+  const railSearchTrigger = useRef<HTMLButtonElement>(null);
+  const closeRailSearch = () => {
+    setRailSearchOpen(false);
+    railSearchTrigger.current?.focus();
+  };
+  useEffect(() => {
+    if (!railSearchOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !railSearchRef.current?.contains(event.target)
+      )
+        setRailSearchOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [railSearchOpen]);
   const [sidebarTooltip, setSidebarTooltip] = useState<{
     text: string;
     top: number;
@@ -196,6 +234,7 @@ export default function Studio({ session }: { session: Session }) {
       flushSync(() => {
         setPath(next);
         setSidebarOpen(false);
+        setRailSearchOpen(false);
         setOpenMenu(null);
         if (!destination.workId) {
           setSearch("");
@@ -287,6 +326,7 @@ export default function Studio({ session }: { session: Session }) {
         setModal(null);
         setOpenMenu(null);
         setSidebarOpen(false);
+        setRailSearchOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -349,9 +389,11 @@ export default function Studio({ session }: { session: Session }) {
   const openWork = (id: string, section: Section = "dashboard") => {
     go(workPath(id, section));
     setSearch("");
+    setRailSearchOpen(false);
+    setRailQuery("");
   };
 
-  const addWork = (title: string, text: string) => {
+  const addWork = (title: string, text: string, icon: WorkIconName) => {
     if (!title || busy) return;
     void action(async () => {
       const work: Work = {
@@ -361,6 +403,7 @@ export default function Studio({ session }: { session: Session }) {
         words: text.trim().split(/\s+/).filter(Boolean).length,
         edited: "just now",
         content: text,
+        icon,
       };
       if (persistent) {
         const result = await api<{ id: string; documentVersionId: string }>(
@@ -369,6 +412,15 @@ export default function Studio({ session }: { session: Session }) {
         );
         work.id = result.id;
         work.documentVersionId = result.documentVersionId;
+      }
+      iconPreferences.current = { ...iconPreferences.current, [work.id]: icon };
+      try {
+        localStorage.setItem(
+          iconStorageKey,
+          JSON.stringify(iconPreferences.current),
+        );
+      } catch {
+        // Icon preferences are optional. Document saving has already succeeded.
       }
       setWorks((current) => [work, ...current]);
       setModal(null);
@@ -489,13 +541,16 @@ export default function Studio({ session }: { session: Session }) {
             aria-controls="ps-sidebar"
             aria-expanded={false}
             data-sidebar-tooltip="Expand sidebar"
-            onClick={() => setSidebarCollapsed(false)}
+            onClick={() => {
+              setSidebarCollapsed(false);
+              setRailSearchOpen(false);
+            }}
           >
             <img
               src="/images/proof-logo-drawn-v1.png"
               alt=""
-              width={40}
-              height={40}
+              width={34}
+              height={34}
             />
             <PanelLeftOpen className="ps-rail-expand" size={23} />
           </button>
@@ -517,6 +572,73 @@ export default function Studio({ session }: { session: Session }) {
             >
               <LayoutGrid size={21} />
             </button>
+            <div
+              className="ps-rail-search"
+              ref={railSearchRef}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget))
+                  setRailSearchOpen(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && railSearchOpen) {
+                  event.stopPropagation();
+                  closeRailSearch();
+                }
+              }}
+            >
+              <button
+                ref={railSearchTrigger}
+                className={`ps-rail-button ${railSearchOpen ? "active" : ""}`}
+                aria-label="Search work"
+                aria-controls="ps-rail-search-panel"
+                aria-expanded={railSearchOpen}
+                data-sidebar-tooltip="Search work"
+                onClick={() => setRailSearchOpen((open) => !open)}
+              >
+                <Search size={21} />
+              </button>
+              {railSearchOpen && (
+                <div
+                  className="ps-rail-search-popover"
+                  id="ps-rail-search-panel"
+                >
+                  <div className="ps-rail-search-field">
+                    <Search size={17} />
+                    <input
+                      autoFocus
+                      aria-label="Search work"
+                      placeholder="Search your work..."
+                      value={railQuery}
+                      onChange={(event) => setRailQuery(event.target.value)}
+                    />
+                  </div>
+                  {railQuery.trim() && (
+                    <div className="ps-rail-search-results">
+                      {works
+                        .filter((work) =>
+                          work.title
+                            .toLowerCase()
+                            .includes(railQuery.trim().toLowerCase()),
+                        )
+                        .map((work) => (
+                          <button
+                            key={work.id}
+                            onClick={() => openWork(work.id)}
+                          >
+                            <StudioWorkIcon name={work.icon} size={16} />
+                            <span>{work.title}</span>
+                          </button>
+                        ))}
+                      {!works.some((work) =>
+                        work.title
+                          .toLowerCase()
+                          .includes(railQuery.trim().toLowerCase()),
+                      ) && <p role="status">No matching work</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="ps-rail-divider" />
           <nav
@@ -531,7 +653,7 @@ export default function Studio({ session }: { session: Session }) {
                   data-sidebar-tooltip={activeWork.title}
                   onClick={() => openWork(activeWork.id)}
                 >
-                  <FileText size={22} strokeWidth={1.6} />
+                  <StudioWorkIcon name={activeWork.icon} size={22} />
                 </button>
                 <button
                   className={`ps-rail-button ${route.section === "dashboard" ? "active" : ""}`}
@@ -576,7 +698,7 @@ export default function Studio({ session }: { session: Session }) {
                   data-sidebar-tooltip={work.title}
                   onClick={() => openWork(work.id)}
                 >
-                  <FileText size={22} strokeWidth={1.6} />
+                  <StudioWorkIcon name={work.icon} size={22} />
                 </button>
               ))
             )}
@@ -625,8 +747,8 @@ export default function Studio({ session }: { session: Session }) {
                 className="ps-brand-mark"
                 src="/images/proof-logo-drawn-v1.png"
                 alt=""
-                width={44}
-                height={44}
+                width={34}
+                height={34}
               />
               <span className="ps-brand-name">
                 proof<span>.</span>
@@ -701,7 +823,7 @@ export default function Studio({ session }: { session: Session }) {
                           onClick={() => openWork(work.id)}
                         >
                           <span className="ps-work-icon">
-                            <FileText size={24} strokeWidth={1.6} />
+                            <StudioWorkIcon name={work.icon} size={24} />
                           </span>
                           <span className="ps-work-name">{work.title}</span>
                         </button>
@@ -1239,7 +1361,7 @@ function LibraryDashboard({
             key={work.id}
             onClick={() => onOpen(work.id)}
           >
-            <FileText size={24} />
+            <StudioWorkIcon name={work.icon} size={24} />
             <h2>{work.title}</h2>
             <p>
               {work.words} words · Last edited {work.edited}
