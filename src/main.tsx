@@ -11,6 +11,7 @@ import "@fontsource/newsreader/400-italic.css";
 import Landing from "./Landing";
 const Workspace = lazy(() => import("./Workspace"));
 const Classroom = lazy(() => import("./Classroom"));
+const IntegrationWorkspace = lazy(() => import("./IntegrationWorkspace"));
 const inWorkspace = /^\/app(?:\/|$)/.test(window.location.pathname);
 if (inWorkspace) document.title = "Proof · Check your evidence";
 createRoot(document.getElementById("root")!).render(
@@ -23,7 +24,11 @@ createRoot(document.getElementById("root")!).render(
           </div>
         }
       >
-        {window.location.pathname.startsWith("/app/evidence") ? (
+        {/^\/app\/(checks|integrations)(?:\/|$)/.test(
+          window.location.pathname,
+        ) ? (
+          <IntegrationWorkspace />
+        ) : window.location.pathname.startsWith("/app/evidence") ? (
           <Workspace />
         ) : (
           <Classroom />

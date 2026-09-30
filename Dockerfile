@@ -6,6 +6,8 @@ COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
 COPY server ./server
 COPY shared ./shared
+COPY migrations ./migrations
+COPY scripts/migrate-integrations.ts ./scripts/migrate-integrations.ts
 COPY public ./public
 RUN npm run build
 ENV NODE_ENV=production PROOF_HOSTED=true PROOF_USE_KEYCHAIN=false

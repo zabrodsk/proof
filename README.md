@@ -147,3 +147,31 @@ Search uses OpenAlex, journal review-policy records use DOAJ, and article identi
 Evidence checks process every extracted text section and withhold a positive result when sections conflict or fail. Figures, image-only content, study quality, missing publication notices and semantic model mistakes still require human review. Neither source indexing nor this application guarantees accuracy. Results provide quoted passages and journal-policy/full-text links for inspection; no automatic factual rewrite is made.
 
 Supplied-source checks allow 100 sentences and eight articles; public checks allow 25 sentences per job because each sentence triggers full-article research. Completed job results expire after one hour. Saved reports from the older source policy are cleared on upgrade while drafts and source inputs are retained.
+
+## Durable checks and remote MCP
+
+The connector shares the native persistent backend, outbox, private library and
+worker. Set a PostgreSQL `DATABASE_URL` with pgvector, configure private storage,
+then run `npm run db:migrate`. Start the API with `npm start` and a separate
+`npm run worker` using the same database, storage and provider settings.
+
+`PROOF_INTEGRATIONS_ENABLED=true` enables `/app/integrations` and its API.
+The authenticated report is `/app/checks/:id`. Browser imports accept real file
+bytes. Platform grants share only selected source IDs and can be revoked in the
+browser. Approved imports may finish after disconnect; unfinished checks cancel.
+
+Remote `/mcp` additionally requires `PROOF_MCP_ENABLED=true` and an established
+OAuth server configured for authorization-code + S256 PKCE, explicit platform
+clients, scopes, audience and introspection. See `.env.example`. WorkOS browser
+sign-in alone does not configure WorkOS Connect. Never put provider or OAuth
+credentials in tool arguments. The tools return structured results and text;
+actual ChatGPT/Claude certification and optional host UI remain release gates.
+
+Run `npm test`, `npm run build`, and the opt-in capped paid test
+`PROOF_INTEGRATION_LIVE=true npm run test:integration:live`.
+`npx tsx scripts/integration-ui-smoke.ts` starts a disposable, local-only browser
+fixture on port 4329 after a build. It is never installed by the production API.
+
+Confirm edition-specific chapter-to-page mappings in the browser source library.
+Chapter checks freeze the mapped physical PDF pages. Unmapped ranges fail explicitly.
+The detailed implementation record is `docs/proof-connector-implementation.html`.

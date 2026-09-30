@@ -100,6 +100,7 @@ function Checks({ items }: { items: Check[] }) {
 }
 export default function Classroom() {
   const [session, setSession] = useState<{
+    provider?: string;
     authenticated: boolean;
     hosted: boolean;
     user?: { id: string; name: string; jevUsd: number; inputTokens: number };
@@ -404,7 +405,11 @@ export default function Classroom() {
               {error}
             </p>
           )}
-          {session ? (
+          {session?.provider === "workos" ? (
+            <a className="class-primary" href="/auth/login">
+              Continue to sign in
+            </a>
+          ) : session ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -487,6 +492,9 @@ export default function Classroom() {
         <a className="class-brand" href="/app">
           <img src="/images/proof-logo-drawn-v1.png" width="42" alt="" />
           proof<span>.</span>
+        </a>
+        <a className="class-connection-link" href="/app/integrations">
+          Connections
         </a>
         <nav aria-label="Class workspace" data-tour="navigation">
           {(["draft", "find", "sources", "review"] as const).map((name) => (
