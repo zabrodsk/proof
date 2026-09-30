@@ -212,6 +212,20 @@ export default function StudioAnalysis({
       clearTimeout(timer);
     };
   }, [referenceId]);
+  if (!work.documentVersionId && section === "dashboard")
+    return (
+      <StudioDocument
+        title={work.title}
+        text={work.content}
+        findings={[]}
+        stale={false}
+        sources={[]}
+        onEdit={onEdit}
+        onAnalyze={onAnalyze}
+        onApply={() => {}}
+        locked={false}
+      />
+    );
   if (!work.documentVersionId)
     return (
       <section className="ps-home-panel ps-live-panel">

@@ -331,7 +331,7 @@ export default function Studio({ session }: { session: Session }) {
         ? "Analysis"
         : route.section === "citations"
           ? "Citations"
-          : "Dashboard";
+          : "Document";
     document.title = `Proof · ${page} · ${activeWork.title}`;
   }, [focused, route.section, activeWork?.title]);
 
@@ -533,8 +533,8 @@ export default function Studio({ session }: { session: Session }) {
                 </button>
                 <button
                   className={`ps-rail-button ${route.section === "dashboard" ? "active" : ""}`}
-                  aria-label="Dashboard"
-                  data-sidebar-tooltip="Dashboard"
+                  aria-label="Document"
+                  data-sidebar-tooltip="Document"
                   aria-current={
                     route.section === "dashboard" ? "page" : undefined
                   }
@@ -753,7 +753,7 @@ export default function Studio({ session }: { session: Session }) {
                               onClick={() => openWork(work.id)}
                               icon={<House size={18} />}
                             >
-                              Dashboard
+                              Document
                             </SubLink>
                             <SubLink
                               current={route.section}
