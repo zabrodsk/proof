@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Support, Citation, Eligibility } from "../backend.js";
+import type { Support, Citation, Eligibility, Processing } from "../backend.js";
 
 export const SCHEMA_VERSION = "proof.integration.v1";
 export const scopes = [
@@ -125,6 +125,7 @@ export type ResultFinding = {
   citationCorrectness: Citation;
   sourceEligibility: Eligibility;
   coverage: "checked" | "not_verified";
+  processing?: Processing;
   explanation: string;
   sourceId?: string;
   evidenceIds: string[];
