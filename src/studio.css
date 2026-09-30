@@ -2678,6 +2678,7 @@ html[data-ps-navigation="close"]::view-transition-new(ps-workspace) {
 .ps-live-panel {
   padding: 28px;
   min-width: 0;
+  min-height: 0;
 }
 .ps-live-panel h2 {
   margin: 0 0 16px;
@@ -2769,4 +2770,20 @@ html[data-ps-navigation="close"]::view-transition-new(ps-workspace) {
   margin: 0 0 16px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.ps-live-panel input[type="file"] {
+  display: block;
+  font: inherit;
+  font-weight: 400;
+}
+.ps-live-panel input[type="file"]::file-selector-button {
+  padding: 10px 14px;
+  margin-right: 12px;
+  border: 1px solid #dce4de;
+  border-radius: 10px;
+  background: #f8faf8;
+  color: #244a39;
+  font: inherit;
+  cursor: pointer;
 }
