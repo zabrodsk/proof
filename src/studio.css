@@ -3094,3 +3094,12 @@ html[data-ps-navigation="close"]::view-transition-new(ps-workspace) {
     max-width: 115px;
   }
 }
+
+html[data-proof-motion="reduced"] *,
+html[data-proof-motion="reduced"] *::before,
+html[data-proof-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

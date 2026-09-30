@@ -36,10 +36,14 @@ import {
 import "./studio.css";
 import "./mcp-connect.css";
 import StudioAnalysis from "./StudioAnalysis";
+import StudioSettings from "./StudioSettings";
+import { appRoutes } from "./app-navigation";
+import { useStudioPreferences } from "./studio-preferences";
 import NewStudioWork from "./NewStudioWork";
 import StudioWorkIcon from "./StudioWorkIcon";
 import {
   api,
+  signOut,
   canUseLocalDrafts,
   serverWork,
   type Session,
@@ -98,6 +102,20 @@ export default function Studio({ session }: { session: Session }) {
   }, [iconStorageKey]);
   const [path, setPath] = useState(window.location.pathname);
   const route = parseRoute(path);
+  const isSettings = /^\/app\/settings(?:\/|$)/.test(path);
+  const {
+    preferences,
+    updatePreferences,
+    error: preferenceError,
+  } = useStudioPreferences(session.user?.id);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  useEffect(() => {
+    document.documentElement.dataset.proofMotion = preferences.motion;
+    return () => {
+      delete document.documentElement.dataset.proofMotion;
+    };
+  }, [preferences.motion]);
   const [works, setWorks] = useState<Work[]>([]);
   const [ready, setReady] = useState(false);
   const [persistent, setPersistent] = useState(false);
@@ -180,7 +198,7 @@ export default function Studio({ session }: { session: Session }) {
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarCollapsed = preferences.sidebarCollapsed;
   const [railSearchOpen, setRailSearchOpen] = useState(false);
   const [railQuery, setRailQuery] = useState("");
   const railSearchRef = useRef<HTMLDivElement>(null);
@@ -234,6 +252,7 @@ export default function Studio({ session }: { session: Session }) {
     pageAnimations.current.forEach((animation) => animation.cancel());
     const instant =
       keyboardInput.current ||
+      preferencesRef.current.motion === "reduced" ||
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const changingWork = previous.workId !== destination.workId;
     const direction = destination.workId
@@ -381,6 +400,10 @@ export default function Studio({ session }: { session: Session }) {
   }, [route.workId, works, ready]);
 
   useEffect(() => {
+    if (isSettings) {
+      document.title = "Proof · Settings";
+      return;
+    }
     if (!focused) {
       document.title = "Proof · My work";
       return;
@@ -392,7 +415,7 @@ export default function Studio({ session }: { session: Session }) {
           ? "Citations"
           : "Document";
     document.title = `Proof · ${page} · ${activeWork.title}`;
-  }, [focused, route.section, activeWork?.title]);
+  }, [focused, route.section, activeWork?.title, isSettings]);
 
   const filtered = useMemo(
     () => (activeWork ? [activeWork] : matchingWorks(works, search)),
@@ -581,7 +604,7 @@ export default function Studio({ session }: { session: Session }) {
             aria-expanded={false}
             data-sidebar-tooltip="Expand sidebar"
             onClick={() => {
-              setSidebarCollapsed(false);
+              updatePreferences({ sidebarCollapsed: false });
               setRailSearchOpen(false);
             }}
           >
@@ -606,10 +629,10 @@ export default function Studio({ session }: { session: Session }) {
               <Plus size={22} />
             </button>
             <button
-              className={`ps-rail-button ${!focused ? "active" : ""}`}
+              className={`ps-rail-button ${!focused && !isSettings ? "active" : ""}`}
               aria-label="My work"
               data-sidebar-tooltip="My work"
-              aria-current={!focused ? "page" : undefined}
+              aria-current={!focused && !isSettings ? "page" : undefined}
               onClick={() => go("/app")}
             >
               <LayoutGrid size={21} />
@@ -755,7 +778,7 @@ export default function Studio({ session }: { session: Session }) {
             <div className="ps-rail-footer">
               <a
                 className="ps-rail-button"
-                href="/app/integrations#connect"
+                href={appRoutes.connections}
                 aria-label="Connect ChatGPT or Claude"
                 data-sidebar-tooltip="Connect ChatGPT or Claude"
               >
@@ -765,7 +788,7 @@ export default function Studio({ session }: { session: Session }) {
                 className="ps-rail-button"
                 aria-label="Settings"
                 data-sidebar-tooltip="Settings"
-                onClick={() => setOpenMenu("profile")}
+                onClick={() => go(appRoutes.settings)}
               >
                 <Settings size={21} />
               </button>
@@ -808,7 +831,7 @@ export default function Studio({ session }: { session: Session }) {
               aria-controls="ps-sidebar"
               aria-expanded={true}
               onClick={() => {
-                setSidebarCollapsed(true);
+                updatePreferences({ sidebarCollapsed: true });
                 setOpenMenu(null);
               }}
             >
@@ -996,10 +1019,10 @@ export default function Studio({ session }: { session: Session }) {
             </div>
             {!focused && (
               <div className="ps-sidebar-footer">
-                <a className="ps-mcp-link" href="/app/integrations#connect">
+                <a className="ps-mcp-link" href={appRoutes.connections}>
                   <Plug size={18} /> Connect your chat
                 </a>
-                <button onClick={() => setOpenMenu("profile")}>
+                <button onClick={() => go(appRoutes.settings)}>
                   <Settings size={21} /> Settings
                 </button>
                 <button onClick={() => setOpenMenu("help")}>
@@ -1121,9 +1144,9 @@ export default function Studio({ session }: { session: Session }) {
                     Open a document to upload sources, run analysis, and inspect
                     the evidence.
                   </p>
-                  <a href="/app/class">Class tools</a>
+                  <a href={appRoutes.classroom}>Class tools</a>
                   <br />
-                  <a href="/app/evidence">Evidence editor</a>
+                  <a href={appRoutes.evidence}>Evidence editor</a>
                 </div>
               )}
             </div>
@@ -1153,22 +1176,14 @@ export default function Studio({ session }: { session: Session }) {
                         : "Saved in this browser"}
                     </span>
                   </div>
-                  {session.user && (
-                    <p>Jev usage: ${session.user.jevUsd.toFixed(5)} USD est.</p>
-                  )}
-                  <a href="/app/class">Class tools</a>
-                  <br />
-                  <a href="/app/evidence">Evidence editor</a>
+                  <a href={appRoutes.account}>Account settings</a>
+                  <a href={appRoutes.settings}>App settings</a>
+                  <a href={appRoutes.connections}>Connected tools</a>
                   {session.hosted && (
                     <button
                       onClick={() =>
                         void action(async () => {
-                          if (session.provider === "workos")
-                            window.location.assign("/auth/logout");
-                          else {
-                            await api("/api/session", undefined, "DELETE");
-                            window.location.assign("/app");
-                          }
+                          await signOut(session);
                         })
                       }
                     >
@@ -1184,11 +1199,11 @@ export default function Studio({ session }: { session: Session }) {
         <main
           className="ps-content"
           ref={contentRef}
-          key={route.workId ?? "library"}
+          key={isSettings ? "settings" : (route.workId ?? "library")}
         >
-          {error && (
+          {(error || preferenceError) && (
             <p className="ps-live-error" role="alert">
-              {error}
+              {error || preferenceError}
             </p>
           )}
           {busy && <p role="status">Saving...</p>}
@@ -1197,7 +1212,13 @@ export default function Studio({ session }: { session: Session }) {
               Local preview. Drafts are saved in this browser.
             </p>
           )}
-          {!focused ? (
+          {isSettings ? (
+            <StudioSettings
+              session={session}
+              persistent={persistent}
+              onBack={() => go(appRoutes.home)}
+            />
+          ) : !focused ? (
             <LibraryDashboard
               works={filtered}
               allWorks={works}
@@ -1292,9 +1313,9 @@ export default function Studio({ session }: { session: Session }) {
           }}
           aria-labelledby="studio-modal-title"
         >
-          {error && (
+          {(error || preferenceError) && (
             <p className="ps-live-error" role="alert">
-              {error}
+              {error || preferenceError}
             </p>
           )}
           <div className="ps-modal-header">

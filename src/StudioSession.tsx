@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Studio from "./Studio";
-import { api } from "./studio-api";
+import { api, type Session } from "./studio-api";
 import { useStudioSession } from "./studio-session";
 import "./studio.css";
 export default function StudioSession() {

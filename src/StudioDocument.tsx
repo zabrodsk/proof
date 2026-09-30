@@ -15,6 +15,7 @@ import {
   findingTone,
 } from "./studio-document";
 import "./studio-document.css";
+import { citationLabel, processingLabel } from "./studio-status";
 
 export default function StudioDocument({
   title,
@@ -57,15 +58,6 @@ export default function StudioDocument({
             : status === "cancelled"
               ? "Cancelled"
               : "Not checked";
-  const citationLabel = (finding: BackendFinding) =>
-    ({
-      correct: "Citation matches",
-      wrong_source: "Wrong source",
-      wrong_locator: "Check the page reference",
-      missing: "Citation missing",
-      ambiguous: "Citation unclear",
-      not_checked: "Citation not checked",
-    })[finding.citation];
   const fragments: ReactNode[] = [];
   let cursor = 0;
   for (const finding of highlights) {
@@ -84,10 +76,11 @@ export default function StudioDocument({
           if (window.matchMedia("(max-width: 1100px)").matches) {
             detailRef.current?.scrollIntoView({
               block: "start",
-              behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-                .matches
-                ? "instant"
-                : "smooth",
+              behavior:
+                document.documentElement.dataset.proofMotion === "reduced" ||
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                  ? "instant"
+                  : "smooth",
             });
           }
         }}
@@ -179,12 +172,8 @@ export default function StudioDocument({
               </span>
               <blockquote>{current.claim.text}</blockquote>
               <p className="ps-evidence-facts">
-                {citationLabel(current)} ·{" "}
-                {current.processing === "complete"
-                  ? "Check complete"
-                  : current.processing === "partial"
-                    ? "Partial check"
-                    : "Check incomplete"}
+                {citationLabel(current.citation)} ·{" "}
+                {processingLabel(current.processing)}
               </p>
               {current.explanation.map((explanation, i) => (
                 <p key={i}>{explanation}</p>
