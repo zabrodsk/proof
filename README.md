@@ -43,13 +43,13 @@ This uses synthetic test prose and records provider token counts to `/tmp/proof-
 
 The analysis backend uses a separate worker, PostgreSQL with pgvector, and a private Railway S3 bucket. Both web and worker use the same Dockerfile and source revision. Creating the database, worker, or bucket adds billing and needs explicit owner approval.
 
-| Component      | Configuration                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------- |
-| Web            | `railway.json`, Docker default command, public `/health` check                                                 |
-| Worker         | Set `PROOF_PROCESS=worker` and start `runuser -u node -- npm run worker`; no HTTP healthcheck or public domain |
-| PostgreSQL     | A PostgreSQL instance with pgvector; share its private `DATABASE_URL` with web and worker                      |
-| Source files   | Private Railway S3 bucket; share the storage variables with both services                                      |
-| Accounts       | Keep the existing web volume mounted at `/app/.data`; the account store is still a file                        |
+| Component    | Configuration                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| Web          | `railway.json`, Docker default command, public `/health` check                                                 |
+| Worker       | Set `PROOF_PROCESS=worker` and start `runuser -u node -- npm run worker`; no HTTP healthcheck or public domain |
+| PostgreSQL   | A PostgreSQL instance with pgvector; share its private `DATABASE_URL` with web and worker                      |
+| Source files | Private Railway S3 bucket; share the storage variables with both services                                      |
+| Accounts     | Keep the existing web volume mounted at `/app/.data`; the account store is still a file                        |
 
 Configure the worker in Railway service settings. `railway.worker.json` is for services that still use legacy Config as Code. Keep one web replica while accounts use `/app/.data/accounts.json`. PostgreSQL stores runs, source metadata, passages, findings, and progress; object storage holds original files.
 
@@ -223,3 +223,9 @@ fixture on port 4329 after a build. It is never installed by the production API.
 Confirm edition-specific chapter-to-page mappings in the browser source library.
 Chapter checks freeze the mapped physical PDF pages. Unmapped ranges fail explicitly.
 The detailed implementation record is `docs/proof-connector-implementation.html`.
+
+## Development in Cursor
+
+Open the repository folder in Cursor. Project rules in `.cursor/rules/proof.mdc` describe the app structure, evidence checks, UI conventions, and validation commands. Install dependencies with `npm ci`, copy `.env.example` to your local `.env`, and run `npm run dev`.
+
+Keep credentials, account data, temporary scripts, and generated artifacts out of commits. Run `npm test`, `npm run build`, and `npm run format:check` before publishing application changes.
