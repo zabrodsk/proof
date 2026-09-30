@@ -11,3 +11,8 @@ test-results/
 .sites-runtime/
 *.tar.gz
 *.log
+
+# Local tooling and generated artifacts
+.omc/
+tmp/
+output/

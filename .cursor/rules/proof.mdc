@@ -1,0 +1,16 @@
+---
+description: Project conventions for the Proof application
+alwaysApply: true
+---
+
+# Proof
+
+- Use React and TypeScript in `src/`, Express in `server/`, and shared contracts in `shared/`. The separate landing site lives in `site/`.
+- Keep the forest, sage, and paper colors from `src/palette.css`. Match existing components before adding UI patterns.
+- Keep source passages inspectable. Metadata, inaccessible text, and incomplete checks cannot establish support for a claim.
+- Compare supplied materials separately from academic source eligibility. Keep evidence judgments and citation checks distinct.
+- Suggested edits require the user's approval, must match the current document version, and must preserve the original version.
+- Preserve workspace ownership, provider consent, private storage, request limits, and audit records.
+- Read secrets from the configured environment. Never commit credentials, account data, local runtime files, or generated build output.
+- Preserve unrelated working changes. Use descriptive branch and commit names.
+- Run the checks appropriate to the change. For application changes, use `npm test`, `npm run build`, and `npm run format:check`.
