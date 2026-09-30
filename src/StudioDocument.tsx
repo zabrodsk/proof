@@ -227,11 +227,13 @@ export default function StudioDocument({
                       .getElementById(`ps-claim-${f.id}`)
                       ?.scrollIntoView({
                         block: "center",
-                        behavior: window.matchMedia(
-                          "(prefers-reduced-motion: reduce)",
-                        ).matches
-                          ? "instant"
-                          : "smooth",
+                        behavior:
+                          document.documentElement.dataset.proofMotion ===
+                            "reduced" ||
+                          window.matchMedia("(prefers-reduced-motion: reduce)")
+                            .matches
+                            ? "instant"
+                            : "smooth",
                       });
                   }}
                 >

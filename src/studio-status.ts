@@ -23,6 +23,9 @@ export function runStageLabel(stage: string) {
         retrieval: "Finding source passages",
         research: "Finding research",
         assessment: "Checking evidence",
+        assess: "Checking evidence",
+        extract: "Reading sources",
+        done: "Finished",
         findings: "Preparing findings",
         complete: "Finished",
       } as Record<string, string>
