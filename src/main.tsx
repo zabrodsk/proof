@@ -11,7 +11,7 @@ import "@fontsource/newsreader/400-italic.css";
 import Landing from "./Landing";
 const Workspace = lazy(() => import("./Workspace"));
 const Classroom = lazy(() => import("./Classroom"));
-const Studio = lazy(() => import("./Studio"));
+const Studio = lazy(() => import("./StudioSession"));
 const path = window.location.pathname;
 const inWorkspace = /^\/app(?:\/|$)/.test(path);
 if (inWorkspace) document.title = "Proof · My work";

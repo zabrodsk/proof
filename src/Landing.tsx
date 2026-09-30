@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
-import { DocumentIllustration, MotifIcon, InkFrame } from "./Drawn";
+import { MotifIcon, InkFrame } from "./Drawn";
 
 const documentTypes = [
   { kind: "papers", label: "Research papers" },
@@ -64,39 +64,6 @@ function Wordmark() {
         proof<span>.</span>
       </span>
     </a>
-  );
-}
-
-const schoolLogos = [
-  { name: "Harvard University", file: "harvard.svg" },
-  { name: "Massachusetts Institute of Technology", file: "mit.svg" },
-  { name: "Stanford University", file: "stanford.svg" },
-  { name: "University of Oxford", file: "oxford.svg" },
-  { name: "Yale University", file: "yale.svg" },
-] as const;
-
-function SchoolLogoRow() {
-  return (
-    <section className="lp-schools" aria-label="University logos">
-      <div className="lp-schools-track">
-        {[false, true].map((duplicate) => (
-          <div
-            className="lp-schools-group"
-            key={String(duplicate)}
-            aria-hidden={duplicate || undefined}
-          >
-            {schoolLogos.map(({ name, file }) => (
-              <div className="lp-school-logo" key={file}>
-                <img
-                  src={`/images/schools/${file}`}
-                  alt={duplicate ? "" : name}
-                />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -260,13 +227,13 @@ function AnswerCompare() {
           <p>{compareQuestion}</p>
         </div>
         <p className="lp-compare-answer">
-          Social media significantly reduces sleep quality in teenagers,
-          leading to shorter sleep duration, increased sleep disturbances, and
-          greater daytime fatigue.
+          Social media significantly reduces sleep quality in teenagers, leading
+          to shorter sleep duration, increased sleep disturbances, and greater
+          daytime fatigue.
         </p>
         <div className="lp-compare-citations">
           <ul>
-            {["Smith et al. (2021)", "Johnson & Lee (2022)"].map((citation) => (
+            {["Missing source", "Unverified reference"].map((citation) => (
               <li key={citation}>
                 <FileText size={21} aria-hidden="true" />
                 {citation}
@@ -317,12 +284,14 @@ function AnswerCompare() {
         </p>
         <div className="lp-compare-citations">
           <ul>
-            {["Twenge et al. (2019)", "Kelly et al. (2022)"].map((citation) => (
-              <li key={citation}>
-                <FileText size={21} aria-hidden="true" />
-                {citation}
-              </li>
-            ))}
+            {["Original source passage", "Evidence access details"].map(
+              (citation) => (
+                <li key={citation}>
+                  <FileText size={21} aria-hidden="true" />
+                  {citation}
+                </li>
+              ),
+            )}
           </ul>
         </div>
         <div className="lp-compare-strengths">
@@ -334,7 +303,7 @@ function AnswerCompare() {
             <ul>
               <li>
                 <Check size={17} aria-hidden="true" />
-                Verified sources
+                Shows available sources
               </li>
               <li>
                 <Check size={17} aria-hidden="true" />
@@ -486,7 +455,7 @@ function CitationProcess({ href }: { href: string }) {
         <a className="lp-process-cta" href={href}>
           <InkFrame />
           <Check size={22} aria-hidden="true" />
-          Fix all citations
+          Check your citations
           <ArrowRight size={21} aria-hidden="true" />
         </a>
       </div>
@@ -523,7 +492,7 @@ const faqs = [
   {
     question: "When can I try it?",
     answer:
-      "Join the waitlist and we will email you when early access opens. We have not announced a launch date or pricing yet.",
+      "Open the workspace to sign in. You can also join the waitlist for early-access updates.",
   },
 ];
 
@@ -634,13 +603,12 @@ export default function Landing() {
                 build stronger, more credible academic writing.
               </p>
               <a className="lp-hero-cta" href="/app">
-                Get started – it's free
+                Get started
                 <ArrowRight size={18} />
               </a>
             </div>
           </div>
         </section>
-        <SchoolLogoRow />
         <section
           className="lp-used-for lp-container"
           aria-labelledby="used-for"
@@ -655,9 +623,8 @@ export default function Landing() {
           aria-labelledby="compare-heading"
         >
           <header className="lp-compare-intro">
-            <h2 id="compare-heading">
-              Same question. Different answers.
-            </h2>
+            <h2 id="compare-heading">Same question. Different answers.</h2>
+            <p>Illustrative example of a claim and its evidence review.</p>
           </header>
           <AnswerCompare />
         </section>
@@ -696,7 +663,7 @@ export default function Landing() {
               Check your citations
               <span> before you submit.</span>
             </h2>
-            <p>Join the waitlist. We will email you when Proof is ready.</p>
+            <p>Join the waitlist for early-access updates.</p>
             <WaitlistForm placement="footer" />
           </div>
         </section>
@@ -739,7 +706,7 @@ export default function Landing() {
           access. We save your email address, signup time, and this permission.
         </p>
         <p>
-          The interactive example uses a fictional study. Trying it does not
+          The comparison on this page is an illustration. Viewing it does not
           upload a document or send its content anywhere.
         </p>
         <button

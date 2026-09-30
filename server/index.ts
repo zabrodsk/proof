@@ -229,10 +229,11 @@ app.listen(
   port,
   process.env.PROOF_BIND_HOST || (hosted ? "0.0.0.0" : "127.0.0.1"),
   (error?: Error) => {
-  if (error) {
-    console.error(`Proof could not start: ${error.message}`);
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`Proof is ready at http://127.0.0.1:${port}`);
-});
+    if (error) {
+      console.error(`Proof could not start: ${error.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Proof is ready at http://127.0.0.1:${port}`);
+  },
+);
