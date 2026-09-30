@@ -13,6 +13,7 @@ import {
   Download,
   LockKeyhole,
   LogOut,
+  X,
 } from "lucide-react";
 import {
   classMla,
@@ -494,7 +495,7 @@ export default function Classroom() {
   return (
     <div className="class-shell">
       <header className="class-header">
-        <a className="class-brand" href="/app">
+        <a className="class-brand" href="/app/class">
           <img src="/images/proof-logo-drawn-v1.png" width="42" alt="" />
           proof<span>.</span>
         </a>
@@ -603,7 +604,7 @@ export default function Classroom() {
           <div className="class-error" role="alert">
             {error}
             <button aria-label="Dismiss error" onClick={() => setError("")}>
-              ×
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         )}
