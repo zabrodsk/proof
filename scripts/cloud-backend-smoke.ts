@@ -21,7 +21,8 @@ assert.ok(
 const base = remote.origin;
 const name = process.env.PROOF_SMOKE_NAME;
 const password = process.env.PROOF_SMOKE_PASSWORD;
-if (!name || !password)
+const suppliedCookie = process.env.PROOF_SMOKE_COOKIE;
+if ((!name || !password) && !suppliedCookie)
   throw new Error(
     "Set PROOF_SMOKE_NAME and PROOF_SMOKE_PASSWORD for a provisioned synthetic account.",
   );
@@ -67,7 +68,7 @@ async function request(path: string, init: RequestInit = {}, expected = 200) {
   );
   const sessionCookie = response.headers
     .getSetCookie()
-    .find((value) => value.startsWith("proof_session="));
+    .find((value) => /^(proof_session|proof_workos)=/.test(value));
   if (sessionCookie) cookie = sessionCookie.split(";")[0];
   return response;
 }
@@ -172,31 +173,40 @@ try {
   assert.equal(unauthenticated.status, 401);
   // The deployment must provision this synthetic account before the smoke run.
   // Never claim a real student's roster entry for an automated deployment test.
-  assert.ok(
-    !before.roster?.some(
-      (entry: any) => entry.name.toLowerCase() === name.toLowerCase(),
-    ),
-    "Choose a synthetic test name outside the class roster.",
-  );
-  const login = await network(base + "/api/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Origin: base },
-    body: JSON.stringify({ name, password }),
-    redirect: "error",
-    signal: AbortSignal.timeout(40_000),
-  });
-  assert.equal(
-    login.status,
-    200,
-    "Synthetic account sign-in failed. Provision the dedicated smoke account first.",
-  );
-  cookie =
-    login.headers
-      .getSetCookie()
-      .find((value) => value.startsWith("proof_session="))
-      ?.split(";")[0] || "";
-  assert.equal((await login.json()).authenticated, true);
-  assert.ok(cookie, "Authentication did not return a session cookie.");
+  if (suppliedCookie) {
+    cookie = suppliedCookie;
+    assert.equal(
+      (await json("/api/session")).authenticated,
+      true,
+      "Synthetic WorkOS session was rejected.",
+    );
+  } else {
+    assert.ok(
+      !before.roster?.some(
+        (entry: any) => entry.name.toLowerCase() === name!.toLowerCase(),
+      ),
+      "Choose a synthetic test name outside the class roster.",
+    );
+    const login = await network(base + "/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ name, password }),
+      redirect: "error",
+      signal: AbortSignal.timeout(40_000),
+    });
+    assert.equal(
+      login.status,
+      200,
+      "Synthetic account sign-in failed. Provision the dedicated smoke account first.",
+    );
+    cookie =
+      login.headers
+        .getSetCookie()
+        .find((value) => value.startsWith("proof_session="))
+        ?.split(";")[0] || "";
+    assert.equal((await login.json()).authenticated, true);
+    assert.ok(cookie, "Authentication did not return a session cookie.");
+  }
   const capabilities = await json("/api/v1/capabilities");
   assert.equal(capabilities.persistent, true);
   console.log("Cloud authentication and persistent API passed.");

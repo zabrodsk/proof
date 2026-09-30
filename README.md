@@ -31,6 +31,26 @@ PROOF_STRESS_LIVE=true node --import tsx scripts/class-stress.ts
 
 This uses synthetic test prose and records provider token counts to `/tmp/proof-class-stress-results.json`. It measures throughput, coverage, failure handling, and obvious planted language errors, not general factual accuracy.
 
+## Persistent backend on Railway
+
+The analysis backend uses a separate worker, PostgreSQL with pgvector, and a private Railway S3 bucket. Both web and worker use the same Dockerfile and source revision. Creating the database, worker, or bucket adds billing and needs explicit owner approval.
+
+| Component      | Configuration                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| Web            | `railway.json`, Docker default command, public `/health` check                                                 |
+| Worker         | Set `PROOF_PROCESS=worker` and start `runuser -u node -- npm run worker`; no HTTP healthcheck or public domain |
+| PostgreSQL     | A PostgreSQL instance with pgvector; share its private `DATABASE_URL` with web and worker                      |
+| Source files   | Private Railway S3 bucket; share the storage variables with both services                                      |
+| Accounts       | Keep the existing web volume mounted at `/app/.data`; the account store is still a file                        |
+
+Configure the worker in Railway service settings. `railway.worker.json` is for services that still use legacy Config as Code. Keep one web replica while accounts use `/app/.data/accounts.json`. PostgreSQL stores runs, source metadata, passages, findings, and progress; object storage holds original files.
+
+Set `DATABASE_URL`, `PROOF_HOSTED=true`, `PROOF_USE_KEYCHAIN=false`, the `STORAGE_*` bucket credentials, provider keys, `JEV_MODEL`, and `PROOF_WORKER_CONCURRENCY` on both services. The web service also needs `PROOF_ACCESS_KEY` (session signing) unless WorkOS is fully configured. Hosted startup requires private S3-compatible storage. Cloudflare R2 is supported if the `STORAGE_*` credentials are left unset and the complete `R2_*` set is supplied.
+
+The Docker build bakes a pinned `Xenova/bge-small-en-v1.5` snapshot into `/app/models`. Set `PROOF_EMBEDDINGS=true`, `PROOF_MODEL_DIR=/app/models`, and `PROOF_EMBEDDING_REVISION=ea104dacec62c0de699686887e3f920caeb4f3e3` on both processes. `PROOF_EMBEDDINGS=false` selects text-only retrieval.
+
+After deploy: check `/health`, confirm worker logs show it is consuming jobs, upload a small PDF, run a source check, and restart the worker during a test run to confirm resume.
+
 ## Project layout
 
 - `src/`, `server/`, and `shared/`: the React app, local Express server, and citation-checking logic.
