@@ -50,6 +50,14 @@ app.use((_req, res, next) => {
   res.locals.proofSession = alice.owner;
   next();
 });
+if (process.env.PROOF_QA_MCP_ENABLED === "true")
+  app.get("/api/integrations/configuration", (_req, res) =>
+    res.json({
+      mcpEnabled: true,
+      mcpUrl: "https://proof.example/mcp",
+      platforms: ["chatgpt", "claude"],
+    }),
+  );
 app.use("/api/integrations", integrationApi(f.service));
 integrationErrors(app);
 app.use(express.static("dist"));

@@ -27,6 +27,8 @@ function fixture(mode: string = "fact_check", snapshot?: any) {
     calls = 0;
   const db: Database = {
     async query(sql, values = []) {
+      if (sql.startsWith("SELECT * FROM proof_connector_submissions"))
+        return { rows: [] };
       if (sql.startsWith("SELECT input,cancel_requested,invalidated"))
         return {
           rows:

@@ -7,6 +7,7 @@ COPY src ./src
 COPY server ./server
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY tests ./tests
 COPY shared ./shared
 COPY public ./public
 RUN PROOF_MODEL_DIR=/app/models npm run model:prepare

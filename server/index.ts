@@ -102,19 +102,18 @@ if (integrations) {
     app.use("/api/integrations", integrationApi(integrations, oauth));
 } else
   app.use("/api/v1", (_req, res) =>
-    res
-      .status(503)
-      .json({
-        error:
-          "The persistent backend requires DATABASE_URL and a running worker.",
-      }),
-  );
-app.use("/api/integrations", (_req, res) =>
-  res
-    .status(503)
-    .json({
-      error: "Durable integrations are not enabled on this deployment.",
+    res.status(503).json({
+      error:
+        "The persistent backend requires DATABASE_URL and a running worker.",
     }),
+  );
+app.get("/api/integrations/configuration", (_req, res) =>
+  res.json({ mcpEnabled: false, platforms: [] }),
+);
+app.use("/api/integrations", (_req, res) =>
+  res.status(503).json({
+    error: "Durable integrations are not enabled on this deployment.",
+  }),
 );
 
 if (hosted) app.get("/", (_req, res) => res.redirect("/app"));

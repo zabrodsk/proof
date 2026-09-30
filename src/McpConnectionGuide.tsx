@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, ArrowUpRight, MessageSquare } from "lucide-react";
 import "./mcp-connect.css";
 
@@ -15,6 +15,10 @@ export default function McpConnectionGuide({
   publicGuide = false,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (window.location.hash === "#connect")
+      document.getElementById("connect")?.scrollIntoView({ block: "start" });
+  }, []);
   const [copyError, setCopyError] = useState("");
   const enabled = configuration?.mcpEnabled && !!configuration.mcpUrl;
   async function copyUrl() {
