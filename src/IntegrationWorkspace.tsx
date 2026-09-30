@@ -5,6 +5,7 @@ import type {
   Selection,
 } from "../shared/integrations/contracts";
 import "./integrations.css";
+import McpConnectionGuide from "./McpConnectionGuide";
 
 type Session = {
   authenticated: boolean;
@@ -83,6 +84,7 @@ export default function IntegrationWorkspace() {
   const [config, setConfig] = useState<{
     mcpEnabled: boolean;
     mcpUrl?: string;
+    platforms?: string[];
   }>();
   const [text, setText] = useState("");
   const [kind, setKind] = useState("check_facts");
@@ -135,7 +137,7 @@ export default function IntegrationWorkspace() {
     void Promise.all([
       refreshLibrary(),
       refreshGrants(),
-      api<{ mcpEnabled: boolean; mcpUrl?: string }>(
+      api<{ mcpEnabled: boolean; mcpUrl?: string; platforms?: string[] }>(
         `${prefix}/configuration`,
       ).then(setConfig),
     ]).catch((e) => setError(e.message));
@@ -718,20 +720,9 @@ export default function IntegrationWorkspace() {
               </button>
             )}
           </section>
-          <section className="integration-panel">
-            <h2>ChatGPT & Claude</h2>
-            {config?.mcpEnabled ? (
-              <p>
-                Connect Proof through your host's remote MCP settings using{" "}
-                <code>{config.mcpUrl}</code>. Sign in with this Proof account.
-                Sources are shared only after you select them below.
-              </p>
-            ) : (
-              <p>
-                Remote MCP is awaiting OAuth configuration on this deployment.
-                Website checks use the same stored runs and evidence.
-              </p>
-            )}
+          <section className="integration-panel" id="connect">
+            <McpConnectionGuide configuration={config} />
+            <h3>Connected accounts</h3>
             {!grants.length && <p>No platforms are connected yet.</p>}
             {grants.map((g) => (
               <div key={g.id} className="integration-grant">
