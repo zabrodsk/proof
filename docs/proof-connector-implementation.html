@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Proof connector implementation</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #233c33;
+        --muted: #5a6b60;
+        --paper: #fafbf8;
+        --line: #dce4dc;
+        --accent: #dce9db;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1050px;
+        margin: auto;
+        padding: 48px 24px;
+      }
+      header {
+        padding: 30px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        font:
+          clamp(36px, 7vw, 66px)/1.08 Georgia,
+          serif;
+        max-width: 850px;
+        margin: 16px 0;
+      }
+      h2 {
+        font:
+          30px/1.2 Georgia,
+          serif;
+        margin-top: 0;
+      }
+      h3 {
+        font-size: 18px;
+      }
+      p {
+        max-width: 78ch;
+      }
+      section {
+        padding: 30px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .note {
+        background: var(--accent);
+        padding: 16px 20px;
+        border-radius: 12px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        padding: 22px;
+        border-radius: 16px;
+        background: #fff;
+      }
+      .card strong {
+        display: block;
+        font-size: 28px;
+      }
+      small,
+      .muted {
+        color: var(--muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 10px;
+      }
+      th {
+        font-weight: 650;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: #eef2ec;
+        padding: 18px;
+        border-radius: 12px;
+        font-size: 13px;
+      }
+      code {
+        font-size: 0.88em;
+      }
+      a {
+        color: #265c44;
+      }
+      .flow {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 22px 0;
+      }
+      .flow span {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 12px 18px;
+      }
+      .status {
+        font-weight: 650;
+        color: #38634a;
+      }
+      .pending {
+        color: #805728;
+      }
+      @media (max-width: 650px) {
+        main {
+          padding: 22px 16px;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        table {
+          font-size: 14px;
+        }
+        th,
+        td {
+          padding: 10px 6px;
+        }
+        .flow {
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <small>30 September 2026 · Implementation record</small>
+        <h1>Proof across the website and chat hosts</h1>
+        <p>
+          One durable evidence service, with an OAuth-protected MCP interface
+          and an authenticated browser report. The integration uses the same
+          native jobs, source assets, extractions, provider adapters, and
+          findings as the website.
+        </p>
+        <p class="note">
+          <strong>Redacted public version.</strong> This record excludes
+          credentials, account identifiers, private documents, repository
+          locations, and deployment addresses. The implementation is local.
+          Actual ChatGPT and Claude compatibility and public launch remain
+          unverified.
+        </p>
+      </header>
+      <section>
+        <div class="grid">
+          <article class="card">
+            <strong>132</strong>Passing automated tests, including 24
+            integration regressions.
+          </article>
+          <article class="card">
+            <strong>8</strong>Purpose-built MCP tools with scoped account
+            access.
+          </article>
+          <article class="card">
+            <strong>$0.01</strong>Cap used for the live provider smoke test.
+          </article>
+        </div>
+      </section>
+      <section>
+        <h2>What was built</h2>
+        <div class="flow">
+          <span>Website / chat host</span><b>→</b
+          ><span>Shared application service</span><b>→</b
+          ><span>Native run + outbox</span><b>→</b
+          ><span>Worker + private sources</span><b>→</b
+          ><span>Stored findings + evidence</span>
+        </div>
+        <p>
+          The MCP transport does not own the job. Disconnecting a client leaves
+          the persisted job available through an authorized later request.
+          Finished findings are read from storage rather than regenerated by the
+          connector.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Implemented behavior</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tools</td>
+              <td>
+                <code>check_facts</code>, <code>check_sources</code>,
+                <code>find_sources</code>, <code>get_check</code>,
+                <code>get_evidence</code>, <code>search_library</code>,
+                <code>import_sources</code>, <code>cancel_check</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Durability</td>
+              <td>
+                Native PostgreSQL records and pg-boss outbox/worker. Exact text,
+                immutable document version, extraction IDs, permitted PDF pages,
+                policy, model configuration, and idempotency receipt are
+                retained.
+              </td>
+            </tr>
+            <tr>
+              <td>Authorization</td>
+              <td>
+                Verified JWT signature, issuer, audience, expiry, registered
+                client, scopes, and upstream introspection. Signed-in account
+                linking, explicit library selection per grant, disconnect and
+                browser-approved reconnection.
+              </td>
+            </tr>
+            <tr>
+              <td>Sources</td>
+              <td>
+                Real PDF, DOCX, text and Markdown imports; explicit links and
+                bibliography imports. Research candidates enter the library only
+                after explicit promotion. Bibliographies remain references with
+                unresolved full-text gaps.
+              </td>
+            </tr>
+            <tr>
+              <td>Reports</td>
+              <td>
+                Authenticated report URL, paginated stored findings, independent
+                support/citation/eligibility/processing fields, exact original
+                passages, confirmed PDF labels when available, and extraction
+                offsets for unpaginated text.
+              </td>
+            </tr>
+            <tr>
+              <td>Budgets</td>
+              <td>
+                Transactional per-run and daily reservations before provider
+                dispatch, native call limits, conservative reservations retained
+                after ambiguous failures, explicit partial status on exhaustion,
+                and a creation-disable flag that preserves reads.
+              </td>
+            </tr>
+            <tr>
+              <td>Browser</td>
+              <td>
+                Checks, source import/library, platform source permissions,
+                cancellation, disconnect, reconnection and evidence expansion.
+                Desktop and 390px report inspected locally.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Verification and limits</h2>
+        <p class="status">
+          Production TypeScript/Vite build passed. All 132 tests passed.
+        </p>
+        <p>
+          The integration regressions cover separate accounts, scoped source
+          selection, extraction versions, idempotent retries and concurrent
+          submissions, restart persistence, cancellation, revocation, deletion,
+          fabricated evidence, strict inputs, actual PDF bytes and locators, and
+          budget enforcement. Official SDK clients exercised the real Streamable
+          HTTP route under two distinct platform grants. These are protocol
+          tests, not actual ChatGPT or Claude app certification.
+        </p>
+        <p>
+          The paid Jev smoke test processed two claims against a controlled
+          fictional source, returned stored evidence, and retained a negative
+          finding for an unmeasured outcome. Reserved spend was approximately
+          $0.001005; the provider's reported token-based estimate was
+          approximately $0.000102. Billing was not independently confirmed. This
+          proves the pipeline, not accuracy.
+        </p>
+        <p>
+          Database regressions ran the real schema in PGlite with pgvector.
+          Ordinary PostgreSQL, S3 storage, pg-boss processes, production
+          failover and worker restarts still require staging checks. No new
+          deployment, directory listing, production OAuth client or host
+          permission was created.
+        </p>
+      </section>
+      <section>
+        <h2>Run and configure</h2>
+        <pre>
+npm ci
+npm run db:migrate
+npm run start
+# Separate worker, same database, storage and provider settings:
+npm run worker
+
+npm test
+npm run build
+PROOF_INTEGRATION_LIVE=true npm run test:integration:live</pre>
+        <p>
+          Configure PostgreSQL with pgvector, private S3-compatible storage,
+          browser account authentication, and provider secrets through the
+          hosting secret manager. Enable
+          <code>PROOF_INTEGRATIONS_ENABLED</code> for the browser connector API.
+          Enable <code>PROOF_MCP_ENABLED</code> only after the OAuth
+          authorization server and registered clients are ready.
+        </p>
+        <p>
+          OAuth configuration includes the exact issuer, remote JWKS URL,
+          resource audience, introspection endpoint, allowed ChatGPT/Claude
+          client IDs and the four named scopes. WorkOS browser sign-in does not
+          itself provision WorkOS Connect. Authorization-code flow, S256 PKCE,
+          consent and host callbacks must be configured at the established
+          authorization server. Use the host's current callback values, not
+          guessed addresses.
+        </p>
+        <p>
+          <code>PROOF_OAUTH_AUTO_GRANT</code> defaults to false. Enable it only
+          if OAuth subject is the immutable ID of an existing signed-in account.
+          Otherwise explicitly link the verified platform identity from the
+          authenticated browser. Revoked links cannot silently reconnect. Source
+          imports approved before disconnect may finish; unfinished checks are
+          cancelled.
+        </p>
+        <p>
+          <code>PROOF_CHECK_CREATION_ENABLED=false</code> disables new
+          checks/imports while reports remain readable. Maintain provider
+          reservation prices against the real contract. Imports allow up to 12
+          MiB per file, eight items per request, 16 pending imports and 1,000
+          active source assets per workspace.
+        </p>
+      </section>
+      <section>
+        <h2>Release gates still open</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Gate</th>
+              <th>Required evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="pending">Actual host capability</td>
+              <td>
+                Connection, consent, expiry, introspection revocation, task
+                invocation, report opening and file handoff in the intended
+                ChatGPT and Claude clients/accounts.
+              </td>
+            </tr>
+            <tr>
+              <td class="status">Chapter selection</td>
+              <td>
+                A confirmed edition-specific chapter-to-page mapping before
+                chapter ranges can be accepted. Unmapped chapter requests fail
+                explicitly. PDF page ranges work now.
+              </td>
+            </tr>
+            <tr>
+              <td class="pending">Optional host panel</td>
+              <td>
+                The text/structured fallback is implemented. A custom evidence
+                card and host-specific file picker remain gated on actual host
+                capability testing; authorized browser upload is available.
+              </td>
+            </tr>
+            <tr>
+              <td class="pending">Quality evaluation</td>
+              <td>
+                Human-reviewed cases for support, contradiction, mixed evidence,
+                wrong editions and locators, scans, bibliography ambiguity and
+                injection. Report precision together with coverage. The
+                regression fixture is not a measured benchmark.
+              </td>
+            </tr>
+            <tr>
+              <td class="pending">Operations</td>
+              <td>
+                Staging checks for private storage, queue retries, two-worker
+                races, deploy/rollback, provider rate limits, deletion
+                completion, user entitlements and monitoring.
+              </td>
+            </tr>
+            <tr>
+              <td class="pending">Public submission</td>
+              <td>
+                Approved description, privacy/terms/support links, authenticated
+                demo, screenshots/video, configured review access and successful
+                client tests. Never advertise pending functionality as
+                available.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Submission copy for review</h2>
+        <p>
+          <strong>Proof</strong> checks explicitly selected writing against
+          academic research or sources you choose. It returns saved claim
+          findings, source passages and coverage limits. You can inspect the
+          evidence in your authenticated Proof report. Proof does not
+          automatically check every answer or silently edit your writing.
+        </p>
+        <p>
+          Task text and selected documents are processed by Proof and its
+          configured research/assessment providers. Reports and uploaded files
+          are private to the signed-in account. Platform access uses named
+          scopes and explicit source selection; disconnecting removes that
+          platform's access. Final privacy and retention statements require the
+          deployed operator's approval.
+        </p>
+      </section>
+      <section>
+        <h2>Platform references</h2>
+        <p>
+          <a href="https://developers.openai.com/plugins/build/auth"
+            >OpenAI authentication</a
+          >
+          ·
+          <a href="https://workos.com/docs/authkit/mcp"
+            >WorkOS MCP authorization</a
+          >
+          ·
+          <a href="https://ts.sdk.modelcontextprotocol.io/server"
+            >Official TypeScript MCP server SDK</a
+          >
+          ·
+          <a
+            href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+            >Claude custom connectors</a
+          >.
+        </p>
+      </section>
+      <footer>
+        <p class="muted">
+          Local implementation record. External release gates are intentionally
+          left visible.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,4 +1,5 @@
-import { database, migrate } from "./backend/db.js";
+import { database } from "./backend/db.js";
+import { migrate } from "./integrations/database.js";
 import { storage } from "./backend/storage.js";
 import { startWorker } from "./backend/queue.js";
 

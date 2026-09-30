@@ -979,3 +979,9 @@
   background: transparent;
   box-shadow: none;
 }
+
+.class-connection-link {
+  color: var(--proof-accent);
+  font-size: 13px;
+  text-underline-offset: 4px;
+}

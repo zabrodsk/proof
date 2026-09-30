@@ -13,7 +13,13 @@ import { installAccess } from "./access.js";
 import { classroomRouter } from "./classroom.js";
 import { evidenceRouter } from "./evidence.js";
 import { discoveryRouter } from "./discovery.js";
-import { database, migrate } from "./backend/db.js";
+import { database } from "./backend/db.js";
+import { migrate } from "./integrations/database.js";
+import { IntegrationStore } from "./integrations/store.js";
+import { IntegrationService } from "./integrations/service.js";
+import { OAuthVerifier, oauthConfig } from "./integrations/auth.js";
+import { mcpRouter } from "./integrations/mcp.js";
+import { integrationApi, integrationErrors } from "./integrations/http.js";
 import { storage } from "./backend/storage.js";
 import { compatibilityRouter } from "./backend/compatibility.js";
 import { backendRouter } from "./backend/router.js";
@@ -53,22 +59,62 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
-app.use(express.json({ limit: "6mb" }));
-installAccess(app);
-if (process.env.DATABASE_URL) {
+app.use(express.json({ limit: "18mb" }));
+let integrations: IntegrationService | undefined;
+let oauth: OAuthVerifier | undefined;
+if (
+  process.env.DATABASE_URL ||
+  process.env.PROOF_INTEGRATIONS_ENABLED === "true"
+) {
   const db = database();
   await migrate(db);
-  const blobs = storage();
-  app.use("/api/v1", backendRouter(db, blobs));
-  app.use("/api/class", compatibilityRouter(db, blobs));
-} else {
+  integrations = new IntegrationService(
+    new IntegrationStore(db, storage()),
+    (process.env.PROOF_PUBLIC_URL || `http://127.0.0.1:${port}`).replace(
+      /\/$/,
+      "",
+    ),
+  );
+  if (
+    process.env.PROOF_INTEGRATIONS_ENABLED === "true" &&
+    process.env.PROOF_MCP_ENABLED === "true"
+  ) {
+    oauth = new OAuthVerifier(oauthConfig(), integrations.store);
+    app.use(mcpRouter(integrations, oauth));
+  }
+}
+app.all("/mcp", (_req, res) =>
+  res
+    .status(503)
+    .json({ error: "Proof MCP is not enabled on this deployment." }),
+);
+installAccess(app);
+if (integrations) {
+  app.use(
+    "/api/v1",
+    backendRouter(integrations.store.db, integrations.store.blobs),
+  );
+  app.use(
+    "/api/class",
+    compatibilityRouter(integrations.store.db, integrations.store.blobs),
+  );
+  if (process.env.PROOF_INTEGRATIONS_ENABLED === "true")
+    app.use("/api/integrations", integrationApi(integrations, oauth));
+} else
   app.use("/api/v1", (_req, res) =>
     res.status(503).json({
       error:
         "The persistent backend requires DATABASE_URL and a running worker.",
     }),
   );
-}
+app.get("/api/integrations/configuration", (_req, res) =>
+  res.json({ mcpEnabled: false, platforms: [] }),
+);
+app.use("/api/integrations", (_req, res) =>
+  res.status(503).json({
+    error: "Durable integrations are not enabled on this deployment.",
+  }),
+);
 
 if (hosted) app.get("/", (_req, res) => res.redirect("/app"));
 app.use("/api/class", classroomRouter());
@@ -197,6 +243,7 @@ if (process.env.NODE_ENV === "production") {
   });
   app.use(vite.middlewares);
 }
+integrationErrors(app);
 app.use(
   (
     error: unknown,
