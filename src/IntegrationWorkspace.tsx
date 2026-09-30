@@ -1,4 +1,26 @@
 import { useEffect, useState, type FormEvent } from "react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Check,
+  FileCheck2,
+  Link2,
+  MessageSquare,
+  RefreshCw,
+  ShieldCheck,
+  Unplug,
+} from "lucide-react";
+import { api, type Session } from "./studio-api";
+import { evidenceLocator, integrationFindingState } from "./integration-report";
+import { useStudioSession } from "./studio-session";
+import {
+  citationLabel,
+  eligibilityLabel,
+  processingLabel,
+  runStatusLabel,
+} from "./studio-status";
+import { appRoutes } from "./app-navigation";
+import { mcpPlatforms, type McpConfiguration } from "./mcp-connection";
 import type {
   ResultFinding,
   Evidence,
@@ -7,11 +29,6 @@ import type {
 import "./integrations.css";
 import McpConnectionGuide from "./McpConnectionGuide";
 
-type Session = {
-  authenticated: boolean;
-  user?: { id: string; name: string };
-  provider?: string;
-};
 type LibraryItem = {
   id: string;
   version: string;
@@ -45,47 +62,29 @@ type Report = {
   sources?: { id: string; title: string; access: string }[];
   result?: { notices?: string[] };
 };
-async function api<T>(
-  url: string,
-  data?: unknown,
-  method = data ? "POST" : "GET",
-): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    credentials: "same-origin",
-    headers:
-      data instanceof FormData
-        ? undefined
-        : { "Content-Type": "application/json" },
-    body:
-      data === undefined
-        ? undefined
-        : data instanceof FormData
-          ? data
-          : JSON.stringify(data),
-  });
-  const result = await response.json();
-  if (!response.ok)
-    throw Error(result.message || result.error || "The request failed.");
-  return result;
-}
 const prefix = "/api/integrations";
 export default function IntegrationWorkspace() {
   const reportId = /^\/app\/checks\/([a-f0-9-]+)$/.exec(
     window.location.pathname,
   )?.[1];
-  const [session, setSession] = useState<Session>();
+  const { session, setSession, error: sessionError } = useStudioSession();
+  const [tab, setTab] = useState<"connections" | "library" | "check">(
+    window.location.hash === "#library"
+      ? "library"
+      : window.location.hash === "#check"
+        ? "check"
+        : "connections",
+  );
+  const [configurationError, setConfigurationError] = useState("");
+  const [grantsError, setGrantsError] = useState("");
+  const [refreshingConnections, setRefreshingConnections] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<Report>();
   const [evidence, setEvidence] = useState<Record<string, Evidence>>({});
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
-  const [config, setConfig] = useState<{
-    mcpEnabled: boolean;
-    mcpUrl?: string;
-    platforms?: string[];
-  }>();
+  const [config, setConfig] = useState<McpConfiguration>();
   const [text, setText] = useState("");
   const [kind, setKind] = useState("check_facts");
   const [selected, setSelected] = useState<Selection[]>([]);
@@ -105,12 +104,39 @@ export default function IntegrationWorkspace() {
     );
     setLibraryOffset(result.nextOffset);
   };
-  const refreshGrants = async () =>
-    setGrants((await api<{ grants: Grant[] }>(`${prefix}/grants`)).grants);
+  const refreshGrants = async () => {
+    const result = await api<{ grants: Grant[] }>(`${prefix}/grants`);
+    setGrants(result.grants);
+    setGrantsError("");
+  };
+  const refreshConfig = async () => {
+    try {
+      setConfig(await api<McpConfiguration>(`${prefix}/configuration`));
+      setConfigurationError("");
+    } catch (e) {
+      setConfig(undefined);
+      setConfigurationError((e as Error).message);
+    }
+  };
+  const refreshConnections = async () => {
+    setRefreshingConnections(true);
+    await Promise.allSettled([
+      refreshConfig(),
+      refreshGrants().catch((e) => setGrantsError(e.message)),
+    ]);
+    setRefreshingConnections(false);
+  };
   useEffect(() => {
-    api<Session>("/api/session")
-      .then(setSession)
-      .catch((e) => setError(e.message));
+    const changeTab = () =>
+      setTab(
+        window.location.hash === "#library"
+          ? "library"
+          : window.location.hash === "#check"
+            ? "check"
+            : "connections",
+      );
+    window.addEventListener("hashchange", changeTab);
+    return () => window.removeEventListener("hashchange", changeTab);
   }, []);
   useEffect(() => {
     if (!session?.user) return;
@@ -134,13 +160,8 @@ export default function IntegrationWorkspace() {
         clearTimeout(timer);
       };
     }
-    void Promise.all([
-      refreshLibrary(),
-      refreshGrants(),
-      api<{ mcpEnabled: boolean; mcpUrl?: string; platforms?: string[] }>(
-        `${prefix}/configuration`,
-      ).then(setConfig),
-    ]).catch((e) => setError(e.message));
+    void refreshLibrary().catch((e) => setError(e.message));
+    void refreshConnections();
   }, [session?.user?.id, reportId]);
   useEffect(() => {
     if (!importJob || !["queued", "running"].includes(importJob.status)) return;
@@ -215,20 +236,35 @@ export default function IntegrationWorkspace() {
         : [...old, { id: s.id, version: s.version }],
     );
   return (
-    <main className="proof-integrations">
-      <header>
-        <a className="integration-brand" href="/app">
+    <main className="proof-integrations proof-connections-workspace">
+      <header className="proof-connections-topbar">
+        <a className="integration-brand" href={appRoutes.home}>
+          <img
+            src="/images/proof-logo-drawn-v1.png"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            alt=""
+          />
           Proof
         </a>
-        <nav>
-          <a href="/app">Writing</a>
-          <a href="/app/integrations">Checks & connections</a>
+        <nav aria-label="Workspace">
+          <a href={appRoutes.home}>
+            <ArrowLeft size={15} />
+            Back to workspace
+          </a>
+          <a href={appRoutes.settings}>Settings</a>
         </nav>
-        {session?.user && <span>{session.user.name}</span>}
+        {session?.user && (
+          <a className="proof-connections-account" href={appRoutes.account}>
+            <span>{session.user.name.slice(0, 2).toUpperCase()}</span>
+            {session.user.name}
+          </a>
+        )}
       </header>
-      {error && (
+      {(error || sessionError) && (
         <p className="integration-error" role="alert">
-          {error}
+          {error || sessionError}
         </p>
       )}
       {!session ? (
@@ -284,7 +320,8 @@ export default function IntegrationWorkspace() {
             {report ? (
               <>
                 <p role="status">
-                  {report.status} {report.progress && `· ${report.progress}`}
+                  {runStatusLabel(report.status)}{" "}
+                  {report.progress && `· ${report.progress}`}
                 </p>
                 {report.error && <p role="alert">{report.error}</p>}
                 {report.budgetUsd !== undefined && (
@@ -336,15 +373,19 @@ export default function IntegrationWorkspace() {
           </section>
           {report?.findings?.map((f) => (
             <article className="integration-panel" key={f.id}>
-              <p className="integration-verdict">
-                {f.support.replaceAll("_", " ")} ·{" "}
-                {f.coverage.replaceAll("_", " ")}
+              <p
+                className={`integration-verdict is-${integrationFindingState(f).tone}`}
+              >
+                {integrationFindingState(f).label}
               </p>
               <h2>{f.text}</h2>
               <p>{f.explanation}</p>
               <p className="integration-muted">
-                Source eligibility: {f.sourceEligibility.replaceAll("_", " ")} ·
-                Citation correctness not checked
+                Claim support {f.support.replaceAll("_", " ")} · Source
+                eligibility {f.sourceEligibility.replaceAll("_", " ")} ·
+                Citation {f.citationCorrectness.replaceAll("_", " ")} ·
+                Processing{" "}
+                {f.processing?.replaceAll("_", " ") || "not reported"}
               </p>
               {f.evidenceIds.map((id) => (
                 <div key={id}>
@@ -353,11 +394,7 @@ export default function IntegrationWorkspace() {
                       <summary>{evidence[id].title}</summary>
                       <blockquote>{evidence[id].text}</blockquote>
                       <p className="integration-muted">
-                        {evidence[id].locator.page !== undefined
-                          ? `PDF page ${evidence[id].locator.page}${evidence[id].locator.pageLabel ? `, printed label ${evidence[id].locator.pageLabel}` : ""}`
-                          : `Character offset ${evidence[id].locator.start}`}
-                        {evidence[id].locator.chapter &&
-                          `, supplied chapter ${evidence[id].locator.chapter}`}
+                        {evidenceLocator(evidence[id].locator)}
                       </p>
                       {evidence[id].url && (
                         <a
@@ -439,7 +476,9 @@ export default function IntegrationWorkspace() {
                   </button>
                 </div>
               ))}
-              {importJob && <p role="status">Import {importJob.status}</p>}
+              {importJob && (
+                <p role="status">Import {runStatusLabel(importJob.status)}</p>
+              )}
             </section>
           )}
           {!!report?.notices?.length && (
@@ -453,8 +492,194 @@ export default function IntegrationWorkspace() {
         </>
       ) : (
         <>
-          <section className="integration-panel">
-            <h1>Check a passage</h1>
+          <div className="proof-connections-page-heading">
+            <h1>
+              {tab === "connections"
+                ? "Connections"
+                : tab === "library"
+                  ? "Source library"
+                  : "Check a passage"}
+            </h1>
+            <p>
+              {tab === "connections"
+                ? "Connect your chat and control what it can access."
+                : tab === "library"
+                  ? "Manage original sources for your connected checks."
+                  : "Check exact text and keep the evidence in Proof."}
+            </p>
+          </div>
+          <nav className="proof-connections-tabs" aria-label="Connection tools">
+            <a
+              href="#connect"
+              className={tab === "connections" ? "active" : ""}
+              aria-current={tab === "connections" ? "page" : undefined}
+              onClick={() => setTab("connections")}
+            >
+              <MessageSquare size={17} />
+              Connections
+            </a>
+            <a
+              href="#library"
+              className={tab === "library" ? "active" : ""}
+              aria-current={tab === "library" ? "page" : undefined}
+              onClick={() => setTab("library")}
+            >
+              <BookOpen size={17} />
+              Source library
+            </a>
+            <a
+              href="#check"
+              className={tab === "check" ? "active" : ""}
+              aria-current={tab === "check" ? "page" : undefined}
+              onClick={() => setTab("check")}
+            >
+              <FileCheck2 size={17} />
+              Passage check
+            </a>
+          </nav>
+          <section
+            className="integration-panel proof-connection-panel"
+            id="connect"
+            hidden={tab !== "connections"}
+          >
+            <McpConnectionGuide
+              configuration={config}
+              configurationError={configurationError}
+              refreshing={refreshingConnections}
+              onRefresh={() => void refreshConnections()}
+              connections={grantsError ? [] : grants}
+            />
+            <div className="proof-connected-heading">
+              <h2>Connected accounts</h2>
+              <span>
+                {grantsError
+                  ? "Status unavailable"
+                  : refreshingConnections
+                    ? "Refreshing..."
+                    : `${grants.filter((grant) => grant.active).length} active`}
+              </span>
+            </div>
+            {grantsError && (
+              <p className="integration-error" role="alert">
+                Connections could not be refreshed. {grantsError}
+              </p>
+            )}
+            {!grants.length && !grantsError && !refreshingConnections && (
+              <div className="proof-connected-empty">
+                <Link2 size={23} />
+                <p>
+                  No accounts connected yet. Complete sign-in in your chat
+                  platform, then refresh the status above.
+                </p>
+              </div>
+            )}
+            {(!grantsError ? grants : []).map((g) => (
+              <div key={g.id} className="integration-grant">
+                <div className="proof-connected-account-heading">
+                  <div>
+                    <img
+                      src={`/images/ai/${mcpPlatforms.find((platform) => platform.id === g.platform)?.logo || "openai.svg"}`}
+                      alt=""
+                      width="25"
+                      height="25"
+                    />
+                    <h3>
+                      {mcpPlatforms.find(
+                        (platform) => platform.id === g.platform,
+                      )?.name || g.platform}
+                    </h3>
+                  </div>
+                  <span className={g.active ? "is-connected" : ""}>
+                    {g.active ? <Check size={13} /> : <Unplug size={13} />}
+                    {g.active ? "Connected" : "Disconnected"}
+                  </span>
+                </div>
+                {g.active && (
+                  <>
+                    <fieldset>
+                      <legend>Sources shared with this platform</legend>
+                      {!library.length && (
+                        <p className="integration-muted">
+                          Add original sources in the source library before
+                          sharing them.
+                        </p>
+                      )}
+                      {library.map((s) => (
+                        <label key={s.id} className="integration-selection">
+                          <input
+                            type="checkbox"
+                            checked={g.sourceIds.includes(s.id)}
+                            disabled={busy}
+                            onChange={(e) =>
+                              void act(async () => {
+                                const sourceIds = e.target.checked
+                                  ? [...g.sourceIds, s.id]
+                                  : g.sourceIds.filter((id) => id !== s.id);
+                                await api(
+                                  `${prefix}/grants/${g.id}/sources`,
+                                  { sourceIds },
+                                  "PUT",
+                                );
+                                await refreshGrants();
+                              })
+                            }
+                          />
+                          {s.title}
+                        </label>
+                      ))}
+                    </fieldset>
+                    <button
+                      className="proof-connection-disconnect"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () => {
+                          await api(
+                            `${prefix}/grants/${g.id}`,
+                            undefined,
+                            "DELETE",
+                          );
+                          await refreshGrants();
+                        })
+                      }
+                    >
+                      <Unplug size={15} />
+                      Disconnect{" "}
+                      {mcpPlatforms.find(
+                        (platform) => platform.id === g.platform,
+                      )?.name || g.platform}
+                    </button>
+                  </>
+                )}
+                {!g.active && (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        await api(`${prefix}/grants/${g.id}/reconnect`, {});
+                        await refreshGrants();
+                      })
+                    }
+                  >
+                    <RefreshCw size={15} />
+                    Allow reconnection
+                  </button>
+                )}
+              </div>
+            ))}
+            <p className="integration-muted proof-connection-permissions-note">
+              <ShieldCheck size={15} />
+              Disconnecting revokes this platform's access and cancels its
+              unfinished checks. Already approved source imports may finish.
+              Stored sources and finished work remain in Proof until you delete
+              them.
+            </p>
+          </section>
+          <section
+            className="integration-panel"
+            id="check"
+            hidden={tab !== "check"}
+          >
+            <h2>Check a passage</h2>
             <form onSubmit={start}>
               <label>
                 Workflow
@@ -478,7 +703,9 @@ export default function IntegrationWorkspace() {
               {kind === "check_sources" && (
                 <fieldset>
                   <legend>Selected original sources</legend>
-                  {!library.length && <p>Import a source below first.</p>}
+                  {!library.length && (
+                    <p>Add a source in the source library first.</p>
+                  )}
                   {library.map((s) => (
                     <div key={s.id}>
                       <label className="integration-selection">
@@ -541,7 +768,11 @@ export default function IntegrationWorkspace() {
               </button>
             </form>
           </section>
-          <section className="integration-panel">
+          <section
+            className="integration-panel"
+            id="library"
+            hidden={tab !== "library"}
+          >
             <h2>Your source library</h2>
             <form onSubmit={upload}>
               <label>
@@ -604,7 +835,7 @@ export default function IntegrationWorkspace() {
             </form>
             {importJob && (
               <div role="status">
-                <p>Import {importJob.status}</p>
+                <p>Import {runStatusLabel(importJob.status)}</p>
                 {importJob.error && <p>{importJob.error}</p>}
                 {importJob.result?.notices?.map((n, i) => (
                   <p key={i}>{n}</p>
@@ -719,82 +950,6 @@ export default function IntegrationWorkspace() {
                 More sources
               </button>
             )}
-          </section>
-          <section className="integration-panel" id="connect">
-            <McpConnectionGuide configuration={config} />
-            <h3>Connected accounts</h3>
-            {!grants.length && <p>No platforms are connected yet.</p>}
-            {grants.map((g) => (
-              <div key={g.id} className="integration-grant">
-                <h3>{g.platform === "chatgpt" ? "ChatGPT" : "Claude"}</h3>
-                <p>{g.active ? "Connected" : "Disconnected"}</p>
-                {g.active && (
-                  <>
-                    <fieldset>
-                      <legend>Sources shared with this platform</legend>
-                      {library.map((s) => (
-                        <label key={s.id} className="integration-selection">
-                          <input
-                            type="checkbox"
-                            checked={g.sourceIds.includes(s.id)}
-                            disabled={busy}
-                            onChange={(e) =>
-                              void act(async () => {
-                                const sourceIds = e.target.checked
-                                  ? [...g.sourceIds, s.id]
-                                  : g.sourceIds.filter((id) => id !== s.id);
-                                await api(
-                                  `${prefix}/grants/${g.id}/sources`,
-                                  { sourceIds },
-                                  "PUT",
-                                );
-                                await refreshGrants();
-                              })
-                            }
-                          />
-                          {s.title}
-                        </label>
-                      ))}
-                    </fieldset>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await api(
-                            `${prefix}/grants/${g.id}`,
-                            undefined,
-                            "DELETE",
-                          );
-                          await refreshGrants();
-                        })
-                      }
-                    >
-                      Disconnect{" "}
-                      {g.platform === "chatgpt" ? "ChatGPT" : "Claude"}
-                    </button>
-                  </>
-                )}
-                {!g.active && (
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void act(async () => {
-                        await api(`${prefix}/grants/${g.id}/reconnect`, {});
-                        await refreshGrants();
-                      })
-                    }
-                  >
-                    Allow reconnection
-                  </button>
-                )}
-              </div>
-            ))}
-            <p className="integration-muted">
-              Disconnecting revokes this platform's access and cancels its
-              unfinished checks. Already approved source imports may finish.
-              Stored sources and finished work remain in Proof until you delete
-              them.
-            </p>
           </section>
         </>
       )}

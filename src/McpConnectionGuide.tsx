@@ -1,187 +1,307 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, ArrowUpRight, MessageSquare } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  CircleAlert,
+  Copy,
+  LoaderCircle,
+  MessageSquare,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
+import {
+  connectionState,
+  mcpPlatforms,
+  type McpConfiguration,
+  type McpPlatform,
+} from "./mcp-connection";
 import "./mcp-connect.css";
 
 type Props = {
-  configuration?: {
-    mcpEnabled: boolean;
-    mcpUrl?: string;
-    platforms?: string[];
-  };
+  configuration?: McpConfiguration;
   publicGuide?: boolean;
+  configurationError?: string;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  connections?: { platform: string; active: boolean }[];
 };
+const example =
+  "Proof, check the factual claims in this passage. Show the evidence and anything you could not verify: [paste your passage]";
+
 export default function McpConnectionGuide({
   configuration,
   publicGuide = false,
+  configurationError = "",
+  refreshing = false,
+  onRefresh,
+  connections = [],
 }: Props) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (window.location.hash === "#connect")
-      document.getElementById("connect")?.scrollIntoView({ block: "start" });
-  }, []);
+  const inputId = useId();
+  const [selectedPlatform, setSelectedPlatform] =
+    useState<McpPlatform>("chatgpt");
+  const [copied, setCopied] = useState<"url" | "prompt" | "">("");
   const [copyError, setCopyError] = useState("");
-  const enabled = configuration?.mcpEnabled && !!configuration.mcpUrl;
-  async function copyUrl() {
-    if (!enabled) return;
+  const state = connectionState(configuration);
+  const platform = mcpPlatforms.find(
+    (option) => option.id === selectedPlatform,
+  )!;
+  const available =
+    state.ready && !!configuration?.platforms?.includes(selectedPlatform);
+  const connected = connections.some(
+    (connection) =>
+      connection.platform === selectedPlatform && connection.active,
+  );
+  useEffect(() => {
+    setCopied("");
+    setCopyError("");
+  }, [configuration?.mcpUrl, selectedPlatform]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(""), 3500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  async function copy(value: string, kind: "url" | "prompt") {
     try {
-      await navigator.clipboard.writeText(configuration!.mcpUrl!);
-      setCopied(true);
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
       setCopyError("");
     } catch {
-      setCopyError("Copy the connection URL from the field above.");
+      setCopyError(
+        kind === "url"
+          ? "Select the server URL and copy it manually."
+          : "Select the example passage and copy it manually.",
+      );
     }
   }
   return (
     <div className="proof-mcp-guide">
       <div className="proof-mcp-intro">
-        <MessageSquare size={26} aria-hidden="true" />
+        <span className="proof-mcp-intro-icon">
+          <MessageSquare size={24} aria-hidden="true" />
+        </span>
         <div>
-          <h2>Use Proof from ChatGPT or Claude</h2>
+          <h2>Connect your chat</h2>
           <p>
-            Check a passage, compare it with your sources, or find research.
-            Open the saved report to read the evidence.
+            Use Proof in ChatGPT or Claude. Your sources, permissions, and saved
+            evidence stay in this workspace.
           </p>
         </div>
       </div>
-      {publicGuide ? (
+      {publicGuide && (
         <div className="proof-mcp-url">
           <p>
-            Remote MCP connects your chat to Proof. Setup is available when your
-            Proof deployment has MCP enabled.
+            Sign in to Proof to get the server URL and see which connections
+            this deployment supports.
           </p>
           <a href="/app/integrations#connect">
-            Open connection settings{" "}
-            <ArrowUpRight size={17} aria-hidden="true" />
+            Open connection settings <ArrowRight size={16} />
           </a>
         </div>
-      ) : enabled ? (
-        <div className="proof-mcp-url">
-          <label htmlFor="proof-mcp-url">Your Proof connection URL</label>
-          <div className="proof-mcp-copy">
-            <input
-              id="proof-mcp-url"
-              readOnly
-              value={configuration!.mcpUrl}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <button type="button" onClick={() => void copyUrl()}>
-              {copied ? <Check size={16} /> : <Copy size={16} />}{" "}
-              {copied ? "Copied" : "Copy URL"}
+      )}
+      <div
+        className="proof-mcp-platform-picker"
+        aria-label="Choose a chat platform"
+      >
+        {mcpPlatforms.map((option) => {
+          const activeGrant = connections.some(
+            (connection) =>
+              connection.platform === option.id && connection.active,
+          );
+          const supported =
+            state.ready && configuration?.platforms?.includes(option.id);
+          return (
+            <button
+              type="button"
+              aria-pressed={selectedPlatform === option.id}
+              className={selectedPlatform === option.id ? "is-selected" : ""}
+              key={option.id}
+              onClick={() => setSelectedPlatform(option.id)}
+            >
+              <img
+                src={`/images/ai/${option.logo}`}
+                width="28"
+                height="28"
+                alt=""
+              />
+              <span>
+                <strong>{option.name}</strong>
+                <small>
+                  {publicGuide
+                    ? "See setup steps"
+                    : activeGrant
+                      ? "Connected"
+                      : supported
+                        ? "Available to connect"
+                        : configuration
+                          ? "Setup unavailable"
+                          : configurationError
+                            ? "Could not load settings"
+                            : "Checking availability"}
+                </small>
+              </span>
+              {selectedPlatform === option.id && <Check size={17} />}
             </button>
-          </div>
-          <p role="status">
-            {copyError ||
-              (copied
-                ? "Connection URL copied."
-                : "Use this URL for the remote MCP server. Sign in with your Proof account.")}
-          </p>
+          );
+        })}
+      </div>
+      {!publicGuide && (
+        <>
+          {configurationError ? (
+            <div className="proof-mcp-unavailable" role="alert">
+              <CircleAlert size={18} />
+              <div>
+                <strong>Connection settings could not be loaded</strong>
+                <p>{configurationError}</p>
+              </div>
+              {onRefresh && (
+                <button type="button" onClick={onRefresh} disabled={refreshing}>
+                  <RefreshCw size={15} />
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : !state.ready || !available ? (
+            <div className="proof-mcp-unavailable" role="status">
+              {state.reason === "loading" ? (
+                <LoaderCircle className="proof-mcp-spin" size={18} />
+              ) : (
+                <CircleAlert size={18} />
+              )}
+              <div>
+                <strong>
+                  {state.reason === "loading"
+                    ? "Checking connection settings"
+                    : "Connection setup unavailable"}
+                </strong>
+                <p>
+                  {state.reason === "loading"
+                    ? "Reading this deployment's server configuration."
+                    : state.reason === "disabled"
+                      ? "MCP is not enabled on this deployment. Your workspace owner needs to finish the server setup."
+                      : state.reason === "invalid_url"
+                        ? "This deployment needs a valid public HTTPS server URL before chat platforms can connect."
+                        : state.reason === "no_platforms"
+                          ? "No supported chat platform is configured on this deployment."
+                          : `${platform.name} is not enabled on this deployment. Choose another available platform or ask your workspace owner to finish setup.`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="proof-mcp-url">
+              <div className="proof-mcp-url-heading">
+                <label htmlFor={inputId}>Proof server URL</label>
+                <span>
+                  <ShieldCheck size={13} />
+                  OAuth sign-in
+                </span>
+              </div>
+              <div className="proof-mcp-copy">
+                <input
+                  id={inputId}
+                  readOnly
+                  value={state.url}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  onClick={() => void copy(state.url!, "url")}
+                >
+                  {copied === "url" ? <Check size={16} /> : <Copy size={16} />}
+                  {copied === "url" ? "Copied" : "Copy URL"}
+                </button>
+              </div>
+              <p role="status">
+                {copied === "url"
+                  ? "Server URL copied. Paste it into your chat platform's connector settings."
+                  : "Use this exact URL when adding Proof as a remote MCP server."}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+      <section className="proof-mcp-setup" aria-labelledby={`${inputId}-steps`}>
+        <div className="proof-mcp-setup-heading">
+          <h3 id={`${inputId}-steps`}>
+            {connected
+              ? `Use Proof in ${platform.name}`
+              : `Set up ${platform.name}`}
+          </h3>
+          <a
+            href={platform.settingsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open {platform.name}
+            <ArrowUpRight size={15} />
+          </a>
         </div>
-      ) : (
-        <p className="proof-mcp-unavailable" role="status">
-          {configuration
-            ? "MCP connections are not enabled on this deployment yet. Your workspace owner needs to finish setup before you can connect."
-            : "Checking this deployment's connection settings..."}
+        <ol className="proof-mcp-steps">
+          {platform.steps.map((step, index) => (
+            <li key={step}>
+              <span>{index + 1}</span>
+              <p>{step}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="proof-mcp-note">{platform.note}</p>
+        <a
+          className="proof-mcp-docs"
+          href={platform.guide}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {platform.name} setup guide <ArrowUpRight size={14} />
+        </a>
+      </section>
+      {!publicGuide && (
+        <div className="proof-mcp-confirm">
+          <ShieldCheck size={17} />
+          <div>
+            <strong>
+              {connected
+                ? `${platform.name} has an active Proof connection`
+                : "Finish sign-in to connect"}
+            </strong>
+            <p>
+              {connected
+                ? "Manage shared sources and revoke access below."
+                : "Adding the URL alone does not connect your account. Complete OAuth sign-in in your chat platform, then refresh here."}
+            </p>
+          </div>
+          {onRefresh && (
+            <button type="button" onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw
+                size={15}
+                className={refreshing ? "proof-mcp-spin" : ""}
+              />
+              {refreshing ? "Refreshing" : "Refresh status"}
+            </button>
+          )}
+        </div>
+      )}
+      <div className="proof-mcp-example">
+        <div>
+          <h3>Try your first check</h3>
+          <button type="button" onClick={() => void copy(example, "prompt")}>
+            {copied === "prompt" ? <Check size={15} /> : <Copy size={15} />}
+            {copied === "prompt" ? "Copied" : "Copy prompt"}
+          </button>
+        </div>
+        <blockquote>{example}</blockquote>
+      </div>
+      {copyError && (
+        <p className="proof-mcp-copy-error" role="alert">
+          {copyError}
         </p>
       )}
-      <div className="proof-mcp-platforms">
-        <article>
-          <h3>ChatGPT</h3>
-          {!publicGuide &&
-            enabled &&
-            configuration?.platforms &&
-            !configuration.platforms.includes("chatgpt") && (
-              <p className="proof-mcp-unavailable">
-                ChatGPT is not enabled on this deployment.
-              </p>
-            )}
-          <ol>
-            <li>
-              Open ChatGPT on the web. If your workspace permits custom apps,
-              enable developer mode in Apps settings.
-            </li>
-            <li>
-              Choose Apps, then Create. Name the app Proof and enter the
-              connection URL.
-            </li>
-            <li>
-              Select OAuth, scan the tools, and sign in to Proof. Review the
-              permissions, then create the app.
-            </li>
-            <li>
-              Select Proof in a chat and ask it to check the exact passage you
-              provide.
-            </li>
-          </ol>
-          <p className="proof-mcp-note">
-            Starting checks requires full MCP tool access. Your ChatGPT plan and
-            workspace permissions determine whether this is available.
-          </p>
-          <a
-            href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            ChatGPT setup guide <ArrowUpRight size={14} aria-hidden="true" />
-          </a>
-        </article>
-        <article>
-          <h3>Claude</h3>
-          {!publicGuide &&
-            enabled &&
-            configuration?.platforms &&
-            !configuration.platforms.includes("claude") && (
-              <p className="proof-mcp-unavailable">
-                Claude is not enabled on this deployment.
-              </p>
-            )}
-          <ol>
-            <li>Open Customize, then Connectors in Claude.</li>
-            <li>
-              Choose Add custom connector and enter the Proof connection URL. A
-              team owner may need to add it first.
-            </li>
-            <li>
-              Connect and sign in with your Proof account. Review the requested
-              permissions.
-            </li>
-            <li>
-              Enable Proof for the conversation from the chat's connectors menu.
-            </li>
-          </ol>
-          <p className="proof-mcp-note">
-            If advanced settings request client details, get the registered
-            client information from your workspace owner.
-          </p>
-          <a
-            href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Claude setup guide <ArrowUpRight size={14} aria-hidden="true" />
-          </a>
-        </article>
-      </div>
-      <div className="proof-mcp-example">
-        <p>Try this in your chat</p>
-        <blockquote>
-          "Proof, check the factual claims in this passage. Show the evidence
-          and anything you could not verify: [paste your passage]"
-        </blockquote>
-      </div>
-      <p className="proof-mcp-note">
-        For a source check, upload the original files to Proof and choose which
-        sources to share in connection settings. Disconnect there to revoke
-        platform access. Proof checks the text you submit and keeps uncertainty
-        visible.
-      </p>
       <details className="proof-mcp-help">
         <summary>Can't connect?</summary>
         <p>
-          Use the URL from your signed-in Proof workspace. Remote connectors
-          need a reachable HTTPS server. If the connection option is missing,
-          check your chat account and workspace permissions. If sign-in fails or
-          expires, reconnect or ask your workspace owner to verify the OAuth
-          setup.
+          Use the URL from this workspace. Your chat platform needs to reach the
+          server over public HTTPS. If custom connectors are missing, check your
+          chat plan and workspace permissions. If sign-in fails, ask your
+          workspace owner to check the OAuth client setup.
         </p>
       </details>
     </div>
