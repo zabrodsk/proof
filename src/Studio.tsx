@@ -175,6 +175,7 @@ export default function Studio({ session }: { session: Session }) {
   const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
   const workspaceSearchRef = useRef<HTMLDivElement>(null);
   const [modal, setModal] = useState<"new" | "document" | null>(null);
+  const [newWorkMode, setNewWorkMode] = useState<"upload" | "paste">("upload");
   const [draft, setDraft] = useState("");
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
@@ -597,7 +598,10 @@ export default function Studio({ session }: { session: Session }) {
               className="ps-rail-button ps-rail-add"
               aria-label="Add new work"
               data-sidebar-tooltip="Add new work"
-              onClick={() => setModal("new")}
+              onClick={() => {
+                setNewWorkMode("upload");
+                setModal("new");
+              }}
             >
               <Plus size={22} />
             </button>
@@ -819,7 +823,13 @@ export default function Studio({ session }: { session: Session }) {
             </button>
           </div>
           <div className="ps-sidebar-inner">
-            <button className="ps-add" onClick={() => setModal("new")}>
+            <button
+              className="ps-add"
+              onClick={() => {
+                setNewWorkMode("upload");
+                setModal("new");
+              }}
+            >
               <Plus size={18} />
               Add new work
             </button>
@@ -1195,7 +1205,10 @@ export default function Studio({ session }: { session: Session }) {
               searchQuery={search}
               onClearSearch={() => setSearch("")}
               onOpen={openWork}
-              onNew={() => setModal("new")}
+              onNew={(mode = "upload") => {
+                setNewWorkMode(mode);
+                setModal("new");
+              }}
             />
           ) : (
             <>
@@ -1300,6 +1313,7 @@ export default function Studio({ session }: { session: Session }) {
           </div>
           {modal === "new" && (
             <NewStudioWork
+              initialMode={newWorkMode}
               busy={busy}
               onCreate={addWork}
               onCancel={() => setModal(null)}
@@ -1522,7 +1536,7 @@ function LibraryDashboard({
   searchQuery: string;
   onClearSearch: () => void;
   onOpen: (id: string, section?: Section) => void;
-  onNew: () => void;
+  onNew: (mode?: "upload" | "paste") => void;
 }) {
   const [summaries, setSummaries] = useState<Record<string, WorkSummary>>({});
   const [loading, setLoading] = useState(true);
@@ -1669,7 +1683,7 @@ function LibraryDashboard({
           </div>
           <button
             className="ps-featured-action"
-            onClick={searching ? onClearSearch : onNew}
+            onClick={() => (searching ? onClearSearch() : onNew())}
           >
             {searching ? "Clear search" : "Add new work"}{" "}
             <ArrowRight size={19} />
@@ -1780,7 +1794,7 @@ function LibraryDashboard({
       <section className="ps-quick-actions">
         <h2>Quick actions</h2>
         <div className="ps-quick-grid">
-          <button onClick={onNew}>
+          <button onClick={() => onNew("upload")}>
             <span>
               <Upload size={24} />
             </span>
@@ -1789,7 +1803,7 @@ function LibraryDashboard({
               <small>PDF, DOCX, or text</small>
             </span>
           </button>
-          <button onClick={onNew}>
+          <button onClick={() => onNew("paste")}>
             <span>
               <FileText size={24} />
             </span>

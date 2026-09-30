@@ -13,10 +13,12 @@ import StudioWorkIcon, { workIconOptions } from "./StudioWorkIcon";
 import type { WorkIconName } from "./studio-api";
 
 export default function NewStudioWork({
+  initialMode = "upload",
   busy,
   onCreate,
   onCancel,
 }: {
+  initialMode?: "upload" | "paste";
   busy: boolean;
   onCreate: (title: string, text: string, icon: WorkIconName) => void;
   onCancel: () => void;
@@ -27,7 +29,7 @@ export default function NewStudioWork({
   const iconTrigger = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const [filename, setFilename] = useState("");
-  const [mode, setMode] = useState<"upload" | "paste">("upload");
+  const [mode, setMode] = useState<"upload" | "paste">(initialMode);
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
