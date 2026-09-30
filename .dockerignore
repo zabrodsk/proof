@@ -7,4 +7,3 @@ site
 output
 .playwright-mcp
 *.tar.gz
-tests
