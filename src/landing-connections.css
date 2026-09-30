@@ -1,18 +1,17 @@
-/* Public connection guide: the landing page's ink, paper and sage palette. */
+/* Open typography and ruled connection rows, using the landing palette. */
 .lp-mcp-section {
-  padding-block: 96px;
+  padding-block: 100px;
   scroll-margin-top: 90px;
 }
-.lp-connect-intro {
+.lp-connect {
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  gap: clamp(40px, 7vw, 100px);
-  align-items: center;
-  margin-bottom: 64px;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(48px, 8vw, 110px);
+  align-items: start;
 }
 .lp-connect-copy h2 {
   font:
-    700 clamp(40px, 4.8vw, 62px)/1.08 "Newsreader",
+    700 clamp(40px, 4.8vw, 60px)/1.08 "Newsreader",
     Georgia,
     serif;
   letter-spacing: -0.035em;
@@ -22,135 +21,35 @@
   font-style: normal;
 }
 .lp-connect-copy > p {
-  margin-top: 24px;
-  max-width: 470px;
-  font-size: 17px;
+  margin-top: 22px;
+  max-width: 410px;
+  font-size: 16px;
   line-height: 1.75;
   color: var(--lp-muted);
 }
 .lp-connect-copy .lp-connect-cta {
   display: inline-flex;
   align-items: center;
-  gap: 22px;
-  margin-top: 30px;
-  padding: 15px 22px;
-  background: var(--lp-accent);
-  border: 1px solid var(--lp-accent);
-  border-radius: 8px;
-  color: #fff;
+  gap: 18px;
+  margin-top: 26px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--lp-accent);
+  color: var(--lp-accent);
   font-weight: 600;
   font-size: 15px;
-  transition: background 160ms;
 }
 .lp-connect-copy .lp-connect-cta:hover {
-  background: var(--lp-accent-dark);
-}
-.lp-connect-paper {
-  position: relative;
-  padding: 30px 34px;
-  background: #edf5ef;
-  border: 1px solid #cadbce;
-  border-radius: 6px 12px 8px 5px;
-  box-shadow: 7px 8px 0 #e5ece5;
-  transform: rotate(1.5deg);
-}
-.lp-connect-paper::before {
-  content: "";
-  position: absolute;
-  width: 80px;
-  height: 24px;
-  background: #d5e2d4;
-  opacity: 0.85;
-  top: -12px;
-  left: calc(50% - 40px);
-  transform: rotate(-5deg);
-}
-.lp-connect-paper-heading {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  color: var(--lp-muted);
-}
-.lp-connect-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--lp-accent);
-}
-.lp-connect-paper blockquote {
-  font:
-    500 clamp(25px, 2.7vw, 34px)/1.28 "Newsreader",
-    Georgia,
-    serif;
-  letter-spacing: -0.02em;
-  margin: 25px 0 28px;
-}
-.lp-connect-paper-footer {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border-top: 1px dashed #b5c9b9;
-  padding-top: 20px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--lp-muted);
-}
-.lp-connect-paper-footer strong {
-  font-weight: 500;
-  color: var(--lp-ink);
-}
-.lp-connect-platforms {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  align-items: start;
+  color: var(--lp-accent-dark);
 }
 .lp-connect-platform {
-  border: 1px solid var(--lp-line);
-  border-radius: 16px;
-  background: #fff;
-  padding: 28px 30px 0;
+  border-bottom: 1px solid var(--lp-line);
 }
-.lp-connect-platform-heading {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-.lp-connect-platform-heading h3 {
-  flex: 1;
-  font:
-    600 25px/1.2 "Newsreader",
-    Georgia,
-    serif;
-  letter-spacing: -0.02em;
-}
-.lp-connect-platform-heading > svg {
-  color: #78917e;
-}
-.lp-connect-brand {
-  color-scheme: light;
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 1px solid var(--lp-line);
-  border-radius: 12px;
-  background: #fafbf9;
-}
-.lp-connect-platform > p {
-  margin: 18px 0 24px;
-  color: var(--lp-muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-.lp-connect-platform details {
+.lp-connect-platform:first-child {
   border-top: 1px solid var(--lp-line);
 }
 .lp-connect summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   cursor: pointer;
   list-style: none;
@@ -164,103 +63,101 @@
 .lp-connect details[open] > summary > svg {
   transform: rotate(45deg);
 }
-.lp-connect-platform summary {
-  padding-block: 20px;
-  font-size: 14px;
-  font-weight: 600;
+.lp-connect-platform > summary {
+  padding-block: 28px;
 }
-.lp-connect-platform ol {
-  margin: 0 0 20px;
-  padding-left: 22px;
+.lp-connect-platform summary h3 {
+  flex: 1;
+  font:
+    500 28px/1.2 "Newsreader",
+    Georgia,
+    serif;
+  letter-spacing: -0.02em;
 }
-.lp-connect-platform li {
-  padding: 0 0 14px 8px;
+.lp-connect-platform summary > span {
+  font-size: 12px;
+  color: var(--lp-muted);
+}
+.lp-connect-platform summary > img {
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* Keep the official adaptive favicon black on the light page in either OS theme. */
+.lp-connect-platform img[src$="chatgpt.svg"] {
+  filter: brightness(0);
+}
+.lp-connect-instructions {
+  padding: 0 0 26px 48px;
+}
+.lp-connect-instructions ol {
+  margin: 0 0 12px;
+  padding-left: 19px;
+}
+.lp-connect-instructions li {
+  padding: 0 0 14px 6px;
   font-size: 14px;
   line-height: 1.65;
 }
-.lp-connect-platform li::marker {
+.lp-connect-instructions li::marker {
   color: var(--lp-accent);
   font-weight: 600;
 }
-.lp-connect-platform .lp-connect-note {
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--lp-muted);
-  margin-bottom: 18px;
-}
-.lp-connect-guide-link {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 13px;
-  margin-bottom: 24px;
-  text-decoration: underline !important;
-  text-underline-offset: 4px;
-}
-.lp-connect-bottom {
-  display: grid;
-  grid-template-columns: 1fr 240px;
-  gap: 48px;
-  margin-top: 24px;
-  align-items: start;
-}
-.lp-connect-bottom > p,
+.lp-connect-instructions > p,
+.lp-connect-platforms > .lp-connect-note,
 .lp-connect-help p {
   font-size: 12px;
   line-height: 1.75;
   color: var(--lp-muted);
 }
-.lp-connect-bottom > p {
-  max-width: 660px;
+.lp-connect-instructions > a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  margin-top: 16px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.lp-connect-platforms > .lp-connect-note {
+  margin-top: 22px;
+  max-width: 420px;
+}
+.lp-connect-help {
+  margin-top: 14px;
 }
 .lp-connect-help summary {
+  justify-content: flex-start;
+  gap: 8px;
   font-size: 12px;
-  padding-block: 3px;
+  color: var(--lp-muted);
 }
 .lp-connect-help p {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 @media (max-width: 760px) {
   .lp-mcp-section {
     padding-block: 64px;
   }
-  .lp-connect-intro {
+  .lp-connect {
     grid-template-columns: 1fr;
-    gap: 44px;
-    margin-bottom: 40px;
+    gap: 36px;
   }
   .lp-connect-copy > p {
-    max-width: 560px;
-    font-size: 16px;
+    max-width: 520px;
   }
-  .lp-connect-paper {
-    margin-inline: 4px 10px;
-    padding: 26px;
-    transform: rotate(0.7deg);
+  .lp-connect-platform > summary {
+    padding-block: 24px;
+    gap: 12px;
   }
-  .lp-connect-platforms {
-    grid-template-columns: 1fr;
-    gap: 16px;
+  .lp-connect-platform summary h3 {
+    font-size: 26px;
   }
-  .lp-connect-platform {
-    padding-inline: 22px;
-  }
-  .lp-connect-bottom {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  .lp-connect-help {
-    max-width: 440px;
+  .lp-connect-instructions {
+    padding-left: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lp-connect summary > svg,
-  .lp-connect-copy .lp-connect-cta {
+  .lp-connect summary > svg {
     transition: none;
   }
-}
-
-/* Keep the official adaptive favicon black on the light card in either OS theme. */
-.lp-connect-brand img[src$="chatgpt.svg"] {
-  filter: brightness(0);
 }

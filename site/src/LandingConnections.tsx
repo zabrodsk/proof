@@ -1,12 +1,11 @@
 import { useEffect } from "react";
-import { ArrowRight, ArrowUpRight, Plus, FileCheck2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Plus } from "lucide-react";
 import "./landing-connections.css";
 
 const platforms = [
   {
     name: "ChatGPT",
     logo: "chatgpt.svg",
-    description: "Bring an evidence check into your next conversation.",
     steps: [
       "Open ChatGPT on the web. If your workspace permits custom apps, enable developer mode in Apps settings.",
       "Choose Apps, then Create. Name the app Proof and enter the connection URL from your Proof settings.",
@@ -20,7 +19,6 @@ const platforms = [
   {
     name: "Claude",
     logo: "claude.png",
-    description: "Ask about a claim. Follow it back to the source.",
     steps: [
       "Open Customize, then Connectors in Claude.",
       "Choose Add custom connector and enter the connection URL from your Proof settings. A team owner may need to add it first.",
@@ -44,68 +42,42 @@ export default function LandingConnections({
   }, []);
   return (
     <div className="lp-connect">
-      <div className="lp-connect-intro">
-        <div className="lp-connect-copy">
-          <h2>
-            Your chat.
-            <br />
-            <em>With the evidence.</em>
-          </h2>
-          <p>
-            Use Proof from ChatGPT or Claude. Check a passage, compare it with
-            your sources, or find research without leaving the conversation.
-          </p>
-          <a className="lp-connect-cta" href={settingsHref}>
-            Connect your chat <ArrowRight size={18} aria-hidden="true" />
-          </a>
-        </div>
-        <div className="lp-connect-paper">
-          <div className="lp-connect-paper-heading">
-            <span className="lp-connect-dot" />
-            Try this in your chat
-          </div>
-          <blockquote>
-            “Proof, check this passage. Show me the evidence and anything you
-            couldn’t verify.”
-          </blockquote>
-          <div className="lp-connect-paper-footer">
-            <FileCheck2 size={24} strokeWidth={1.5} aria-hidden="true" />
-            <span>
-              Add your passage.
-              <br />
-              <strong>Open the report to read the sources.</strong>
-            </span>
-          </div>
-        </div>
+      <div className="lp-connect-copy">
+        <h2>
+          Your chat.
+          <br />
+          <em>With the evidence.</em>
+        </h2>
+        <p>
+          Check claims and find sources from ChatGPT or Claude. Open your Proof
+          report to read the evidence.
+        </p>
+        <a className="lp-connect-cta" href={settingsHref}>
+          Connect your chat <ArrowRight size={18} aria-hidden="true" />
+        </a>
       </div>
       <div className="lp-connect-platforms">
         {platforms.map((platform) => (
-          <article className="lp-connect-platform" key={platform.name}>
-            <div className="lp-connect-platform-heading">
-              <span className="lp-connect-brand">
-                <img
-                  src={`/images/ai/${platform.logo}`}
-                  alt=""
-                  width="30"
-                  height="30"
-                />
-              </span>
-              <h3>Proof in {platform.name}</h3>
-              <ArrowUpRight size={22} strokeWidth={1.4} aria-hidden="true" />
-            </div>
-            <p>{platform.description}</p>
-            <details>
-              <summary>
-                How to connect <Plus size={18} aria-hidden="true" />
-              </summary>
+          <details className="lp-connect-platform" key={platform.name}>
+            <summary>
+              <img
+                src={`/images/ai/${platform.logo}`}
+                alt=""
+                width="32"
+                height="32"
+              />
+              <h3>{platform.name}</h3>
+              <span>How to connect</span>
+              <Plus size={18} aria-hidden="true" />
+            </summary>
+            <div className="lp-connect-instructions">
               <ol>
                 {platform.steps.map((step) => (
                   <li key={step}>{step}</li>
                 ))}
               </ol>
-              <p className="lp-connect-note">{platform.note}</p>
+              <p>{platform.note}</p>
               <a
-                className="lp-connect-guide-link"
                 href={platform.guide}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -113,18 +85,16 @@ export default function LandingConnections({
                 {platform.name} setup guide{" "}
                 <ArrowUpRight size={15} aria-hidden="true" />
               </a>
-            </details>
-          </article>
+            </div>
+          </details>
         ))}
-      </div>
-      <div className="lp-connect-bottom">
-        <p>
-          Connect through MCP in your Proof settings. Choose which sources to
-          share, and disconnect at any time. Your workspace needs MCP enabled.
+        <p className="lp-connect-note">
+          Choose which sources to share. Disconnect at any time. Requires MCP
+          enabled in your Proof workspace.
         </p>
         <details className="lp-connect-help">
           <summary>
-            Can’t connect? <Plus size={16} aria-hidden="true" />
+            Can't connect? <Plus size={14} aria-hidden="true" />
           </summary>
           <p>
             Use the connection URL from your signed-in Proof workspace. If the
