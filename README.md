@@ -325,13 +325,13 @@ PROOF_SMOKE_RESEARCH=true node --import tsx scripts/cloud-worker-smoke.ts
 ```
 
 `scripts/cloud-backend-smoke.ts` checks remote HTTP routes, signed uploads,
-durable findings, and event replay on a class-password deployment. It requires
-`PROOF_SMOKE_URL`, `PROOF_SMOKE_NAME`, and `PROOF_SMOKE_PASSWORD` for a provisioned
-synthetic account outside the class roster. It never registers an account or
-starts a local server. `PROOF_SMOKE_PROVIDER_CHECK=true` enables Jev assessment;
-`PROOF_SMOKE_RESEARCH=true` enables discovery and factual research. A WorkOS
-deployment requires a separately authenticated API check with a verified WorkOS
-session.
+durable findings, and event replay. Set `PROOF_SMOKE_URL` and either
+`PROOF_SMOKE_COOKIE` for an authenticated synthetic WorkOS session or
+`PROOF_SMOKE_NAME` and `PROOF_SMOKE_PASSWORD` for a provisioned synthetic
+class-password account outside the roster. The cookie is a secret and must not
+be printed or committed. The script never registers an account or starts a
+local server. `PROOF_SMOKE_PROVIDER_CHECK=true` enables Jev assessment;
+`PROOF_SMOKE_RESEARCH=true` enables discovery and factual research.
 
 ```sh
 npm run test:live
