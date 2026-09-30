@@ -107,12 +107,15 @@ Local waitlist signups are stored in `.data/waitlist.json`, or the path supplied
 
 ```sh
 npm test
+npm run test:backend
 npm run build
 npm run format:check
 npm run test:live
 # With Proof running in another terminal:
 npm run test:api
 ```
+
+The persistent backend (`server/backend/`, `npm run worker`) stores analysis runs in PostgreSQL and original files in private object storage. It is optional: without `DATABASE_URL` the existing in-memory class app still runs. Local Compose is `compose.backend.yml`. Hosted web and worker share one image; the worker uses `PROOF_PROCESS=worker` and `railway.worker.json`.
 
 The regular tests use fixtures and stubbed provider responses without credentials or network access. The live test uses the public BMJ example and calls the real scholarly providers and Jev, which consumes API usage. It writes its result to `/tmp/proof-live-audit.json`.
 

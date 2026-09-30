@@ -12,7 +12,13 @@
     "format": "prettier --write src server shared tests scripts vite.config.ts",
     "format:check": "prettier --check src server shared tests scripts vite.config.ts",
     "test:api": "node --import tsx scripts/api-smoke.ts",
-    "start:landing": "tsx server/landing.ts"
+    "start:landing": "tsx server/landing.ts",
+    "worker": "tsx server/worker.ts",
+    "db:migrate": "tsx scripts/migrate-backend.ts",
+    "test:backend": "node --import tsx --test tests/backend*.test.ts",
+    "test:firecrawl": "node --import tsx scripts/firecrawl-smoke.ts",
+    "model:prepare": "tsx scripts/prepare-model.ts",
+    "test:embeddings": "tsx scripts/embedding-smoke.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",
@@ -27,7 +33,14 @@
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "zod": "^4.1.0"
+    "zod": "^4.1.0",
+    "@aws-sdk/client-s3": "^3.1143.0",
+    "@aws-sdk/s3-request-presigner": "^3.1143.0",
+    "@huggingface/transformers": "^4.3.0",
+    "citeproc": "2.4.63",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.23.0",
+    "pg-boss": "^12.35.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
@@ -39,6 +52,10 @@
     "prettier": "^3.9.9",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vite": "^7.2.0"
+    "vite": "^7.2.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "^0.0.9",
+    "@napi-rs/canvas": "^1.0.9",
+    "@types/pg": "^8.23.1"
   }
 }
