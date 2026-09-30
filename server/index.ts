@@ -13,6 +13,10 @@ import { installAccess } from "./access.js";
 import { classroomRouter } from "./classroom.js";
 import { evidenceRouter } from "./evidence.js";
 import { discoveryRouter } from "./discovery.js";
+import { database, migrate } from "./backend/db.js";
+import { storage } from "./backend/storage.js";
+import { compatibilityRouter } from "./backend/compatibility.js";
+import { backendRouter } from "./backend/router.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
 if (hosted) app.set("trust proxy", 1);
@@ -51,6 +55,21 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "6mb" }));
 installAccess(app);
+if (process.env.DATABASE_URL) {
+  const db = database();
+  await migrate(db);
+  const blobs = storage();
+  app.use("/api/v1", backendRouter(db, blobs));
+  app.use("/api/class", compatibilityRouter(db, blobs));
+} else {
+  app.use("/api/v1", (_req, res) =>
+    res.status(503).json({
+      error:
+        "The persistent backend requires DATABASE_URL and a running worker.",
+    }),
+  );
+}
+
 if (hosted) app.get("/", (_req, res) => res.redirect("/app"));
 app.use("/api/class", classroomRouter());
 app.use("/api/class", discoveryRouter());

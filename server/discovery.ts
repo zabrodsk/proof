@@ -1,3 +1,8 @@
+import {
+  providerFetch as fetch,
+  openAlexUrl,
+  providerContext,
+} from "./backend/providers.js";
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -14,7 +19,9 @@ export async function discoverSources(
 ): Promise<SearchReport> {
   progress("Searching peer-reviewed journals with open full text");
   const r = await fetch(
-    `https://api.openalex.org/works?search=${encodeURIComponent(query)}&filter=type:article|review,primary_location.source.is_in_doaj:true,open_access.is_oa:true&per_page=12`,
+    openAlexUrl(
+      `https://api.openalex.org/works?search=${encodeURIComponent(query)}&filter=type:article|review,primary_location.source.is_in_doaj:true,open_access.is_oa:true&per_page=12`,
+    ),
     {
       signal: AbortSignal.timeout(20000),
       headers: {
