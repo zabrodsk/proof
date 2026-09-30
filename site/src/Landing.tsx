@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
-import McpConnectionGuide from "./McpConnectionGuide";
+import LandingConnections from "./LandingConnections";
 import { MotifIcon, InkFrame } from "./Drawn";
 
 const appHref =
@@ -48,6 +48,39 @@ function Wordmark() {
         proof<span>.</span>
       </span>
     </a>
+  );
+}
+
+const schoolLogos = [
+  { name: "Harvard University", file: "harvard.svg" },
+  { name: "Massachusetts Institute of Technology", file: "mit.svg" },
+  { name: "Stanford University", file: "stanford.svg" },
+  { name: "University of Oxford", file: "oxford.svg" },
+  { name: "Yale University", file: "yale.svg" },
+] as const;
+
+function SchoolLogoRow() {
+  return (
+    <section className="lp-schools" aria-label="University logos">
+      <div className="lp-schools-track">
+        {[false, true].map((duplicate) => (
+          <div
+            className="lp-schools-group"
+            key={String(duplicate)}
+            aria-hidden={duplicate || undefined}
+          >
+            {schoolLogos.map(({ name, file }) => (
+              <div className="lp-school-logo" key={file}>
+                <img
+                  src={`/images/schools/${file}`}
+                  alt={duplicate ? "" : name}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -614,6 +647,7 @@ export default function Landing() {
             </div>
           </div>
         </section>
+        <SchoolLogoRow />
         <section
           className="lp-used-for lp-container"
           aria-labelledby="used-for"
@@ -656,7 +690,9 @@ export default function Landing() {
           </div>
         </section>
         <section id="connect" className="lp-mcp-section lp-container">
-          <McpConnectionGuide publicGuide />
+          <LandingConnections
+            settingsHref={`${appHref.replace(/\/$/, "")}/integrations#connect`}
+          />
         </section>
         <section className="lp-faq-section lp-container" id="questions">
           <div className="lp-faq-intro">
