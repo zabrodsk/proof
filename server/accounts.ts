@@ -36,6 +36,18 @@ export function accountStore(
   const find = (name: string) =>
     accounts.find((a) => a.name.toLowerCase() === name.toLowerCase());
   return {
+    workos(id: string, name: string) {
+      let account = accounts.find((a) => a.id === id);
+      if (!account) {
+        account = { id, name, salt: "", hash: "", inputTokens: 0, jevUsd: 0 };
+        accounts.push(account);
+        save();
+      } else if (account.name !== name) {
+        account.name = name;
+        save();
+      }
+      return account;
+    },
     claimed: (name: string) => !!find(name),
     get: (id: string) => accounts.find((a) => a.id === id),
     create(name: string, password: string) {
@@ -56,7 +68,9 @@ export function accountStore(
     login(name: string, password: string) {
       const a = find(name);
       const hash = scryptSync(password, a?.salt || "dummy-salt", 64);
-      return a && timingSafeEqual(hash, Buffer.from(a.hash, "hex"))
+      return a &&
+        a.hash.length === 128 &&
+        timingSafeEqual(hash, Buffer.from(a.hash, "hex"))
         ? a
         : undefined;
     },

@@ -11,11 +11,13 @@
     "test:live": "node --import tsx scripts/live-smoke.ts",
     "format": "prettier --write src server shared tests scripts vite.config.ts",
     "format:check": "prettier --check src server shared tests scripts vite.config.ts",
-    "test:api": "node --import tsx scripts/api-smoke.ts"
+    "test:api": "node --import tsx scripts/api-smoke.ts",
+    "start:landing": "tsx server/landing.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",
     "@fontsource/newsreader": "^5.2.0",
+    "@workos-inc/node": "^11.0.0",
     "bot-avatars": "0.1.1",
     "express": "^5.1.0",
     "fast-xml-parser": "^5.3.0",

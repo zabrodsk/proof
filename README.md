@@ -21,7 +21,7 @@ The source of class requirements is the [assignment guide](https://docs.google.c
 
 The Dockerfile runs the Node server on `0.0.0.0:$PORT`. Set `PROOF_HOSTED=true`, `PROOF_ACCESS_KEY` to a random value of at least 24 characters, `TYPESAFE_API_KEY` as a secret, and `PROOF_USE_KEYCHAIN=false`. Startup fails if hosted access protection is missing. `/health` is public; API actions require a signed, secure, HTTP-only session cookie. The root redirects to `/app` in hosted mode.
 
-The class app deploys to a separate Railway service. The existing Sites landing page remains independent. Upload excludes credentials, `.data`, classroom files, recordings, dependencies, and build outputs.
+The class app and landing page deploy to separate Railway services. The previous Sites landing remains available during the transition. Upload excludes credentials, `.data`, classroom files, recordings, dependencies, and build outputs.
 
 To run the paid long-text stress checks explicitly:
 
@@ -38,7 +38,7 @@ This uses synthetic test prose and records provider token counts to `/tmp/proof-
 - `public/images/`: the generated logo and document illustrations. Generation prompts are in `output/imagegen/`.
 - `tests/` and `site/tests/`: app and hosted waitlist tests.
 
-The [hosted landing page](https://proof-evidence.zabrodsk.chatgpt.site) runs separately from the class application.
+The [landing page](https://proof-evidence.up.railway.app) and [class application](https://app-proof.up.railway.app) run on Railway. The landing page uses `Dockerfile.landing`, `npm run start:landing`, `PROOF_APP_URL=https://app-proof.up.railway.app`, and a persistent volume at `/app/.data` for new waitlist signups. Keep one replica with this file store. The landing page redirects `/app` to the app service. Prior Sites waitlist records remain in its D1 database; they have not been copied to Railway. The previous app URL was replaced by the cleaner app domain.
 
 ## Run
 
@@ -147,3 +147,20 @@ Search uses OpenAlex, journal review-policy records use DOAJ, and article identi
 Evidence checks process every extracted text section and withhold a positive result when sections conflict or fail. Figures, image-only content, study quality, missing publication notices and semantic model mistakes still require human review. Neither source indexing nor this application guarantees accuracy. Results provide quoted passages and journal-policy/full-text links for inspection; no automatic factual rewrite is made.
 
 Supplied-source checks allow 100 sentences and eight articles; public checks allow 25 sentences per job because each sentence triggers full-article research. Completed job results expire after one hour. Saved reports from the older source policy are cleared on upgrade while drafts and source inputs are retained.
+
+### WorkOS sign-in
+
+Set `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_REDIRECT_URI`, and
+`WORKOS_COOKIE_PASSWORD` in the server environment. Proof does not load `.env`
+files. Generate the cookie password with `openssl rand -hex 32` and store it as a
+hosting secret. Register the exact callback URL in the WorkOS AuthKit dashboard,
+for example `http://127.0.0.1:4317/auth/callback` locally or
+`https://YOUR_APP_HOST/auth/callback` in production. Allow
+`https://YOUR_APP_HOST/app` as a sign-out redirect.
+
+With these variables set, `/app` uses hosted AuthKit sign-in and registration.
+The server verifies encrypted sessions, refreshes expired access tokens, and
+protects API requests. Partial configuration prevents startup. Without WorkOS
+configuration, the existing local and username/password modes still apply.
+WorkOS users get separate workspace and usage records keyed by their WorkOS user
+ID. Existing username accounts are not automatically linked to WorkOS identities.

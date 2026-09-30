@@ -1,8 +1,10 @@
+import { installWorkOS, workosConfigured } from "./workos.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Express, Request } from "express";
 import { accountStore, accountContext } from "./accounts.js";
 
 export function installAccess(app: Express) {
+  if (workosConfigured()) return installWorkOS(app);
   const hosted = process.env.PROOF_HOSTED === "true";
   const secret = process.env.PROOF_ACCESS_KEY || "";
   if (hosted && secret.length < 24)

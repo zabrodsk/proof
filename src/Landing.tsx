@@ -623,6 +623,9 @@ export default function Landing() {
             <a href="#questions">Questions</a>
           </nav>
           <div className="lp-nav-actions">
+            <a className="lp-text-link" href="/app">
+              Sign in
+            </a>
             <a className="lp-nav-cta" href="#waitlist">
               Get early access
               <ArrowUpRight size={15} />
