@@ -1,3 +1,4 @@
+import { providerContext } from "./backend/providers.js";
 import https from "node:https";
 import { lookup } from "node:dns/promises";
 
@@ -47,6 +48,7 @@ export async function remoteFile(
       url,
       {
         family: 4,
+        signal: providerContext.getStore()?.signal,
         lookup: (_host, _opts, cb) => cb(null, address, 4),
         headers: {
           "User-Agent": "Proof/0.2 academic-source-review",

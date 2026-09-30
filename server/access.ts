@@ -1,9 +1,10 @@
-import { classRoster } from "../shared/class-roster.js";
+import { installWorkOS, workosConfigured } from "./workos.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Express, Request } from "express";
 import { accountStore, accountContext } from "./accounts.js";
 
 export function installAccess(app: Express) {
+  if (workosConfigured()) return installWorkOS(app);
   const hosted = process.env.PROOF_HOSTED === "true";
   const secret = process.env.PROOF_ACCESS_KEY || "";
   if (hosted && secret.length < 24)
@@ -40,10 +41,6 @@ export function installAccess(app: Express) {
     return {
       authenticated: authenticated(req),
       hosted,
-      roster: classRoster.map((name) => ({
-        name,
-        claimed: accounts.claimed(name),
-      })),
       user: a
         ? {
             id: a.id,
@@ -88,28 +85,15 @@ export function installAccess(app: Express) {
     )
       return res.status(400).json({
         error:
-          "Use a name of 2–60 characters and a password of 10–128 characters.",
+          "Use a username of 2–60 characters and a password of 10–128 characters.",
       });
     let account;
     if (req.body.register === true) {
-      if (
-        typeof req.body.key === "string" &&
-        equal(req.body.key.trim(), secret)
-      ) {
-        const selected = classRoster.find(
-          (n) => n.toLowerCase() === name.toLowerCase(),
-        );
-        if (!selected)
-          return res
-            .status(400)
-            .json({ error: "Choose your first name from the class list." });
-        account = accounts.create(selected, password);
-        if (!account)
-          return res.status(409).json({
-            error:
-              "That account has already been claimed. Sign in with your password.",
-          });
-      }
+      account = accounts.create(name, password);
+      if (!account)
+        return res.status(409).json({
+          error: "That username is taken. Choose another or sign in.",
+        });
     } else account = accounts.login(name, password);
     if (account) {
       attempts.delete(address);
@@ -137,9 +121,7 @@ export function installAccess(app: Express) {
         if (Date.now() - v.since > 15 * 60_000) attempts.delete(key);
     return res.status(401).json({
       error:
-        req.body.register === true
-          ? "The class join code is incorrect. Paste the code shared by Dusan, not your password."
-          : "Could not sign in. Check your name and password. If this is your first visit, claim your account first.",
+        "Could not sign in. Check your username and password, or create an account if this is your first visit.",
     });
   });
   app.use("/api", (req, res, next) => {
@@ -147,7 +129,7 @@ export function installAccess(app: Express) {
     if (!authenticated(req))
       return res
         .status(401)
-        .json({ error: "Sign in with your name and password." });
+        .json({ error: "Sign in with your username and password." });
     res.locals.proofSession = sessionId(req) || "local";
     const id = sessionId(req);
     if (id)
