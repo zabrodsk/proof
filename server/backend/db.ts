@@ -44,9 +44,14 @@ export async function migrate(db: Database) {
     new URL("../../migrations/001_backend.sql", import.meta.url),
     "utf8",
   );
+  const connectors = await readFile(
+    new URL("../../migrations/002_integrations.sql", import.meta.url),
+    "utf8",
+  );
   await db.transaction(async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock(90731001)");
     await tx.query(sql);
+    await tx.query(connectors);
   });
 }
 export async function workspace(db: Sql, owner: string): Promise<string> {

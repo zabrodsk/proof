@@ -28,10 +28,12 @@ import {
   TriangleAlert,
   Upload,
   CircleHelp,
+  Plug,
   CircleX,
   X,
 } from "lucide-react";
 import "./studio.css";
+import "./mcp-connect.css";
 import StudioAnalysis from "./StudioAnalysis";
 import NewStudioWork from "./NewStudioWork";
 import {
@@ -581,6 +583,14 @@ export default function Studio({ session }: { session: Session }) {
           </nav>
           {!focused && (
             <div className="ps-rail-footer">
+              <a
+                className="ps-rail-button"
+                href="/app/integrations#connect"
+                aria-label="Connect ChatGPT or Claude"
+                data-sidebar-tooltip="Connect ChatGPT or Claude"
+              >
+                <Plug size={21} />
+              </a>
               <button
                 className="ps-rail-button"
                 aria-label="Settings"
@@ -792,6 +802,9 @@ export default function Studio({ session }: { session: Session }) {
             </div>
             {!focused && (
               <div className="ps-sidebar-footer">
+                <a className="ps-mcp-link" href="/app/integrations#connect">
+                  <Plug size={18} /> Connect your chat
+                </a>
                 <button onClick={() => setOpenMenu("profile")}>
                   <Settings size={21} /> Settings
                 </button>

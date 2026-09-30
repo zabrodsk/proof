@@ -1,3 +1,4 @@
+import { reserveConnectorCall } from "../integrations/budgets.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -71,6 +72,13 @@ export async function providerFetch(
             : "scholarly";
   for (let attempt = 0; ; attempt++) {
     ctx.signal.throwIfAborted();
+    await reserveConnectorCall(
+      ctx.db,
+      ctx.ws,
+      ctx.run,
+      provider,
+      Buffer.byteLength(typeof options.body === "string" ? options.body : ""),
+    );
     const id = randomUUID();
     await ctx.db.transaction(async (tx) => {
       const r = await tx.query(

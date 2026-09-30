@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
+import McpConnectionGuide from "./McpConnectionGuide";
 import { MotifIcon, InkFrame } from "./Drawn";
 
 const documentTypes = [
@@ -540,6 +541,7 @@ export default function Landing() {
           <Wordmark />
           <nav className="lp-desktop-nav" aria-label="Main navigation">
             <a href="#how-it-works">How it works</a>
+            <a href="#connect">Connect your chat</a>
             <a href="#questions">Questions</a>
           </nav>
           <div className="lp-nav-actions">
@@ -568,6 +570,9 @@ export default function Landing() {
           >
             <a href="#how-it-works" onClick={() => setMobileOpen(false)}>
               How it works
+            </a>
+            <a href="#connect" onClick={() => setMobileOpen(false)}>
+              Connect your chat
             </a>
             <a href="#questions" onClick={() => setMobileOpen(false)}>
               Questions
@@ -630,6 +635,9 @@ export default function Landing() {
             </div>
             <CitationProcess href="/app" />
           </div>
+        </section>
+        <section id="connect" className="lp-mcp-section lp-container">
+          <McpConnectionGuide publicGuide />
         </section>
         <section className="lp-faq-section lp-container" id="questions">
           <div className="lp-faq-intro">

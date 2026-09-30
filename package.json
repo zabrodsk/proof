@@ -14,11 +14,13 @@
     "test:api": "node --import tsx scripts/api-smoke.ts",
     "start:landing": "tsx server/landing.ts",
     "worker": "tsx server/worker.ts",
-    "db:migrate": "tsx scripts/migrate-backend.ts",
+    "db:migrate": "tsx scripts/migrate-integrations.ts",
     "test:backend": "node --import tsx --test tests/backend*.test.ts",
     "test:firecrawl": "node --import tsx scripts/firecrawl-smoke.ts",
     "model:prepare": "tsx scripts/prepare-model.ts",
-    "test:embeddings": "tsx scripts/embedding-smoke.ts"
+    "test:embeddings": "tsx scripts/embedding-smoke.ts",
+    "test:integration": "node --import tsx --test tests/integration*.test.ts",
+    "test:integration:live": "tsx scripts/integration-live.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",
@@ -40,7 +42,9 @@
     "citeproc": "2.4.63",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
-    "pg-boss": "^12.35.0"
+    "pg-boss": "^12.35.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

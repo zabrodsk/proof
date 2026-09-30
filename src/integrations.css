@@ -1,0 +1,172 @@
+.proof-integrations {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--proof-ink);
+  font-family: "DM Sans", sans-serif;
+}
+.proof-integrations header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 0 28px;
+  flex-wrap: wrap;
+}
+.proof-integrations nav {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.proof-integrations a {
+  color: var(--proof-accent);
+  text-underline-offset: 4px;
+}
+.proof-integrations .integration-brand {
+  font:
+    500 32px "Newsreader",
+    serif;
+  text-decoration: none;
+}
+.proof-integrations h1 {
+  font:
+    500 clamp(28px, 4vw, 40px) "Newsreader",
+    serif;
+  margin: 0 0 20px;
+}
+.proof-integrations h2 {
+  font:
+    500 25px "Newsreader",
+    serif;
+  margin: 0 0 16px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.proof-integrations h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+.integration-panel {
+  background: var(--proof-paper);
+  border: 1px solid var(--proof-line);
+  border-radius: 18px;
+  padding: clamp(20px, 4vw, 36px);
+  margin-bottom: 20px;
+}
+.proof-integrations label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.proof-integrations input:not([type="checkbox"]),
+.proof-integrations textarea,
+.proof-integrations select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--proof-line-strong);
+  background: white;
+  color: var(--proof-ink);
+  border-radius: 8px;
+  font: inherit;
+}
+.proof-integrations textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+.proof-integrations button,
+.integration-button {
+  border: 1px solid var(--proof-accent);
+  border-radius: 8px;
+  padding: 11px 18px;
+  color: white;
+  background: var(--proof-accent);
+  font: inherit;
+  cursor: pointer;
+  display: inline-block;
+}
+.proof-integrations button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.proof-integrations :focus-visible {
+  outline: 3px solid var(--proof-focus);
+  outline-offset: 3px;
+}
+.proof-integrations p {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.proof-integrations pre,
+.proof-integrations blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+  background: var(--proof-surface);
+  border-left: 3px solid var(--proof-line-strong);
+  padding: 20px;
+  margin: 16px 0;
+}
+.proof-integrations fieldset {
+  border: 1px solid var(--proof-line);
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.proof-integrations .integration-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.integration-selection input {
+  flex: 0 0 auto;
+}
+.integration-muted {
+  color: var(--proof-muted);
+  font-size: 13px;
+}
+.integration-error {
+  padding: 16px;
+  background: #fff2e9;
+  border: 1px solid #d89b74;
+  border-radius: 8px;
+}
+.integration-verdict {
+  color: var(--proof-accent);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.integration-library {
+  list-style: none;
+  padding: 0;
+}
+.integration-library li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 0;
+  border-top: 1px solid var(--proof-line);
+}
+.integration-library li p {
+  margin: 6px 0;
+}
+.integration-grant {
+  border-top: 1px solid var(--proof-line);
+  padding: 24px 0;
+}
+.proof-integrations code {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .proof-integrations {
+    padding: 14px;
+  }
+  .integration-library li {
+    flex-direction: column;
+  }
+  .proof-integrations header {
+    gap: 12px;
+  }
+}

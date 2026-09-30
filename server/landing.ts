@@ -28,9 +28,11 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "8kb" }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
-app.get(["/app", "/app/{*path}"], (_req, res) =>
-  res.redirect(302, appUrl.href),
-);
+app.get(["/app", "/app/{*path}"], (req, res) => {
+  const target = new URL(appUrl.href);
+  target.pathname = appUrl.pathname.replace(/\/$/, "") + req.path.slice(4);
+  res.redirect(302, target.href);
+});
 app.use("/api/waitlist", createWaitlistRouter());
 app.use("/api", (_req, res) =>
   res.status(404).json({ error: "Unknown API route." }),
