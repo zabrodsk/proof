@@ -2660,3 +2660,130 @@ html[data-ps-navigation="close"]::view-transition-new(ps-workspace) {
     font-size: 11px;
   }
 }
+
+/* Live account and analysis controls use the Studio layout and palette. */
+.ps-signin {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.ps-signin .ps-modal {
+  width: min(100%, 540px);
+}
+.ps-live {
+  display: grid;
+  gap: 24px;
+}
+.ps-live-panel {
+  padding: 28px;
+  min-width: 0;
+  min-height: 0;
+}
+.ps-live-panel h2 {
+  margin: 0 0 16px;
+}
+.ps-live-panel p {
+  line-height: 1.6;
+}
+.ps-live-panel .ps-editor {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  margin-bottom: 16px;
+}
+.ps-live-panel select {
+  width: 100%;
+}
+.ps-source-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 18px 0;
+}
+.ps-source-option input {
+  margin-top: 5px;
+}
+.ps-source-option small {
+  display: block;
+  margin-top: 4px;
+}
+.ps-live-error {
+  background: #fff4de;
+  color: #704b19;
+  border-radius: 12px;
+  padding: 16px;
+}
+.ps-live-finding {
+  border-top: 1px solid #dce4de;
+  padding: 22px 0;
+  overflow-wrap: anywhere;
+}
+.ps-live-finding blockquote {
+  margin: 12px 0;
+  border-left: 3px solid #73947e;
+  padding: 8px 16px;
+  white-space: pre-wrap;
+}
+.ps-live-finding summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+.ps-work-card {
+  text-align: left;
+  padding: 28px;
+  color: inherit;
+  cursor: pointer;
+}
+.ps-work-card h2 {
+  font-size: 22px;
+  overflow-wrap: anywhere;
+}
+.ps-work-card span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ps-field-label {
+  display: block;
+  margin: 16px 0;
+}
+.ps-field-label input {
+  margin-top: 8px;
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .ps-live-panel {
+    padding: 18px;
+  }
+}
+.ps-edit-dialog {
+  margin: auto;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.ps-edit-dialog::backdrop {
+  background: rgba(20, 36, 27, 0.35);
+}
+
+.ps-local-preview {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ps-live-panel input[type="file"] {
+  display: block;
+  font: inherit;
+  font-weight: 400;
+}
+.ps-live-panel input[type="file"]::file-selector-button {
+  padding: 10px 14px;
+  margin-right: 12px;
+  border: 1px solid #dce4de;
+  border-radius: 10px;
+  background: #f8faf8;
+  color: #244a39;
+  font: inherit;
+  cursor: pointer;
+}

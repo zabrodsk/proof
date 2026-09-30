@@ -12,6 +12,19 @@ export class ApiError extends Error {
     super(message);
   }
 }
+// Browser-only drafts are a local development convenience, never a production fallback.
+export function canUseLocalDrafts(
+  session: Session,
+  development: boolean,
+  error: unknown,
+): boolean {
+  return (
+    development &&
+    session.hosted === false &&
+    error instanceof ApiError &&
+    error.status === 503
+  );
+}
 export async function api<T>(
   path: string,
   body?: unknown,
@@ -24,9 +37,9 @@ export async function api<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 204) return undefined as T;
-  const data = await response.json().catch(() => ({
-    error: "Unexpected server response.",
-  }));
+  const data = await response
+    .json()
+    .catch(() => ({ error: "Unexpected server response." }));
   if (!response.ok)
     throw new ApiError(data.error || "Request failed.", response.status);
   return data as T;

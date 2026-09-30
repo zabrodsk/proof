@@ -4,7 +4,15 @@ A web app for AP Seminar draft review, scholarly source discovery, and MLA citat
 
 ## Class workspace
 
-`/app` opens the class workspace. `/app/evidence` retains the original evidence editor.
+`/app` opens Studio. `/app/class` retains the class workspace and `/app/evidence` retains the evidence editor.
+
+Studio uses the existing WorkOS or username session. With the persistent backend configured, documents, versions, source uploads, analysis runs, and findings belong to the signed-in account. The dashboard starts empty. Results come from the worker, and old reports are marked stale after draft changes. Suggested edits require explicit approval. Archiving a document hides it from the library while retaining its analysis history.
+
+Studio supports supplied-source checks, research discovery, public fact checks, bibliography imports and MLA formatting. Processing consent is required and resets when the check type changes. Uploads without external-processing permission use local extraction. Bibliography formatting does not certify the evidence.
+
+Without the persistent backend, the local development server can save drafts in account-scoped browser storage. Hosted Studio reports the service error instead of silently switching storage. It does not display mock analysis results. Existing class drafts remain in the class workspace; they are not silently copied into cloud storage.
+
+The archived static landing site uses `VITE_PROOF_APP_URL` for application links, defaulting to the existing Railway application domain. The Railway landing service uses `PROOF_APP_URL`.
 
 - Import a read-only Google Doc snapshot, upload a document, or paste text. Google Docs requiring sign-in must be exported and uploaded. Proof does not write back to Google Docs.
 - Find sources for an exact sentence. Crossref supplies candidate scholarly records; Jev compares available source passages with the claim. Correction notices link back to the original article. Search is not an exhaustive literature review, and metadata-only results are not supporting evidence.

@@ -69,6 +69,20 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     );
     res.json({ items: result.rows });
   });
+  r.get("/documents/:id/bibliography", async (req, res) => {
+    const ws = res.locals.workspace,
+      id = uuid(req.params.id);
+    const doc = await db.query(
+      "SELECT id FROM documents WHERE workspace_id=$1 AND id=$2 AND archived_at IS NULL",
+      [ws, id],
+    );
+    if (!doc.rows.length) throw notFound();
+    const result = await db.query(
+      "SELECT id,status,input FROM source_imports WHERE workspace_id=$1 AND kind='bibliography' AND input->>'documentId'=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ws, id],
+    );
+    res.json({ item: result.rows[0] || null });
+  });
   r.post("/documents", async (req, res) => {
     const { title, text } = z
       .object({
@@ -267,6 +281,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     const v = z
       .object({
         kind: z.enum(["text", "url", "bibliography", "file"]),
+        documentId: z.string().uuid().optional(),
         metadata: sourceMetadata.optional(),
         text: z.string().max(limits.characters).optional(),
         url: z.string().url().max(2000).optional(),
@@ -286,6 +301,13 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     if (v.kind === "file" && !v.assetId)
       throw new HttpError(400, "Provide an uploaded asset.");
     await db.transaction(async (tx) => {
+      if (v.documentId) {
+        const doc = await tx.query(
+          "SELECT id FROM documents WHERE workspace_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE",
+          [ws, v.documentId],
+        );
+        if (!doc.rows.length) throw notFound();
+      }
       if (v.assetId) await asset(tx, ws, v.assetId);
       if (v.kind !== "bibliography" && !v.assetId) {
         const a = await createAsset(

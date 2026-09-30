@@ -2,19 +2,33 @@ import { useEffect, useState } from "react";
 import Studio from "./Studio";
 import { api, type Session } from "./studio-api";
 import "./studio.css";
-
 export default function StudioSession() {
   const [session, setSession] = useState<Session>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [register, setRegister] = useState(false);
   useEffect(() => {
-    void api<Session>("/api/session")
-      .then(setSession)
-      .catch((e) => setError(e.message));
+    let disposed = false;
+    const refresh = () => {
+      void api<Session>("/api/session")
+        .then((value) => {
+          if (!disposed) setSession(value);
+        })
+        .catch((e) => {
+          if (!disposed) setError(e.message);
+        });
+    };
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
   if (session?.authenticated)
-    return <Studio key={session.user?.id || "local"} />;
+    return <Studio key={session.user?.id || "local"} session={session} />;
   return (
     <main className="proof-studio ps-signin">
       <section className="ps-modal">
