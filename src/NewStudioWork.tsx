@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, FileText, LoaderCircle, Upload, X } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  FileText,
+  LoaderCircle,
+  Upload,
+  X,
+} from "lucide-react";
 import "./studio-document.css";
+import StudioWorkIcon, { workIconOptions } from "./StudioWorkIcon";
+import type { WorkIconName } from "./studio-api";
 
 export default function NewStudioWork({
   busy,
@@ -8,10 +17,13 @@ export default function NewStudioWork({
   onCancel,
 }: {
   busy: boolean;
-  onCreate: (title: string, text: string) => void;
+  onCreate: (title: string, text: string, icon: WorkIconName) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
+  const [icon, setIcon] = useState<WorkIconName>("folder");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const iconTrigger = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const [filename, setFilename] = useState("");
   const [mode, setMode] = useState<"upload" | "paste">("upload");
@@ -72,7 +84,8 @@ export default function NewStudioWork({
       className="ps-new-work"
       onSubmit={(event) => {
         event.preventDefault();
-        if (title.trim() && !busy && !importing) onCreate(title.trim(), text);
+        if (title.trim() && !busy && !importing)
+          onCreate(title.trim(), text, icon);
       }}
     >
       <div className="ps-import-tabs" aria-label="Document input">
@@ -185,16 +198,70 @@ export default function NewStudioWork({
       <label className="ps-field-label" htmlFor="new-work-title">
         Work title
       </label>
-      <input
-        id="new-work-title"
-        className="ps-field"
-        placeholder="Give your work a name"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        maxLength={300}
-        disabled={busy || importing}
-        required
-      />
+      <div
+        className="ps-new-work-name"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget))
+            setPickerOpen(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && pickerOpen) {
+            event.preventDefault();
+            event.stopPropagation();
+            setPickerOpen(false);
+            iconTrigger.current?.focus();
+          }
+        }}
+      >
+        <button
+          type="button"
+          ref={iconTrigger}
+          className="ps-new-work-icon-trigger"
+          aria-label="Choose project icon"
+          aria-expanded={pickerOpen}
+          aria-controls="ps-new-work-icon-picker"
+          disabled={busy || importing}
+          onClick={() => setPickerOpen((open) => !open)}
+        >
+          <StudioWorkIcon name={icon} size={21} />
+          <ChevronDown size={13} />
+        </button>
+        <input
+          id="new-work-title"
+          className="ps-field ps-new-work-title"
+          placeholder="Give your work a name"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          maxLength={300}
+          disabled={busy || importing}
+          required
+        />
+        {pickerOpen && (
+          <div
+            id="ps-new-work-icon-picker"
+            className="ps-new-work-icon-picker"
+            role="group"
+            aria-label="Project icons"
+          >
+            {workIconOptions.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                title={option.label}
+                aria-label={`${option.label} icon`}
+                aria-pressed={icon === option.name}
+                onClick={() => {
+                  setIcon(option.name);
+                  setPickerOpen(false);
+                  iconTrigger.current?.focus();
+                }}
+              >
+                <option.Icon size={22} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       {(mode === "paste" || text) && (
         <div className="ps-import-preview">
           <label className="ps-field-label" htmlFor="new-work-text">
