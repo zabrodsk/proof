@@ -1,32 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Studio from "./Studio";
-import { api, type Session } from "./studio-api";
+import { api } from "./studio-api";
+import { useStudioSession } from "./studio-session";
 import "./studio.css";
 export default function StudioSession() {
-  const [session, setSession] = useState<Session>();
-  const [error, setError] = useState("");
+  const { session, setSession, error, setError } = useStudioSession();
   const [busy, setBusy] = useState(false);
   const [register, setRegister] = useState(false);
-  useEffect(() => {
-    let disposed = false;
-    const refresh = () => {
-      void api<Session>("/api/session")
-        .then((value) => {
-          if (!disposed) setSession(value);
-        })
-        .catch((e) => {
-          if (!disposed) setError(e.message);
-        });
-    };
-    refresh();
-    const timer = setInterval(refresh, 30000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-    };
-  }, []);
   if (session?.authenticated)
     return <Studio key={session.user?.id || "local"} session={session} />;
   return (

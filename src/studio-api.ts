@@ -2,7 +2,7 @@ export interface Session {
   authenticated: boolean;
   hosted: boolean;
   provider?: "workos";
-  user?: { id: string; name: string; jevUsd: number };
+  user?: { id: string; name: string; jevUsd: number; inputTokens?: number };
 }
 export class ApiError extends Error {
   constructor(
@@ -11,6 +11,14 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+export async function signOut(session: Session) {
+  if (session.provider === "workos") {
+    window.location.assign("/auth/logout");
+    return;
+  }
+  await api("/api/session", undefined, "DELETE");
+  window.location.assign("/app");
 }
 // Browser-only drafts are a local development convenience, never a production fallback.
 export function canUseLocalDrafts(
@@ -32,16 +40,27 @@ export async function api<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     method: method || (body === undefined ? "GET" : "POST"),
+    credentials: "same-origin",
     headers:
-      body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+      body === undefined || body instanceof FormData
+        ? undefined
+        : { "Content-Type": "application/json" },
+    body:
+      body === undefined
+        ? undefined
+        : body instanceof FormData
+          ? body
+          : JSON.stringify(body),
   });
   if (response.status === 204) return undefined as T;
   const data = await response
     .json()
     .catch(() => ({ error: "Unexpected server response." }));
   if (!response.ok)
-    throw new ApiError(data.error || "Request failed.", response.status);
+    throw new ApiError(
+      data.message || data.error || "Request failed.",
+      response.status,
+    );
   return data as T;
 }
 export type WorkIconName =
