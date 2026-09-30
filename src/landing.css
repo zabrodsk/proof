@@ -5276,14 +5276,18 @@ body {
   object-fit: contain;
   filter: grayscale(1);
   opacity: 0.6;
-  transition: filter 220ms ease, opacity 220ms ease;
+  transition:
+    filter 220ms ease,
+    opacity 220ms ease;
 }
 .lp-schools:hover .lp-school-logo img {
   filter: none;
   opacity: 1;
 }
 @keyframes lp-school-scroll {
-  to { transform: translateX(-50%); }
+  to {
+    transform: translateX(-50%);
+  }
 }
 @media (max-width: 680px) {
   .lp-header {

@@ -260,9 +260,9 @@ function AnswerCompare() {
           <p>{compareQuestion}</p>
         </div>
         <p className="lp-compare-answer">
-          Social media significantly reduces sleep quality in teenagers,
-          leading to shorter sleep duration, increased sleep disturbances, and
-          greater daytime fatigue.
+          Social media significantly reduces sleep quality in teenagers, leading
+          to shorter sleep duration, increased sleep disturbances, and greater
+          daytime fatigue.
         </p>
         <div className="lp-compare-citations">
           <ul>
@@ -655,9 +655,7 @@ export default function Landing() {
           aria-labelledby="compare-heading"
         >
           <header className="lp-compare-intro">
-            <h2 id="compare-heading">
-              Same question. Different answers.
-            </h2>
+            <h2 id="compare-heading">Same question. Different answers.</h2>
           </header>
           <AnswerCompare />
         </section>
