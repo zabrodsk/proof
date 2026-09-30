@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
   ArrowLeft,
@@ -42,6 +35,7 @@ import {
 import "./studio.css";
 import "./mcp-connect.css";
 import StudioAnalysis from "./StudioAnalysis";
+import NewStudioWork from "./NewStudioWork";
 import {
   api,
   canUseLocalDrafts,
@@ -153,7 +147,6 @@ export default function Studio({ session }: { session: Session }) {
   }
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"new" | "document" | null>(null);
-  const [newTitle, setNewTitle] = useState("");
   const [draft, setDraft] = useState("");
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
@@ -340,7 +333,7 @@ export default function Studio({ session }: { session: Session }) {
         ? "Analysis"
         : route.section === "citations"
           ? "Citations"
-          : "Dashboard";
+          : "Document";
     document.title = `Proof · ${page} · ${activeWork.title}`;
   }, [focused, route.section, activeWork?.title]);
 
@@ -358,29 +351,26 @@ export default function Studio({ session }: { session: Session }) {
     setSearch("");
   };
 
-  const addWork = (event: FormEvent) => {
-    event.preventDefault();
-    const title = newTitle.trim();
+  const addWork = (title: string, text: string) => {
     if (!title || busy) return;
     void action(async () => {
       const work: Work = {
         id: crypto.randomUUID(),
         title,
         type: "DRAFT",
-        words: 0,
+        words: text.trim().split(/\s+/).filter(Boolean).length,
         edited: "just now",
-        content: "",
+        content: text,
       };
       if (persistent) {
         const result = await api<{ id: string; documentVersionId: string }>(
           "/api/v1/documents",
-          { title, text: " " },
+          { title, text: text || " " },
         );
         work.id = result.id;
         work.documentVersionId = result.documentVersionId;
       }
       setWorks((current) => [work, ...current]);
-      setNewTitle("");
       setModal(null);
       openWork(work.id);
     });
@@ -545,8 +535,8 @@ export default function Studio({ session }: { session: Session }) {
                 </button>
                 <button
                   className={`ps-rail-button ${route.section === "dashboard" ? "active" : ""}`}
-                  aria-label="Dashboard"
-                  data-sidebar-tooltip="Dashboard"
+                  aria-label="Document"
+                  data-sidebar-tooltip="Document"
                   aria-current={
                     route.section === "dashboard" ? "page" : undefined
                   }
@@ -773,7 +763,7 @@ export default function Studio({ session }: { session: Session }) {
                               onClick={() => openWork(work.id)}
                               icon={<House size={18} />}
                             >
-                              Dashboard
+                              Document
                             </SubLink>
                             <SubLink
                               current={route.section}
@@ -1027,6 +1017,8 @@ export default function Studio({ session }: { session: Session }) {
                 work={activeWork}
                 section={route.section}
                 onUpdated={refreshWorks}
+                onEdit={openDocument}
+                onAnalyze={() => openWork(activeWork.id, "analysis")}
               />
             </>
           )}
@@ -1044,7 +1036,7 @@ export default function Studio({ session }: { session: Session }) {
       {modal && (
         <dialog
           ref={dialogRef}
-          className={`ps-modal ps-edit-dialog ${modal === "document" ? "ps-document-modal" : ""}`}
+          className={`ps-modal ps-edit-dialog ${modal === "document" ? "ps-document-modal" : "ps-new-work-dialog"}`}
           onCancel={() => setModal(null)}
           onClick={(event) => {
             if (event.target === event.currentTarget) setModal(null);
@@ -1058,9 +1050,6 @@ export default function Studio({ session }: { session: Session }) {
           )}
           <div className="ps-modal-header">
             <div>
-              <div className="ps-type">
-                {modal === "new" ? "NEW WORK" : "DOCUMENT"}
-              </div>
               <h2 id="studio-modal-title">
                 {modal === "new" ? "Add new work" : activeWork?.title}
               </h2>
@@ -1074,36 +1063,11 @@ export default function Studio({ session }: { session: Session }) {
             </button>
           </div>
           {modal === "new" && (
-            <form onSubmit={addWork}>
-              <label className="ps-field-label" htmlFor="work-title">
-                Project title
-              </label>
-              <input
-                id="work-title"
-                className="ps-field"
-                placeholder="e.g. My research paper"
-                value={newTitle}
-                onChange={(event) => setNewTitle(event.target.value)}
-                maxLength={300}
-                autoFocus
-              />
-              <div className="ps-actions">
-                <button
-                  type="button"
-                  className="ps-outline"
-                  onClick={() => setModal(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="ps-primary"
-                  disabled={busy || !newTitle.trim()}
-                >
-                  Create project
-                </button>
-              </div>
-            </form>
+            <NewStudioWork
+              busy={busy}
+              onCreate={addWork}
+              onCancel={() => setModal(null)}
+            />
           )}
           {modal === "document" && (
             <>
