@@ -120,15 +120,15 @@ The UI has been checked manually through the browser at desktop and mobile width
 
 API references: [TypeSafe](https://api.typesafe.ai/docs), [Crossref](https://www.crossref.org/documentation/retrieve-metadata/rest-api/), [Europe PMC](https://europepmc.org/RestfulWebService).
 
-## Class accounts and Jev balances
+## Public accounts and Jev balances
 
-Hosted users create a name/password account with the class join code, then sign in with their name and password. Passwords require 10–128 characters and are stored as salted scrypt hashes. Existing access-code-only sessions must sign in again. The existing access code is now the join code.
+The public hackathon login accepts a username and password. Anyone can create an account without a class roster or join code. Usernames require 2–60 characters and are unique without regard to case; passwords require 10–128 characters and are stored as salted scrypt hashes. Existing accounts keep their passwords, browser workspaces, and usage. Existing access-code-only sessions must sign in again. `PROOF_ACCESS_KEY` remains a server-only session-signing secret and is never entered during registration.
 
 Accounts and cumulative Jev usage are stored in `.data/accounts.json`, configurable with `PROOF_ACCOUNTS_FILE`. Production mounts a persistent Railway volume at `/app/.data`. Use one app replica with this file store. Browser drafts use separate keys for each account; earlier anonymous drafts are not assigned to a named user automatically.
 
 The header shows `btw you owe me:` in USD to five decimal places. It includes reported Jev input-token charges from reviews, retries, searches, and the original evidence API. Output tokens are free at the configured rate of $0.042 per million input tokens. Hosting is excluded. Responses without returned usage cannot be included, so this is an estimate rather than an invoice. Accounts begin at zero; earlier anonymous usage is not backfilled.
 
-The class roster in `shared/class-roster.ts` contains only the 21 supplied first names and nicknames. First-time users choose an unclaimed name, provide the class join code, and set their own password. The server rejects unknown names and duplicate claims. Claiming an account never replaces an existing password or balance.
+The login and session API do not publish the former class roster. Registration rejects duplicate usernames and never replaces an existing password or balance. Sign-in failures are limited to ten attempts per IP address in fifteen minutes.
 
 ## Reliability audit, 29 September 2026
 

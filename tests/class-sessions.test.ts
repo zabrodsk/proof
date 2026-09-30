@@ -72,8 +72,7 @@ test("five browser sessions can review concurrently without reading each otherâ€
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key: process.env.PROOF_ACCESS_KEY,
-          name: ["Adam", "Anna", "Danny", "David", "Emma", "Hugo"][i],
+          name: `Public visitor ${i + 1}`,
           password: "test-password-only",
           register: true,
         }),
