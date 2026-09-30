@@ -3521,11 +3521,29 @@ body {
 }
 .lp-use-icon {
   display: block;
-  width: 76px;
-  height: 76px;
+  width: 150px;
+  height: 170px;
   flex: 0 0 auto;
-  color: var(--lp-accent);
+  background-image: url("/images/used-for-hand-drawn.png");
+  background-repeat: no-repeat;
+  background-size: 550% auto;
+  background-position: var(--lp-use-position) center;
   transition: transform 240ms ease-out;
+}
+.lp-use-icon-papers {
+  --lp-use-position: 1.55%;
+}
+.lp-use-icon-essays {
+  --lp-use-position: 26.6%;
+}
+.lp-use-icon-theses {
+  --lp-use-position: 52.5%;
+}
+.lp-use-icon-reports {
+  --lp-use-position: 77.23%;
+}
+.lp-use-icon-other {
+  --lp-use-position: 100%;
 }
 @media (hover: hover) {
   .lp-used-row li:nth-child(odd):hover .lp-use-icon {
@@ -3552,8 +3570,8 @@ body {
     grid-column: 2 / span 2;
   }
   .lp-use-icon {
-    width: 64px;
-    height: 64px;
+    width: 90px;
+    height: 102px;
   }
   .lp-used-row li > span:last-child {
     font-size: 18px;
@@ -4727,9 +4745,37 @@ body {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.lp-compare-llm .lp-compare-avatar {
-  color: #a51e24;
-  background: #f9e7e5;
+.lp-compare-brands {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.lp-compare-brand {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid #fcf6f4;
+  border-radius: 50%;
+  background: #fff;
+}
+.lp-compare-brand + .lp-compare-brand {
+  margin-left: -9px;
+}
+.lp-compare-brand img {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+@media (max-width: 480px) {
+  .lp-compare-brand {
+    width: 34px;
+    height: 34px;
+  }
+  .lp-compare-brand img {
+    width: 20px;
+    height: 20px;
+  }
 }
 .lp-compare-proof .lp-compare-avatar {
   color: #276a4d;
@@ -5276,14 +5322,18 @@ body {
   object-fit: contain;
   filter: grayscale(1);
   opacity: 0.6;
-  transition: filter 220ms ease, opacity 220ms ease;
+  transition:
+    filter 220ms ease,
+    opacity 220ms ease;
 }
 .lp-schools:hover .lp-school-logo img {
   filter: none;
   opacity: 1;
 }
 @keyframes lp-school-scroll {
-  to { transform: translateX(-50%); }
+  to {
+    transform: translateX(-50%);
+  }
 }
 @media (max-width: 680px) {
   .lp-header {

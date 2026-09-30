@@ -16,15 +16,21 @@ import {
   Bell,
   Check,
   ChevronDown,
+  BookOpen,
   FileText,
+  FlaskConical,
+  Folder,
+  GraduationCap,
   House,
   Info,
-  LayoutGrid,
   Link2,
+  Lightbulb,
   Menu,
   MoreHorizontal,
+  NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Pencil,
   Plus,
   Play,
@@ -41,6 +47,16 @@ import {
 import "./studio.css";
 
 type Section = "dashboard" | "analysis" | "citations";
+const workIconOptions = [
+  { name: "folder", label: "Folder", Icon: Folder },
+  { name: "document", label: "Document", Icon: FileText },
+  { name: "book", label: "Book", Icon: BookOpen },
+  { name: "notes", label: "Notes", Icon: NotebookPen },
+  { name: "research", label: "Research", Icon: FlaskConical },
+  { name: "study", label: "Study", Icon: GraduationCap },
+  { name: "idea", label: "Idea", Icon: Lightbulb },
+] as const;
+type WorkIconName = (typeof workIconOptions)[number]["name"];
 type Work = {
   id: string;
   title: string;
@@ -48,6 +64,7 @@ type Work = {
   words: number;
   edited: string;
   content: string;
+  icon?: WorkIconName;
 };
 type Issue = {
   level: "High" | "Medium" | "Low";
@@ -202,13 +219,14 @@ export default function Studio() {
   const [works, setWorks] = useState(loadWorks);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"new" | "document" | "issue" | null>(null);
-  const [newTitle, setNewTitle] = useState("");
   const [draft, setDraft] = useState("");
   const [selectedIssue, setSelectedIssue] = useState<Issue>(issues[0]);
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [railSearchOpen, setRailSearchOpen] = useState(false);
+  const [railQuery, setRailQuery] = useState("");
   const [sidebarTooltip, setSidebarTooltip] = useState<{
     text: string;
     top: number;
@@ -218,6 +236,7 @@ export default function Studio() {
   const [pendingDelete, setPendingDelete] = useState<Work | null>(null);
   const contentRef = useRef<HTMLElement>(null);
   const sidebarWorkRef = useRef<HTMLDivElement>(null);
+  const railSearchRef = useRef<HTMLDivElement>(null);
   const pathRef = useRef(path);
   const keyboardInput = useRef(false);
   const navigationId = useRef(0);
@@ -334,11 +353,26 @@ export default function Studio() {
         setModal(null);
         setOpenMenu(null);
         setSidebarOpen(false);
+        setRailSearchOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!railSearchOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !railSearchRef.current?.contains(event.target)
+      ) {
+        setRailSearchOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [railSearchOpen]);
 
   const activeWork = works.find((work) => work.id === route.workId) ?? null;
   const focused = !!activeWork;
@@ -389,25 +423,36 @@ export default function Studio() {
     return list;
   }, [works, search, activeWork]);
 
+  const railMatches = works.filter((work) =>
+    work.title.toLowerCase().includes(railQuery.trim().toLowerCase()),
+  );
+
   const openWork = (id: string, section: Section = "dashboard") => {
     go(workPath(id, section));
     setSearch("");
+    setRailSearchOpen(false);
+    setRailQuery("");
   };
 
-  const addWork = (event: FormEvent) => {
-    event.preventDefault();
-    const title = newTitle.trim();
-    if (!title) return;
+  const addWork = ({
+    title,
+    icon,
+    content,
+  }: {
+    title: string;
+    icon: WorkIconName;
+    content?: string;
+  }) => {
     const work: Work = {
       id: `work-${Date.now()}`,
       title,
-      type: "ESSAY",
-      words: 0,
+      type: content ? "DOCUMENT" : "ESSAY",
+      words: content ? content.trim().split(/\s+/).length : 0,
       edited: "just now",
-      content: `${title}\n\nStart writing here...`,
+      content: content ?? `${title}\n\nStart writing here...`,
+      icon,
     };
     setWorks((current) => [work, ...current]);
-    setNewTitle("");
     setModal(null);
     openWork(work.id);
   };
@@ -495,7 +540,10 @@ export default function Studio() {
             aria-controls="ps-sidebar"
             aria-expanded={false}
             data-sidebar-tooltip="Expand sidebar"
-            onClick={() => setSidebarCollapsed(false)}
+            onClick={() => {
+              setSidebarCollapsed(false);
+              setRailSearchOpen(false);
+            }}
           >
             <img
               src="/images/proof-logo-drawn-v1.png"
@@ -514,15 +562,52 @@ export default function Studio() {
             >
               <Plus size={22} />
             </button>
-            <button
-              className={`ps-rail-button ${!focused ? "active" : ""}`}
-              aria-label="My work"
-              data-sidebar-tooltip="My work"
-              aria-current={!focused ? "page" : undefined}
-              onClick={() => go("/app")}
-            >
-              <LayoutGrid size={21} />
-            </button>
+            <div className="ps-rail-search" ref={railSearchRef}>
+              <button
+                className={`ps-rail-button ${railSearchOpen ? "active" : ""}`}
+                aria-label="Search work"
+                aria-controls="ps-rail-search-panel"
+                aria-expanded={railSearchOpen}
+                data-sidebar-tooltip="Search work"
+                onClick={() => setRailSearchOpen((open) => !open)}
+              >
+                <Search size={21} />
+              </button>
+              {railSearchOpen && (
+                <div
+                  className="ps-rail-search-popover"
+                  id="ps-rail-search-panel"
+                >
+                  <div className="ps-rail-search-field">
+                    <Search size={17} />
+                    <input
+                      autoFocus
+                      aria-label="Search work"
+                      placeholder="Search your work..."
+                      value={railQuery}
+                      onChange={(event) => setRailQuery(event.target.value)}
+                    />
+                  </div>
+                  {railQuery.trim() && (
+                    <div className="ps-rail-search-results">
+                      {railMatches.length ? (
+                        railMatches.map((work) => (
+                          <button
+                            key={work.id}
+                            onClick={() => openWork(work.id)}
+                          >
+                            <WorkIcon name={work.icon} size={16} />
+                            <span>{work.title}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <p>No matching work</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="ps-rail-divider" />
           <nav
@@ -537,7 +622,7 @@ export default function Studio() {
                   data-sidebar-tooltip={activeWork.title}
                   onClick={() => openWork(activeWork.id)}
                 >
-                  <FileText size={22} strokeWidth={1.6} />
+                  <WorkIcon name={activeWork.icon} size={22} />
                 </button>
                 <button
                   className={`ps-rail-button ${route.section === "dashboard" ? "active" : ""}`}
@@ -582,7 +667,7 @@ export default function Studio() {
                   data-sidebar-tooltip={work.title}
                   onClick={() => openWork(work.id)}
                 >
-                  <FileText size={22} strokeWidth={1.6} />
+                  <WorkIcon name={work.icon} size={22} />
                 </button>
               ))
             )}
@@ -619,27 +704,13 @@ export default function Studio() {
                 go("/app");
               }}
             >
-              {!focused ? (
-                <svg
-                  className="ps-brand-mark"
-                  viewBox="0 0 44 44"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M5 9c6-2 12-1 17 3v25c-5-4-11-5-17-3V9Zm34 0c-6-2-12-1-17 3v25c5-4 11-5 17-3V9Z"
-                    fill="#276c50"
-                  />
-                  <path d="M22 12v25" stroke="#f8faf8" strokeWidth="1.8" />
-                </svg>
-              ) : (
-                <img
-                  className="ps-brand-mark"
-                  src="/images/proof-logo-drawn-v1.png"
-                  alt=""
-                  width={44}
-                  height={44}
-                />
-              )}
+              <img
+                className="ps-brand-mark"
+                src="/images/proof-logo-drawn-v1.png"
+                alt=""
+                width={34}
+                height={34}
+              />
               <span className="ps-brand-name">
                 proof<span>.</span>
               </span>
@@ -713,7 +784,7 @@ export default function Studio() {
                           onClick={() => openWork(work.id)}
                         >
                           <span className="ps-work-icon">
-                            <FileText size={24} strokeWidth={1.6} />
+                            <WorkIcon name={work.icon} size={24} />
                           </span>
                           <span className="ps-work-name">{work.title}</span>
                         </button>
@@ -1067,35 +1138,7 @@ export default function Studio() {
               </button>
             </div>
             {modal === "new" && (
-              <form onSubmit={addWork}>
-                <label className="ps-field-label" htmlFor="work-title">
-                  Project title
-                </label>
-                <input
-                  id="work-title"
-                  className="ps-field"
-                  placeholder="e.g. My research paper"
-                  value={newTitle}
-                  onChange={(event) => setNewTitle(event.target.value)}
-                  autoFocus
-                />
-                <div className="ps-actions">
-                  <button
-                    type="button"
-                    className="ps-outline"
-                    onClick={() => setModal(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="ps-primary"
-                    disabled={!newTitle.trim()}
-                  >
-                    Create project
-                  </button>
-                </div>
-              </form>
+              <NewWorkForm onCreate={addWork} />
             )}
             {modal === "document" && (
               <>
@@ -1146,6 +1189,176 @@ export default function Studio() {
         </div>
       )}
     </div>
+  );
+}
+
+function WorkIcon({ name, size }: { name?: WorkIconName; size: number }) {
+  const Icon = workIconOptions.find((option) => option.name === name)?.Icon ?? FileText;
+  return <Icon size={size} strokeWidth={1.6} />;
+}
+
+function NewWorkForm({
+  onCreate,
+}: {
+  onCreate: (work: {
+    title: string;
+    icon: WorkIconName;
+    content?: string;
+  }) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [icon, setIcon] = useState<WorkIconName>("folder");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const request = useRef<AbortController | null>(null);
+
+  useEffect(() => () => request.current?.abort(), []);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = title.trim();
+    if (!name || busy) return;
+    setError("");
+    if (!file) {
+      onCreate({ title: name, icon });
+      return;
+    }
+    setBusy(true);
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      const response = await fetch("/api/documents/import", {
+        method: "POST",
+        body: data,
+        signal: controller.signal,
+      });
+      const result = (await response.json()) as { text?: string; error?: string };
+      if (!response.ok || !result.text)
+        throw new Error(result.error || "Could not attach this work.");
+      onCreate({ title: name, icon, content: result.text });
+    } catch (cause) {
+      if (!controller.signal.aborted)
+        setError(cause instanceof Error ? cause.message : "Could not attach this work.");
+    } finally {
+      request.current = null;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <label className="ps-field-label" htmlFor="work-title">
+        Project title
+      </label>
+      <div
+        className="ps-new-work-name"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget))
+            setPickerOpen(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && pickerOpen) {
+            event.stopPropagation();
+            setPickerOpen(false);
+          }
+        }}
+      >
+        <button
+          type="button"
+          className="ps-new-work-icon-trigger"
+          aria-label="Choose project icon"
+          aria-expanded={pickerOpen}
+          aria-controls="ps-new-work-icon-picker"
+          onClick={() => setPickerOpen((open) => !open)}
+        >
+          <WorkIcon name={icon} size={21} />
+          <ChevronDown size={13} />
+        </button>
+        <input
+          id="work-title"
+          className="ps-field ps-new-work-title"
+          placeholder="e.g. My research paper"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          autoFocus
+        />
+        {pickerOpen && (
+          <div
+            id="ps-new-work-icon-picker"
+            className="ps-new-work-icon-picker"
+            role="group"
+            aria-label="Project icons"
+          >
+            {workIconOptions.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                title={option.label}
+                aria-label={`${option.label} icon`}
+                aria-pressed={icon === option.name}
+                onClick={() => {
+                  setIcon(option.name);
+                  setPickerOpen(false);
+                }}
+              >
+                <option.Icon size={22} strokeWidth={1.6} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <input
+        ref={fileInput}
+        className="ps-new-work-file-input"
+        type="file"
+        accept=".pdf,.docx,.txt,.md"
+        aria-label="Attach work file"
+        onChange={(event) => {
+          const selected = event.currentTarget.files?.[0] ?? null;
+          event.currentTarget.value = "";
+          if (selected && selected.size > 12 * 1024 * 1024) {
+            setError("Choose a file smaller than 12 MB.");
+            return;
+          }
+          setFile(selected);
+          setError("");
+        }}
+      />
+      {file && (
+        <div className="ps-new-work-attachment">
+          <FileText size={16} aria-hidden="true" />
+          <span title={file.name}>{file.name}</span>
+          <button
+            type="button"
+            aria-label="Remove attached work"
+            onClick={() => setFile(null)}
+            disabled={busy}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+      {error && <p className="ps-new-work-error" role="alert">{error}</p>}
+      <div className="ps-actions ps-new-work-actions">
+        <button
+          type="button"
+          className="ps-new-work-attach"
+          onClick={() => fileInput.current?.click()}
+          disabled={busy}
+        >
+          <Paperclip size={17} />
+          Attach work
+        </button>
+        <button type="submit" className="ps-primary" disabled={!title.trim() || busy}>
+          {busy ? "Attaching…" : "Create project"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1360,7 +1573,9 @@ function LibraryDashboard({
 
       {featured ? (
         <section className="ps-featured">
-          <DashboardIcon kind="document" />
+          <span className="ps-home-icon document" aria-hidden="true">
+            <WorkIcon name={featured.icon} size={24} />
+          </span>
           <div className="ps-featured-copy">
             <h2>{featured.title}</h2>
             <p>

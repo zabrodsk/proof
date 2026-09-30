@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Proof · Launch video</title>
+<style>
+  @font-face { font-family: "Newsreader"; src: url(../../node_modules/@fontsource/newsreader/files/newsreader-latin-400-normal.woff2); font-weight: 400; }
+  @font-face { font-family: "Newsreader"; src: url(../../node_modules/@fontsource/newsreader/files/newsreader-latin-500-normal.woff2); font-weight: 500; }
+  @font-face { font-family: "Newsreader"; src: url(../../node_modules/@fontsource/newsreader/files/newsreader-latin-400-italic.woff2); font-weight: 400; font-style: italic; }
+  @font-face { font-family: "DM Sans"; src: url(../../node_modules/@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2); font-weight: 400; }
+  @font-face { font-family: "DM Sans"; src: url(../../node_modules/@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2); font-weight: 500; }
+  @font-face { font-family: "DM Sans"; src: url(../../node_modules/@fontsource/dm-sans/files/dm-sans-latin-600-normal.woff2); font-weight: 600; }
+
+  :root {
+    --ink: #1d3027;
+    --ink-deep: #15241d;
+    --accent: #245c48;
+    --mint: #b9dcc3;
+    --tint: #e7efe9;
+    --paper: #fafbf9;
+    --muted: #5c6d63;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); }
+  body { font-family: "DM Sans", sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .stage { position: absolute; inset: 0; overflow: hidden; }
+  .scene { position: absolute; inset: 0; opacity: 0; will-change: transform, opacity; }
+  .dark { background: radial-gradient(1200px 800px at 50% 45%, #274235 0%, var(--ink) 55%, var(--ink-deep) 100%); color: var(--paper); }
+  .light { background: radial-gradient(1400px 900px at 70% 30%, #eef4ef 0%, var(--paper) 60%); }
+  .serif { font-family: "Newsreader", serif; font-weight: 400; letter-spacing: -0.02em; }
+  .label { font-size: 20px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+  .dark .label { color: var(--mint); }
+  .line { display: block; overflow: hidden; padding-bottom: 0.08em; }
+  .line > span { display: inline-block; will-change: transform; }
+  em { font-style: italic; }
+
+  .window { position: absolute; border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 60px 120px -30px rgba(21, 36, 29, 0.45), 0 0 0 1px rgba(29, 48, 39, 0.08); }
+  .window .bar { height: 40px; background: #f1f4f2; border-bottom: 1px solid #e1e7e3; display: flex; align-items: center; gap: 9px; padding: 0 18px; }
+  .window .bar i { width: 13px; height: 13px; border-radius: 50%; background: #d5ddd8; }
+  .window .view { position: relative; }
+  .window .view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+  .shot { position: absolute; display: block; border-radius: 24px; }
+
+  #intro .word { position: absolute; left: 0; right: 0; top: 330px; text-align: center; font-size: 300px; line-height: 1; }
+  #intro .kicker { position: absolute; left: 0; right: 0; top: 270px; text-align: center; }
+  #intro .rule { position: absolute; left: 50%; top: 690px; height: 4px; width: 520px; margin-left: -260px; background: var(--mint); transform-origin: left; border-radius: 2px; }
+  #intro .tag { position: absolute; left: 0; right: 0; top: 740px; text-align: center; font-size: 46px; color: #d9e6dc; }
+
+  #hero .copy { position: absolute; left: 120px; top: 120px; }
+  #hero h2 { font-size: 112px; line-height: 1; }
+  #hero h2 em { color: var(--accent); }
+
+  #compare .copy, #process .copy { position: absolute; left: 0; right: 0; top: 70px; text-align: center; }
+
+  #studio .copy { position: absolute; left: 110px; top: 380px; width: 420px; }
+  #studio .cap { position: absolute; left: 0; top: 0; width: 460px; }
+  #studio .cap h3 { font-size: 72px; line-height: 1.02; margin-top: 22px; }
+  #studio .cap p { font-size: 26px; line-height: 1.45; color: var(--muted); margin-top: 22px; }
+  #studio .steps { position: absolute; left: 110px; top: 860px; display: flex; gap: 12px; }
+  #studio .steps b { width: 46px; height: 5px; border-radius: 3px; background: #d2ddd6; overflow: hidden; position: relative; }
+  #studio .steps b::after { content: ""; position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(var(--p, 0)); }
+
+  #outro .logo { position: absolute; left: 0; right: 0; top: 250px; display: flex; justify-content: center; align-items: center; gap: 30px; font-size: 180px; line-height: 1; }
+  #outro .logo svg { width: 150px; height: 150px; }
+  #outro h2 { position: absolute; left: 0; right: 0; top: 520px; text-align: center; font-size: 84px; line-height: 1.08; }
+  #outro h2 em { color: var(--mint); }
+  #outro .cta { position: absolute; left: 50%; top: 780px; transform: translateX(-50%); padding: 26px 46px; border-radius: 999px; background: var(--mint); color: var(--ink); font-size: 30px; font-weight: 600; display: flex; gap: 16px; align-items: center; white-space: nowrap; }
+  .grain { position: absolute; inset: 0; pointer-events: none; opacity: 0.05; mix-blend-mode: overlay; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+</style>
+<body>
+  <div class="stage">
+    <section id="intro" class="scene dark">
+      <div class="kicker label">Introducing</div>
+      <div class="word serif"><span class="line"><span>proof.</span></span></div>
+      <div class="rule"></div>
+      <div class="tag">Every citation, checked against the source.</div>
+    </section>
+
+    <section id="hero" class="scene light">
+      <div class="copy">
+        <div class="label">Meet Proof</div>
+      </div>
+      <div class="window" style="left: 250px; top: 190px; width: 1420px">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="view" style="height: 887px"><img src="shots/landing-hero.png" alt="" /></div>
+      </div>
+    </section>
+
+    <section id="compare" class="scene" style="background: #fbfbf8">
+      <div class="copy"><div class="label">Other tools guess. Proof checks.</div></div>
+      <img class="shot" src="shots/landing-compare.png" alt="" style="left: 300px; top: 150px; width: 1320px" />
+    </section>
+
+    <section id="process" class="scene" style="background: #f3f8f4">
+      <div class="copy"><div class="label">How it works</div></div>
+      <img class="shot" src="shots/landing-process.png" alt="" style="left: 300px; top: 160px; width: 1320px; border-radius: 30px; box-shadow: 0 50px 100px -40px rgba(21, 36, 29, 0.5)" />
+    </section>
+
+    <section id="studio" class="scene light">
+      <div class="copy">
+        <div class="cap" data-i="0"><div class="label">Your workspace</div><h3 class="serif">See what needs attention.</h3><p>Every paper, every source, in one place.</p></div>
+        <div class="cap" data-i="1"><div class="label">Citation health</div><h3 class="serif">Know how strong your sources are.</h3><p>A score and evidence coverage for each paper.</p></div>
+        <div class="cap" data-i="2"><div class="label">Evidence analysis</div><h3 class="serif">Fix what doesn’t hold up.</h3><p>Clear suggestions, ranked by what matters most.</p></div>
+      </div>
+      <div class="steps"><b></b><b></b><b></b></div>
+      <div class="window" style="left: 640px; top: 150px; width: 1200px">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="view" style="height: 750px">
+          <img src="shots/studio-home.png" alt="" />
+          <img src="shots/studio-work.png" alt="" />
+          <img src="shots/studio-analysis.png" alt="" />
+        </div>
+      </div>
+    </section>
+
+    <section id="outro" class="scene dark">
+      <div class="logo serif">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#b9dcc3" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14" /><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" /><path d="m14.5 10.5 1.8 1.8 3.2-3.6" /></svg>
+        <span>proof.</span>
+      </div>
+      <h2 class="serif">Check your citations<br /><em>before you submit.</em></h2>
+      <div class="cta">Join the waitlist <span aria-hidden="true">→</span></div>
+    </section>
+    <div class="grain"></div>
+  </div>
+
+  <script>
+    const DURATION = 22;
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const outExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * clamp(t)));
+    const outCubic = (t) => 1 - Math.pow(1 - clamp(t), 3);
+    const inOut = (t) => { t = clamp(t); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+    const prog = (t, start, dur) => clamp((t - start) / dur);
+
+    // Scene windows [in, out]; neighbours overlap for crossfades.
+    const scenes = {
+      intro: [0, 3.2],
+      hero: [2.7, 6.8],
+      compare: [6.3, 10.4],
+      process: [9.9, 13.8],
+      studio: [13.3, 19.6],
+      outro: [19.1, DURATION + 1],
+    };
+    const FADE = 0.45;
+
+    // Later scenes stack on top, so only the incoming scene fades; the outgoing one stays opaque beneath it.
+    function visibility(t, [a, b]) {
+      if (t >= b) return 0;
+      return a === 0 ? 1 : inOut(prog(t, a, FADE));
+    }
+
+    function set(el, styles) { Object.assign(el.style, styles); }
+
+    function intro(t) {
+      set($("#intro .kicker"), { opacity: outCubic(prog(t, 0.2, 0.6)), transform: `translateY(${lerp(20, 0, outExpo(prog(t, 0.2, 0.8)))}px)` });
+      set($("#intro .word .line > span"), { transform: `translateY(${lerp(110, 0, outExpo(prog(t, 0.35, 1.1)))}%)` });
+      set($("#intro .rule"), { transform: `scaleX(${inOut(prog(t, 1.0, 0.8))})` });
+      set($("#intro .tag"), { opacity: outCubic(prog(t, 1.35, 0.7)), transform: `translateY(${lerp(24, 0, outExpo(prog(t, 1.35, 0.9)))}px)` });
+      set($("#intro"), { transform: `scale(${lerp(1, 1.06, inOut(prog(t, 2.3, 0.8)))})` });
+    }
+
+    function hero(t) {
+      const lt = t - scenes.hero[0];
+      const rise = outExpo(prog(lt, 0.05, 1.2));
+      set($("#hero .window"), {
+        transform: `perspective(2400px) translateY(${lerp(260, 0, rise)}px) rotateX(${lerp(14, 0, rise)}deg) scale(${lerp(1, 1.05, prog(lt, 1, 3))})`,
+        transformOrigin: "50% 0%",
+      });
+      set($("#hero .copy"), { opacity: outCubic(prog(lt, 0.3, 0.6)) });
+    }
+
+    function compare(t) {
+      const lt = t - scenes.compare[0];
+      const e = outExpo(prog(lt, 0.05, 1.1));
+      set($("#compare .shot"), { transform: `translateY(${lerp(120, 0, e)}px) scale(${lerp(0.96, 1.03, prog(lt, 0, 3.9))})`, transformOrigin: "50% 40%" });
+      set($("#compare .copy"), { opacity: outCubic(prog(lt, 0.3, 0.6)) });
+    }
+
+    function processScene(t) {
+      const lt = t - scenes.process[0];
+      const e = outExpo(prog(lt, 0.05, 1.1));
+      set($("#process .shot"), { transform: `translateY(${lerp(120, 0, e)}px) scale(${lerp(0.96, 1.04, prog(lt, 0, 3.7))})`, transformOrigin: "50% 45%" });
+      set($("#process .copy"), { opacity: outCubic(prog(lt, 0.3, 0.6)) });
+    }
+
+    const studioBeats = [0, 2.0, 4.0];
+    function studio(t) {
+      const lt = t - scenes.studio[0];
+      const rise = outExpo(prog(lt, 0.05, 1.1));
+      set($("#studio .window"), { transform: `translateX(${lerp(240, 0, rise)}px) scale(${lerp(1, 1.025, prog(lt, 0, 6))})`, transformOrigin: "0% 50%" });
+      const imgs = $$("#studio .view img");
+      const caps = $$("#studio .cap");
+      const bars = $$("#studio .steps b");
+      studioBeats.forEach((start, i) => {
+        const next = studioBeats[i + 1] ?? Infinity;
+        const shown = i === 0 ? 1 : inOut(prog(lt, start, 0.5));
+        imgs[i].style.opacity = shown;
+        const capIn = outExpo(prog(lt, start + 0.15, 0.8));
+        const capOut = inOut(prog(lt, next - 0.2, 0.35));
+        set(caps[i], { opacity: Math.min(outCubic(prog(lt, start + 0.15, 0.5)), 1 - capOut), transform: `translateY(${lerp(40, 0, capIn) - capOut * 30}px)` });
+        bars[i].style.setProperty("--p", prog(lt, start, next === Infinity ? 2 : next - start));
+      });
+    }
+
+    function outro(t) {
+      const lt = t - scenes.outro[0];
+      set($("#outro .logo"), { opacity: outCubic(prog(lt, 0.2, 0.6)), transform: `translateY(${lerp(40, 0, outExpo(prog(lt, 0.2, 1)))}px)` });
+      set($("#outro h2"), { opacity: outCubic(prog(lt, 0.6, 0.6)), transform: `translateY(${lerp(40, 0, outExpo(prog(lt, 0.6, 1)))}px)` });
+      const pop = outExpo(prog(lt, 1.2, 0.9));
+      set($("#outro .cta"), { opacity: outCubic(prog(lt, 1.2, 0.5)), transform: `translateX(-50%) scale(${lerp(0.9, 1, pop)})` });
+    }
+
+    const renderers = { intro, hero, compare, process: processScene, studio, outro };
+    window.seek = (t) => {
+      for (const [id, range] of Object.entries(scenes)) {
+        const v = visibility(t, range);
+        const el = document.getElementById(id);
+        el.style.opacity = v;
+        el.style.visibility = v > 0 ? "visible" : "hidden";
+        if (v > 0) renderers[id](t);
+      }
+    };
+    window.DURATION = DURATION;
+    window.ready = Promise.all([
+      document.fonts.ready,
+      ...$$("img").map((img) => img.decode().catch(() => {})),
+    ]).then(() => window.seek(0));
+
+    // Opened directly (not by the renderer): play in real time.
+    if (!navigator.webdriver) {
+      window.ready.then(() => {
+        const start = performance.now();
+        const loop = (now) => { window.seek(((now - start) / 1000) % DURATION); requestAnimationFrame(loop); };
+        requestAnimationFrame(loop);
+      });
+    }
+  </script>
+</body>
+</html>
