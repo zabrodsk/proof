@@ -74,7 +74,7 @@ export default function NewStudioWork({
       setFilename(file.name);
       if (!titleRef.current.trim())
         setTitle(
-          (result.title || file.name.replace(/\.[^.]+$/, "")).slice(0, 300),
+          file.name.replace(/\.[^.]+$/, "").slice(0, 300),
         );
     } catch (e) {
       if (!controller.signal.aborted) setError((e as Error).message);

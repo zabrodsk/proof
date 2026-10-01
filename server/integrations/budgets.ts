@@ -86,7 +86,7 @@ export async function reserveConnectorCall(
     }
     if (exhausted) {
       await tx.query(
-        "UPDATE runs SET status='partial',cancel_requested=true,error='Provider spending reservation exhausted. Unfinished claims remain unverified.',updated_at=now() WHERE workspace_id=$1 AND id=$2",
+        "UPDATE runs SET status='partial',cancel_requested=true,error='Provider spending reservation exhausted. Unfinished claims need more evidence.',updated_at=now() WHERE workspace_id=$1 AND id=$2",
         [ws, runId],
       );
       return false;

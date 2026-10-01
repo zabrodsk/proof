@@ -23,6 +23,7 @@ import { integrationApi, integrationErrors } from "./integrations/http.js";
 import { storage } from "./backend/storage.js";
 import { compatibilityRouter } from "./backend/compatibility.js";
 import { backendRouter } from "./backend/router.js";
+import { publicPages } from "./public-pages.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
 if (hosted) app.set("trust proxy", 1);
@@ -88,6 +89,7 @@ app.all("/mcp", (_req, res) =>
     .status(503)
     .json({ error: "Proof MCP is not enabled on this deployment." }),
 );
+app.use(publicPages());
 installAccess(app);
 if (integrations) {
   app.use(

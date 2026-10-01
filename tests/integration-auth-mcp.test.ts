@@ -124,6 +124,9 @@ test("upstream introspection rejects a signed token whose OAuth grant was revoke
   app.post("/introspection", (req, res) => {
     requests++;
     assert.ok(req.body.token);
+    assert.equal(req.body.token_type_hint, "access_token");
+    assert.equal(req.body.client_id, "chatgpt-client");
+    assert.equal(req.body.client_secret, "fixture-introspection-secret");
     res.json({ active, scope: "reports:read" });
   });
   const listener = app.listen(0, "127.0.0.1");
@@ -136,6 +139,8 @@ test("upstream introspection rejects a signed token whose OAuth grant was revoke
       {
         ...config,
         introspectionUrl: `http://127.0.0.1:${address.port}/introspection`,
+        introspectionClientId: "chatgpt-client",
+        introspectionClientSecret: "fixture-introspection-secret",
       },
       f.store,
       async () => key.publicKey,

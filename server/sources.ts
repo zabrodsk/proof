@@ -141,7 +141,7 @@ export async function resolveDOI(
   ).message;
   if (crossref.DOI && crossref.DOI.toLowerCase() !== doi)
     throw new Error(
-      "The registry returned a different DOI. The source remains unverified.",
+      "The registry returned a different DOI. The source identity could not be confirmed.",
     );
   if (crossref.type !== "journal-article")
     throw new Error(

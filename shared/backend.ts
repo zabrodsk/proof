@@ -120,6 +120,13 @@ export interface BackendFinding {
   citation: Citation;
   eligibility: Eligibility;
   processing: Processing;
+  basis?: "supplied_text" | "academic_research";
+  evidenceGap?:
+    | "source_unavailable"
+    | "check_incomplete"
+    | "source_requirements"
+    | "not_addressed"
+    | "insufficient_evidence";
   evidence: EvidenceLink[];
   explanation: string[];
   checkedPassageIds: string[];

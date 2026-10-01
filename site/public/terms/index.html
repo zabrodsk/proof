@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta
+      name="description"
+      content="Proposed terms for using Proof and its connector."
+    />
+    <title>Terms of service | Proof · Review draft</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: #fafbf9;
+        color: #1d3027;
+        font:
+          17px/1.75 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      a {
+        color: #245c48;
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: #174533;
+      }
+      a:focus-visible {
+        outline: 3px solid #8fc5ab;
+        outline-offset: 5px;
+      }
+      .skip {
+        position: absolute;
+        left: 16px;
+        top: -100px;
+      }
+      .skip:focus {
+        top: 16px;
+        background: white;
+        padding: 8px;
+        z-index: 2;
+      }
+      header,
+      footer {
+        max-width: 1120px;
+        margin: auto;
+        padding: 24px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      header {
+        border-bottom: 1px solid #dce5df;
+      }
+      .brand {
+        font:
+          bold 32px Georgia,
+          serif;
+        text-decoration: none;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        font-size: 15px;
+      }
+      nav a[aria-current="page"] {
+        font-weight: 700;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 55px 32px 80px;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        line-height: 1.18;
+      }
+      h1 {
+        font-size: clamp(42px, 7vw, 66px);
+        margin: 0 0 18px;
+      }
+      h2 {
+        font-size: 29px;
+        margin: 0 0 15px;
+      }
+      .intro {
+        max-width: 720px;
+        font-size: 20px;
+        color: #5c6d63;
+      }
+      .notice {
+        background: #fff7e8;
+        border: 1px solid #e4cf9c;
+        border-radius: 12px;
+        padding: 20px 24px;
+        max-width: 850px;
+        margin: 28px 0 40px;
+      }
+      .notice p {
+        margin: 7px 0;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 740px);
+        gap: 60px;
+      }
+      .toc {
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        font-size: 15px;
+      }
+      .toc a {
+        text-decoration: none;
+      }
+      section {
+        scroll-margin-top: 25px;
+        border-top: 1px solid #dce5df;
+        padding: 28px 0 14px;
+      }
+      section:first-child {
+        border: 0;
+        padding-top: 0;
+      }
+      p {
+        margin: 0 0 17px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      .pending {
+        border-left: 3px solid #d1ad67;
+        padding: 8px 16px;
+        background: #fff7e8;
+        font-size: 15px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 15px;
+      }
+      th,
+      td {
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid #dce5df;
+      }
+      th {
+        background: #e7efe9;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      footer {
+        border-top: 1px solid #dce5df;
+        font-size: 14px;
+        color: #5c6d63;
+      }
+      .contact {
+        padding: 22px;
+        background: #e7efe9;
+        border-radius: 12px;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 760px) {
+        header,
+        footer {
+          padding: 20px;
+        }
+        main {
+          padding: 36px 20px 60px;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+        .toc {
+          position: static;
+          padding: 20px;
+          background: #f3f7f4;
+          border-radius: 12px;
+        }
+        nav {
+          gap: 14px;
+        }
+        .notice {
+          padding: 16px;
+        }
+        body {
+          font-size: 16px;
+        }
+        h2 {
+          font-size: 26px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header>
+      <a class="brand" href="/">Proof</a>
+      <nav aria-label="Public pages">
+        <a href="/privacy">Privacy</a
+        ><a href="/terms" aria-current="page">Terms</a
+        ><a href="/support">Support</a
+        ><a href="https://app-proof.up.railway.app/app">Open Proof</a>
+      </nav>
+    </header>
+    <main id="main">
+      <h1>Terms of service</h1>
+      <p class="intro">Proposed terms for using Proof and its connector.</p>
+      <aside class="notice" aria-label="Draft status">
+        <strong>Review draft. Not yet effective.</strong>
+        <p>
+          The operator must approve the proposed rules and resolve the marked
+          details before publication. This page is not a final policy for a
+          directory submission.
+        </p>
+        <p>Prepared 30 September 2026.</p>
+      </aside>
+      <div class="layout">
+        <nav class="toc" aria-label="On this page">
+          <a href="#operator">Operator and scope</a
+          ><a href="#eligibility">Who can use Proof</a
+          ><a href="#service">What Proof does</a
+          ><a href="#accounts">Accounts and connected platforms</a
+          ><a href="#content">Your content and permitted use</a
+          ><a href="#fees">Fees and availability</a
+          ><a href="#ending">Ending access and deleting data</a
+          ><a href="#rights">Rights, disputes, and changes</a>
+        </nav>
+        <article>
+          <section id="operator">
+            <h2>Operator and scope</h2>
+            <div class="contact">
+              <p>
+                Proof is operated by Dusan Zabrodsky.<br />Palmova 68, 25101
+                Herink, Czech Republic.
+              </p>
+              <p>
+                Email
+                <a href="mailto:dusan.zabrodsky@gmail.com"
+                  >dusan.zabrodsky@gmail.com</a
+                >
+                for support and privacy requests.
+              </p>
+            </div>
+            <p>
+              These proposed terms cover the Proof website, web app, and
+              connector. They become effective only after operator approval and
+              publication. The draft date is 30 September 2026.
+            </p>
+          </section>
+          <section id="eligibility">
+            <h2>Who can use Proof</h2>
+            <p>
+              Proposed rule: you must be at least 18 years old and able to enter
+              into a binding agreement to use Proof. If you use it for an
+              organization, you must have authority to act for it.
+            </p>
+            <p>
+              Proof is intended to be available to users in all countries where
+              its operation and use are lawful. Applicable law and provider or
+              platform restrictions may limit access. Listing all countries does
+              not guarantee that every feature works in every location.
+            </p>
+          </section>
+          <section id="service">
+            <h2>What Proof does</h2>
+            <p>
+              Proof compares claims with available sources and returns findings,
+              citations, and evidence excerpts. Source access, extraction
+              quality, missing context, and model errors affect results. An
+              assessment does not certify that a statement is true, that a paper
+              is reliable, or that your work meets an institution's rules.
+            </p>
+            <p>
+              Review the original sources and every proposed edit before relying
+              on the result. Proof is not a substitute for professional medical,
+              legal, or financial advice. You remain responsible for decisions
+              and for material you submit or publish.
+            </p>
+          </section>
+          <section id="accounts">
+            <h2>Accounts and connected platforms</h2>
+            <p>
+              Proof currently requires an invite code after sign-in. An account
+              alone does not guarantee access. Keep your account and login
+              credentials secure. Do not share tokens or attempt to access
+              another user's workspace. Tell support if you believe someone has
+              accessed your account without permission.
+            </p>
+            <p>
+              Connecting an assistant authorizes actions within the granted
+              permissions and selected sources. Tool results may be copied into
+              the assistant platform. Its own terms and privacy policy apply.
+              Disconnecting the connector does not erase previously shared
+              results or stored Proof work.
+            </p>
+          </section>
+          <section id="content">
+            <h2>Your content and permitted use</h2>
+            <p>
+              You keep the rights you already hold in your drafts and uploaded
+              material. You give the operator permission to store, extract,
+              process, and share that material with the service providers and
+              connected platforms only as needed to perform the operations you
+              request and operate Proof, as described in the privacy notice.
+            </p>
+            <p>
+              You must have the rights and permissions needed to submit and
+              process the material. Do not upload unlawfully obtained documents,
+              credentials, or personal information you cannot lawfully share. Do
+              not use Proof to infringe others' rights, bypass access controls,
+              distribute malicious content, or disrupt the service. Do not
+              misrepresent generated findings as independently verified facts.
+            </p>
+          </section>
+          <section id="fees">
+            <h2>Fees and availability</h2>
+            <p class="pending">
+              Proposed launch terms: access to Proof is free. No subscription or
+              paid plan is created by these terms. If paid features are
+              introduced, their price and terms must be shown and accepted
+              before any charge. Current code has no payment checkout; the
+              operator must approve the free-launch policy.
+            </p>
+            <p>
+              Feature limits and third-party availability can affect processing.
+              Proof may be interrupted by maintenance, provider outages, or
+              technical failures. Keep copies of important drafts and source
+              files. These terms make no uptime or support-response guarantee.
+            </p>
+          </section>
+          <section id="ending">
+            <h2>Ending access and deleting data</h2>
+            <p>
+              You can stop using Proof and revoke connector access at any time.
+              For account deletion, use the support contact. Archiving work is
+              not deletion. The privacy notice explains source deletion and
+              storage.
+            </p>
+            <p class="pending">
+              Proposed operator rule: access may be restricted when necessary to
+              address unlawful use, abuse, or a security risk. Give notice and a
+              way to contact support where practical and legally required. If
+              Proof is discontinued, communicate the closure and any available
+              export or deletion steps. The operator must approve this rule.
+            </p>
+          </section>
+          <section id="rights">
+            <h2>Rights, disputes, and changes</h2>
+            <p>
+              Nothing in these terms removes consumer or privacy rights that
+              applicable law does not allow a contract to exclude. This draft
+              contains no blanket liability waiver, mandatory arbitration, or
+              exclusive foreign-court clause.
+            </p>
+            <p>
+              Contact the operator to raise a service problem or dispute.
+              Material changes to the service or terms need clear notice and any
+              consent required by applicable law. Existing rights and applicable
+              legal obligations continue to apply.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer>
+      <span>Proof · Operated by Dusan Zabrodsky</span>
+      <nav aria-label="Footer">
+        <a href="/privacy">Privacy</a
+        ><a href="/terms" aria-current="page">Terms</a
+        ><a href="/support">Support</a>
+      </nav>
+    </footer>
+  </body>
+</html>

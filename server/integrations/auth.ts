@@ -1,3 +1,4 @@
+import { hasInvite } from "../invite.js";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { accountStore } from "../accounts.js";
 import { IntegrationStore, IntegrationError } from "./store.js";
@@ -13,6 +14,8 @@ export type OAuthConfig = {
   clients: Record<string, "chatgpt" | "claude">;
   introspectionUrl?: string;
   introspectionAuthorization?: string;
+  introspectionClientId?: string;
+  introspectionClientSecret?: string;
   autoGrant: boolean;
 };
 export function oauthConfig(): OAuthConfig {
@@ -50,6 +53,11 @@ export function oauthConfig(): OAuthConfig {
   if (!Object.keys(clients).length)
     throw Error("Configure at least one platform OAuth client ID.");
   const introspectionUrl = process.env.PROOF_OAUTH_INTROSPECTION_URL;
+  const introspectionClientId = process.env.PROOF_OAUTH_INTROSPECTION_CLIENT_ID;
+  const introspectionClientSecret =
+    process.env.PROOF_OAUTH_INTROSPECTION_CLIENT_SECRET;
+  if (!!introspectionClientId !== !!introspectionClientSecret)
+    throw Error("Configure both OAuth introspection client credentials.");
   if (introspectionUrl && new URL(introspectionUrl).protocol !== "https:")
     throw Error("OAuth introspection requires HTTPS.");
   if (process.env.PROOF_HOSTED === "true" && !introspectionUrl)
@@ -64,6 +72,8 @@ export function oauthConfig(): OAuthConfig {
     introspectionUrl,
     introspectionAuthorization:
       process.env.PROOF_OAUTH_INTROSPECTION_AUTHORIZATION,
+    introspectionClientId,
+    introspectionClientSecret,
     autoGrant: process.env.PROOF_OAUTH_AUTO_GRANT === "true",
   };
 }
@@ -99,6 +109,17 @@ export class OAuthVerifier {
       );
     let effectiveScope = payload.scope;
     if (this.config.introspectionUrl) {
+      const body = new URLSearchParams({
+        token,
+        token_type_hint: "access_token",
+      });
+      if (
+        this.config.introspectionClientId &&
+        this.config.introspectionClientSecret
+      ) {
+        body.set("client_id", this.config.introspectionClientId);
+        body.set("client_secret", this.config.introspectionClientSecret);
+      }
       const response = await fetch(this.config.introspectionUrl, {
         method: "POST",
         headers: {
@@ -107,7 +128,7 @@ export class OAuthVerifier {
             ? { Authorization: this.config.introspectionAuthorization }
             : {}),
         },
-        body: new URLSearchParams({ token, token_type_hint: "access_token" }),
+        body,
         signal: AbortSignal.timeout(10000),
       });
       if (!response.ok)
@@ -178,6 +199,12 @@ export class OAuthVerifier {
         "grant_required",
         "Connect this platform to your signed-in Proof account at /app/integrations.",
         401,
+      );
+    if (!hasInvite(accountStore().get(grant.owner)))
+      throw new IntegrationError(
+        "invite_required",
+        "Enter your invite code in Proof before connecting this platform.",
+        403,
       );
     const p = {
       owner: grant.owner,

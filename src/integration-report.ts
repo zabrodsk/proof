@@ -10,7 +10,13 @@ export function integrationFindingState(
     finding.support === "not_verified" ||
     (finding.processing && finding.processing !== "complete")
   )
-    return { tone: "unverified", label: "Unverified" } as const;
+    return {
+      tone: "unverified",
+      label:
+        finding.processing && finding.processing !== "complete"
+          ? "Check incomplete"
+          : "Not enough evidence",
+    } as const;
   if (
     finding.support === "supported" &&
     finding.sourceEligibility === "eligible" &&

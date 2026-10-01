@@ -30,7 +30,6 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -852,7 +851,7 @@ export default function App() {
                     {health && !health.jevConfigured && (
                       <p className="connection-warning">
                         Jev needs a TypeSafe API key. Source retrieval works,
-                        but semantic checks will remain unverified.
+                        but semantic checks will need a working Jev connection.
                       </p>
                     )}
                   </div>
@@ -959,7 +958,7 @@ export default function App() {
                         <span>{counts.unverified}</span>
                         <small>
                           <CircleHelp size={12} />
-                          Unverified
+                          Needs evidence
                         </small>
                       </button>
                     </div>
@@ -971,7 +970,7 @@ export default function App() {
                             ? "Needs review"
                             : filter === "supported"
                               ? "Supported claims"
-                              : "Unverified claims"}
+                              : "Claims needing evidence"}
                       </span>
                       {filter !== "all" && (
                         <button onClick={() => setFilter("all")}>

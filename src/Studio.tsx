@@ -1,3 +1,4 @@
+import { readableDocumentTitle } from "./document-title";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { BackendFinding } from "../shared/backend";
@@ -7,7 +8,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
-  BarChart3,
   Check,
   ChevronDown,
   FileText,
@@ -19,18 +19,19 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
-  Pencil,
+  FileUp,
   Plus,
   Play,
   Search,
   Settings,
-  Sparkles,
   Trash2,
   TriangleAlert,
   Upload,
   CircleHelp,
   Plug,
   CircleX,
+  LogOut,
+  UserRound,
   X,
 } from "lucide-react";
 import "./studio.css";
@@ -78,12 +79,12 @@ function parseRoute(pathname: string): Route {
         return null;
       }
     })(),
-    section: (match[2] as Section) || "dashboard",
+    section: match[2] === "citations" ? "citations" : "dashboard",
   };
 }
 
 function workPath(id: string, section: Section = "dashboard") {
-  if (section === "dashboard") return `/app/works/${id}`;
+  if (section !== "citations") return `/app/works/${id}`;
   return `/app/works/${id}/${section}`;
 }
 
@@ -163,7 +164,7 @@ export default function Studio({ session }: { session: Session }) {
                     typeof item?.id === "string" &&
                     typeof item.title === "string" &&
                     typeof item.content === "string",
-                ),
+                ).map((item) => ({ ...item, title: readableDocumentTitle(item.title) })),
               );
           } catch {
             setError("Could not read this browser's saved drafts.");
@@ -409,11 +410,7 @@ export default function Studio({ session }: { session: Session }) {
       return;
     }
     const page =
-      route.section === "analysis"
-        ? "Analysis"
-        : route.section === "citations"
-          ? "Citations"
-          : "Document";
+      route.section === "citations" ? "Sources & citations" : "Review";
     document.title = `Proof · ${page} · ${activeWork.title}`;
   }, [focused, route.section, activeWork?.title, isSettings]);
 
@@ -472,30 +469,37 @@ export default function Studio({ session }: { session: Session }) {
       openWork(work.id);
     });
   };
+  const saveText = async (text: string) => {
+    if (!activeWork) return undefined;
+    let documentVersionId = activeWork.documentVersionId;
+    let runId: string | undefined;
+    if (persistent) {
+      const result = await api<{ id: string; runId?: string }>(
+        `/api/v1/documents/${activeWork.id}/versions`,
+        { text: text || " ", expectedVersionId: documentVersionId },
+      );
+      documentVersionId = result.id;
+      runId = result.runId;
+    }
+    setWorks((current) =>
+      current.map((work) =>
+        work.id === activeWork.id
+          ? {
+              ...work,
+              content: text,
+              words: text.trim().split(/\s+/).filter(Boolean).length,
+              edited: "just now",
+              documentVersionId,
+            }
+          : work,
+      ),
+    );
+    return { runId };
+  };
   const saveDocument = () => {
     if (!activeWork || busy) return;
     void action(async () => {
-      let documentVersionId = activeWork.documentVersionId;
-      if (persistent) {
-        const result = await api<{ id: string }>(
-          `/api/v1/documents/${activeWork.id}/versions`,
-          { text: draft || " ", expectedVersionId: documentVersionId },
-        );
-        documentVersionId = result.id;
-      }
-      setWorks((current) =>
-        current.map((work) =>
-          work.id === activeWork.id
-            ? {
-                ...work,
-                content: draft,
-                words: draft.trim().split(/\s+/).filter(Boolean).length,
-                edited: "just now",
-                documentVersionId,
-              }
-            : work,
-        ),
-      );
+      await saveText(draft);
       setModal(null);
     });
   };
@@ -630,10 +634,14 @@ export default function Studio({ session }: { session: Session }) {
             </button>
             <button
               className={`ps-rail-button ${!focused && !isSettings ? "active" : ""}`}
-              aria-label="My work"
-              data-sidebar-tooltip="My work"
+              aria-label="All work"
+              data-sidebar-tooltip="All work"
               aria-current={!focused && !isSettings ? "page" : undefined}
-              onClick={() => go("/app")}
+              onClick={() => {
+                go("/app");
+                updatePreferences({ sidebarCollapsed: false });
+                setSidebarTooltip(null);
+              }}
             >
               <LayoutGrid size={21} />
             </button>
@@ -658,7 +666,10 @@ export default function Studio({ session }: { session: Session }) {
                 aria-controls="ps-rail-search-panel"
                 aria-expanded={railSearchOpen}
                 data-sidebar-tooltip="Search work"
-                onClick={() => setRailSearchOpen((open) => !open)}
+                onClick={() => {
+                  setSidebarTooltip(null);
+                  setRailSearchOpen((open) => !open);
+                }}
               >
                 <Search size={21} />
               </button>
@@ -666,7 +677,19 @@ export default function Studio({ session }: { session: Session }) {
                 <div
                   className="ps-rail-search-popover"
                   id="ps-rail-search-panel"
+                  role="region"
+                  aria-label="Search work"
                 >
+                  <div className="ps-rail-search-heading">
+                    <strong>Search work</strong>
+                    <button
+                      className="ps-icon-button"
+                      aria-label="Close search"
+                      onClick={closeRailSearch}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                   <div className="ps-rail-search-field">
                     <Search size={17} />
                     <input
@@ -688,10 +711,50 @@ export default function Studio({ session }: { session: Session }) {
                         }
                       }}
                     />
+                    {railQuery && (
+                      <button
+                        className="ps-search-clear"
+                        aria-label="Clear search"
+                        onClick={() => {
+                          setRailQuery("");
+                          railSearchRef.current
+                            ?.querySelector<HTMLInputElement>("input")
+                            ?.focus();
+                        }}
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
                   </div>
                   <div
                     className="ps-rail-search-results"
                     aria-label="Matching work"
+                    onKeyDown={(event) => {
+                      if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+                      const buttons = [
+                        ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                          "button",
+                        ),
+                      ];
+                      const index = buttons.indexOf(
+                        document.activeElement as HTMLButtonElement,
+                      );
+                      event.preventDefault();
+                      if (event.key === "ArrowUp" && index === 0)
+                        railSearchRef.current
+                          ?.querySelector<HTMLInputElement>("input")
+                          ?.focus();
+                      else
+                        buttons[
+                          Math.max(
+                            0,
+                            Math.min(
+                              buttons.length - 1,
+                              index + (event.key === "ArrowDown" ? 1 : -1),
+                            ),
+                          )
+                        ]?.focus();
+                    }}
                   >
                     {railResults.map((work) => (
                       <button key={work.id} onClick={() => openWork(work.id)}>
@@ -728,8 +791,8 @@ export default function Studio({ session }: { session: Session }) {
                 </button>
                 <button
                   className={`ps-rail-button ${route.section === "dashboard" ? "active" : ""}`}
-                  aria-label="Document"
-                  data-sidebar-tooltip="Document"
+                  aria-label="Review"
+                  data-sidebar-tooltip="Review"
                   aria-current={
                     route.section === "dashboard" ? "page" : undefined
                   }
@@ -738,20 +801,9 @@ export default function Studio({ session }: { session: Session }) {
                   <House size={21} />
                 </button>
                 <button
-                  className={`ps-rail-button ${route.section === "analysis" ? "active" : ""}`}
-                  aria-label="Analysis"
-                  data-sidebar-tooltip="Analysis"
-                  aria-current={
-                    route.section === "analysis" ? "page" : undefined
-                  }
-                  onClick={() => openWork(activeWork.id, "analysis")}
-                >
-                  <BarChart3 size={21} />
-                </button>
-                <button
                   className={`ps-rail-button ${route.section === "citations" ? "active" : ""}`}
-                  aria-label="Citations"
-                  data-sidebar-tooltip="Citations"
+                  aria-label="Sources & citations"
+                  data-sidebar-tooltip="Sources & citations"
                   aria-current={
                     route.section === "citations" ? "page" : undefined
                   }
@@ -980,16 +1032,7 @@ export default function Studio({ session }: { session: Session }) {
                               onClick={() => openWork(work.id)}
                               icon={<House size={18} />}
                             >
-                              Document
-                            </SubLink>
-                            <SubLink
-                              current={route.section}
-                              section="analysis"
-                              href={workPath(work.id, "analysis")}
-                              onClick={() => openWork(work.id, "analysis")}
-                              icon={<BarChart3 size={18} />}
-                            >
-                              Analysis
+                              Review
                             </SubLink>
                             <SubLink
                               current={route.section}
@@ -998,7 +1041,7 @@ export default function Studio({ session }: { session: Session }) {
                               onClick={() => openWork(work.id, "citations")}
                               icon={<Link2 size={18} />}
                             >
-                              Citations
+                              Sources & citations
                             </SubLink>
                           </nav>
                           <div className="ps-work-actions">
@@ -1019,8 +1062,8 @@ export default function Studio({ session }: { session: Session }) {
             </div>
             {!focused && (
               <div className="ps-sidebar-footer">
-                <a className="ps-mcp-link" href={appRoutes.connections}>
-                  <Plug size={18} /> Connect your chat
+                <a href={appRoutes.connections}>
+                  <Plug size={21} /> AI connections
                 </a>
                 <button onClick={() => go(appRoutes.settings)}>
                   <Settings size={21} /> Settings
@@ -1145,7 +1188,6 @@ export default function Studio({ session }: { session: Session }) {
                     the evidence.
                   </p>
                   <a href={appRoutes.classroom}>Class tools</a>
-                  <br />
                   <a href={appRoutes.evidence}>Evidence editor</a>
                 </div>
               )}
@@ -1176,18 +1218,25 @@ export default function Studio({ session }: { session: Session }) {
                         : "Saved in this browser"}
                     </span>
                   </div>
-                  <a href={appRoutes.account}>Account settings</a>
-                  <a href={appRoutes.settings}>App settings</a>
-                  <a href={appRoutes.connections}>Connected tools</a>
+                  <a href={appRoutes.account}>
+                    <UserRound size={16} /> Account settings
+                  </a>
+                  <a href={appRoutes.settings}>
+                    <Settings size={16} /> App settings
+                  </a>
+                  <a href={appRoutes.connections}>
+                    <Plug size={16} /> Connected tools
+                  </a>
                   {session.hosted && (
                     <button
+                      className="ps-profile-signout"
                       onClick={() =>
                         void action(async () => {
                           await signOut(session);
                         })
                       }
                     >
-                      Sign out
+                      <LogOut size={16} /> Sign out
                     </button>
                   )}
                 </div>
@@ -1236,23 +1285,14 @@ export default function Studio({ session }: { session: Session }) {
               <div className="ps-page-heading">
                 <div className="ps-heading-copy">
                   <div className="ps-type">
-                    {route.section === "dashboard"
-                      ? "Document"
-                      : route.section === "analysis"
-                        ? "Analysis"
-                        : "Citations"}
+                    {route.section === "citations"
+                      ? "Sources & citations"
+                      : "Review"}
                   </div>
                   <h1>{activeWork.title}</h1>
-                  <div className="ps-meta">
-                    Last edited {activeWork.edited} <span>·</span>{" "}
-                    {activeWork.words.toLocaleString()} words
-                  </div>
+                  <div className="ps-meta">Last edited {activeWork.edited}</div>
                 </div>
                 <div className="ps-heading-actions">
-                  <button className="ps-outline" onClick={openDocument}>
-                    <Pencil size={18} />
-                    Edit document
-                  </button>
                   <div
                     className="ps-menu"
                     onClick={(event) => event.stopPropagation()}
@@ -1269,13 +1309,19 @@ export default function Studio({ session }: { session: Session }) {
                     {openMenu === "document" && (
                       <div className="ps-popover ps-document-popover">
                         <button onClick={openDocument}>
-                          <Pencil size={16} /> Edit document
+                          <FileUp size={16} /> Import from a file
                         </button>
-                        <button
-                          onClick={() => openWork(activeWork.id, "citations")}
-                        >
-                          <Link2 size={16} /> View citations
-                        </button>
+                        {route.section === "citations" ? (
+                          <button onClick={() => openWork(activeWork.id)}>
+                            <House size={16} /> Back to review
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openWork(activeWork.id, "citations")}
+                          >
+                            <Link2 size={16} /> Sources & citations
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1287,8 +1333,8 @@ export default function Studio({ session }: { session: Session }) {
                 work={activeWork}
                 section={route.section}
                 onUpdated={refreshWorks}
-                onEdit={openDocument}
-                onAnalyze={() => openWork(activeWork.id, "analysis")}
+                onSave={saveText}
+                onOpenSources={() => openWork(activeWork.id, "citations")}
               />
             </>
           )}
@@ -1343,8 +1389,8 @@ export default function Studio({ session }: { session: Session }) {
           {modal === "document" && (
             <>
               <p className="ps-editor-hint">
-                Make changes to your draft below. Your word count will update
-                when you save.
+                Import a file to replace the current text. Proof keeps the
+                earlier version.
               </p>
               <label className="ps-field-label">
                 Import a document
@@ -1462,8 +1508,8 @@ function SubLink({
   return (
     <a
       href={href}
-      className={current === section ? "active" : ""}
-      aria-current={current === section ? "page" : undefined}
+      className={current === section || (section === "dashboard" && current === "analysis") ? "active" : ""}
+      aria-current={current === section || (section === "dashboard" && current === "analysis") ? "page" : undefined}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;
@@ -1630,15 +1676,9 @@ function LibraryDashboard({
     },
     {
       kind: "review",
-      value: rows.filter(({ finding }) => findingTone(finding) === "review")
+      value: rows.filter(({ finding }) => findingTone(finding) !== "supported")
         .length,
-      label: "Need review",
-    },
-    {
-      kind: "incorrect",
-      value: rows.filter(({ finding }) => findingTone(finding) === "unverified")
-        .length,
-      label: "Not verified",
+      label: "Unsupported",
     },
   ] as const;
   const active =

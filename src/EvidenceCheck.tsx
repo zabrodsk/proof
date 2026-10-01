@@ -313,14 +313,14 @@ export default function EvidenceCheck({
           )}
           <p className="class-note">
             This check uses only the articles you add. Journal peer review and
-            readable full text must be verified first. Abstracts and unverified
+            readable full text must be verified first. Abstracts and unconfirmed
             pasted text are excluded.
           </p>
         </section>
       ) : (
         <p className="evidence-scope">
           Proof checks each sentence against peer-reviewed journal articles it
-          can read in full. Abstracts, previews and unverified sources are
+          can read in full. Abstracts, previews and unconfirmed sources are
           excluded.
         </p>
       )}

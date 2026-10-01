@@ -1,3 +1,4 @@
+import { inviteGate, hasInvite } from "./invite.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { WorkOS } from "@workos-inc/node";
@@ -40,10 +41,24 @@ export function installWorkOS(app: Express) {
   )
     throw new Error("WorkOS requires HTTPS except on localhost.");
   const secure = redirectUri.protocol === "https:";
+  const returnPath = (value: unknown) => {
+    if (
+      typeof value !== "string" ||
+      !value.startsWith("/app") ||
+      value.includes("\\")
+    )
+      return "/app";
+    const target = new URL(value, redirectUri);
+    return target.origin === redirectUri.origin &&
+      (target.pathname === "/app" || target.pathname.startsWith("/app/"))
+      ? target.pathname + target.search + target.hash
+      : "/app";
+  };
   const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
     clientId: process.env.WORKOS_CLIENT_ID!,
   });
   const accounts = accountStore();
+  const gate = inviteGate(accounts);
   const cookie = (req: Request, name: string) =>
     req.headers.cookie
       ?.split(";")
@@ -79,7 +94,12 @@ export function installWorkOS(app: Express) {
         screenHint: req.query.screen === "sign-up" ? "sign-up" : "sign-in",
       });
     const value = Buffer.from(
-      JSON.stringify({ state, codeVerifier, expires: Date.now() + 600_000 }),
+      JSON.stringify({
+        state,
+        codeVerifier,
+        expires: Date.now() + 600_000,
+        returnTo: returnPath(req.query.returnTo),
+      }),
     ).toString("base64url");
     setCookie(res, "proof_oauth", `${value}.${signature(value)}`, 600_000);
     res.redirect(url);
@@ -113,7 +133,7 @@ export function installWorkOS(app: Express) {
         });
       if (!sealedSession) throw Error("Missing session");
       setCookie(res, "proof_workos", sealedSession, 7 * 24 * 60 * 60_000);
-      res.redirect("/app");
+      res.redirect(returnPath(flow.returnTo));
     } catch {
       res
         .status(400)
@@ -180,6 +200,7 @@ export function installWorkOS(app: Express) {
           authenticated: true,
           hosted,
           provider: "workos",
+          inviteRequired: !hasInvite(account),
           user: {
             id: account.id,
             name: account.name,
@@ -187,6 +208,7 @@ export function installWorkOS(app: Express) {
             inputTokens: account.inputTokens,
           },
         });
+      if (gate(req, res, account.id)) return;
       res.locals.proofSession = account.id;
       accountContext.run(
         { charge: (tokens, usd) => accounts.charge(account.id, tokens, usd) },

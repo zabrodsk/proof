@@ -717,6 +717,136 @@ const noResolution = async () => ({
   notices: [] as string[],
 });
 
+test("testing materials retain text support without academic eligibility and distinguish irrelevant passages", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const saved = await source(
+    ws,
+    "The class had 24 students. Each student completed two tests.",
+  );
+  const doc = await draft(ws, "The class had 24 students.");
+  for (const verdict of ["supported", "not_addressed"] as const) {
+    const run = await engineRun(ws, doc.versionId, [saved.selection], {
+      sourcePolicy: "user_supplied",
+      checkScope: "selected_library",
+      claimSpans: [{ start: 0, end: doc.text.length }],
+    });
+    await processRun(db, saved.blobs, ws, run.id, {
+      judge: async (claim, _item, passages) => ({
+        ...claim,
+        method: "Jev",
+        status: verdict,
+        evidence: passages![0],
+        checkedPassages: passages,
+        explanation: "Compared the supplied text.",
+      }),
+      research: noResearch,
+      resolveReferences: noResolution,
+    });
+    const result = (
+      await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+    ).rows[0].data;
+    assert.equal(result.basis, "supplied_text");
+    assert.equal(result.processing, "complete");
+    assert.equal(result.eligibility, "unknown");
+    assert.equal(
+      result.support,
+      verdict === "supported" ? "supported" : "not_verified",
+    );
+    if (verdict === "not_addressed")
+      assert.equal(result.evidenceGap, "not_addressed");
+  }
+});
+
+test("one-click corrections for materials must quote an inspected passage", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const sentence = "The class had 24 students.";
+  const saved = await source(ws, sentence);
+  const doc = await draft(ws, "Every class has 24 students.");
+  for (const quote of [sentence, "Every class has 100 students."]) {
+    const run = await engineRun(ws, doc.versionId, [saved.selection], {
+      sourcePolicy: "user_supplied",
+      checkScope: "selected_library",
+      claimSpans: [{ start: 0, end: doc.text.length }],
+    });
+    await processRun(db, saved.blobs, ws, run.id, {
+      judge: async (claim, _item, passages) => ({
+        ...claim,
+        method: "Jev",
+        status: "overstated",
+        evidence: passages![0],
+        checkedPassages: passages,
+        explanation: "The claim generalizes beyond the material.",
+        fixKind: "quotation",
+        fix: `The source states, "${quote}".`,
+        evidenceExcerpt: quote,
+      }),
+      research: noResearch,
+      resolveReferences: noResolution,
+    });
+    const result = (
+      await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+    ).rows[0].data;
+    assert.equal(!!result.fix, quote === sentence);
+    if (result.fix) {
+      const applied = await applyFix(db, ws, doc.id, doc.versionId, result.id);
+      assert.equal(applied.text, `The source states, "${sentence}".`);
+      // Restore the original through a new version for the next assessment.
+      await db.query(
+        "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
+        [ws, doc.id, doc.versionId],
+      );
+    }
+  }
+});
+
+test("a successfully retrieved reference is no longer counted as unresolved", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const saved = await source(ws);
+  await authorizeSource(ws, saved.id, "Brown");
+  const doc = await draft(ws, "The review included 218 studies (Brown 2024).");
+  const run = await engineRun(ws, doc.versionId, [saved.selection], {
+    externalAccess: "resolve_selected_references",
+    claimSpans: [{ start: 0, end: doc.text.length }],
+  });
+  const ref = randomUUID();
+  await db.query(
+    "UPDATE runs SET config=jsonb_set(config,'{references}',$2::jsonb) WHERE id=$1",
+    [run.id, JSON.stringify([{ id: ref, status: "matched_needs_pdf" }])],
+  );
+  await processRun(db, saved.blobs, ws, run.id, {
+    judge: async (claim, _item, passages) => ({
+      ...claim,
+      method: "Jev",
+      status: "supported",
+      evidence: passages![0],
+      checkedPassages: passages,
+      explanation: "The source reports 218 studies.",
+    }),
+    research: noResearch,
+    resolveReferences: async () => ({
+      selections: [saved.selection],
+      candidates: [
+        {
+          referenceEntryId: ref,
+          url: "https://doi.org/10.1000/test",
+          searchIntents: ["selected_reference"],
+          assetId: saved.id,
+          title: "Review",
+          status: "promising",
+          eligibility: "eligible",
+        },
+      ],
+      notices: [],
+    }),
+  });
+  const finished = await ownedRun(db, ws, run.id);
+  assert.equal(finished.status, "complete");
+  assert.deepEqual(finished.coverage.unresolvedReferences, []);
+});
+
 test("support aggregation preserves contradiction and rejects evidence outside the assessment packet", async () => {
   const { combineSupport, assertEvidence } =
     await import("../server/backend/engine.js");

@@ -52,14 +52,14 @@ export async function ocrUnreadable(
   if (!unreadable.length) return { parsed, usage };
   if (!options.allowExternalProcessing) {
     warnings.push(
-      "OCR was not attempted because external document processing is disabled. Unreadable pages remain unverified.",
+      "OCR was not attempted because external document processing is disabled. Unreadable pages still need readable text.",
     );
     return { parsed, usage };
   }
   const key = dependencies.apiKey ?? providerKey("FIRECRAWL_API_KEY");
   if (!key) {
     warnings.push(
-      "OCR was not attempted because FIRECRAWL_API_KEY is not configured. Unreadable pages remain unverified.",
+      "OCR was not attempted because FIRECRAWL_API_KEY is not configured. Unreadable pages still need readable text.",
     );
     return { parsed, usage };
   }
@@ -81,7 +81,7 @@ export async function ocrUnreadable(
     document = await PDFDocument.load(buffer);
   } catch {
     warnings.push(
-      "PDF pages could not be isolated for OCR. Unreadable pages remain unverified.",
+      "PDF pages could not be isolated for OCR. Unreadable pages still need readable text.",
     );
     return { parsed, usage };
   }

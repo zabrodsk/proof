@@ -375,7 +375,7 @@ export async function judgeScholarlyClaim(
       status: "uncertain",
       method: incomplete ? "unverified" : "Jev",
       explanation: incomplete
-        ? "Some parts of the full article could not be checked. This claim remains unverified."
+        ? "Some parts of the full article could not be checked. This claim needs more evidence."
         : "Different parts of the article gave conflicting or uncertain results. Read the passages before using this claim.",
       checkedPassages,
       fullTextCheck,

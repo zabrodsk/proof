@@ -7,6 +7,7 @@ export function runStatusLabel(status: string) {
         queued: "Queued",
         running: "Checking",
         complete: "Check complete",
+        partial: "Review finished with gaps",
         failed: "Check failed",
         cancelled: "Cancelled",
         pending: "Waiting",
@@ -51,5 +52,5 @@ export const eligibilityLabel = (eligibility: Eligibility) =>
   ({
     eligible: "Source meets requirements",
     ineligible: "Source does not meet requirements",
-    unknown: "Source eligibility unverified",
+    unknown: "Source requirements not confirmed",
   })[eligibility];
