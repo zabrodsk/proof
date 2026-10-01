@@ -38,9 +38,12 @@ export default function McpConnectionGuide({
   connections = [],
 }: Props) {
   const inputId = useId();
-  const [selectedPlatform, setSelectedPlatform] =
-    useState<McpPlatform>("chatgpt");
-  const [copied, setCopied] = useState<"url" | "prompt" | "">("");
+  const [selectedPlatform, setSelectedPlatform] = useState<McpPlatform>(() =>
+    new URLSearchParams(window.location.search).get("platform") === "claude"
+      ? "claude"
+      : "chatgpt",
+  );
+  const [copied, setCopied] = useState<"url" | "prompt" | "client" | "">("");
   const [copyError, setCopyError] = useState("");
   const state = connectionState(configuration);
   const platform = mcpPlatforms.find(
@@ -61,16 +64,18 @@ export default function McpConnectionGuide({
     const timer = setTimeout(() => setCopied(""), 3500);
     return () => clearTimeout(timer);
   }, [copied]);
-  async function copy(value: string, kind: "url" | "prompt") {
+  async function copy(value: string, kind: "url" | "prompt" | "client") {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(kind);
       setCopyError("");
     } catch {
       setCopyError(
-        kind === "url"
-          ? "Select the server URL and copy it manually."
-          : "Select the example passage and copy it manually.",
+        kind === "client"
+          ? "Select the OAuth client ID and copy it manually."
+          : kind === "url"
+            ? "Select the server URL and copy it manually."
+            : "Select the example passage and copy it manually.",
       );
     }
   }
@@ -81,7 +86,7 @@ export default function McpConnectionGuide({
           <MessageSquare size={24} aria-hidden="true" />
         </span>
         <div>
-          <h2>Connect your chat</h2>
+          <h2>AI connections</h2>
           <p>
             Use Proof in ChatGPT or Claude. Your sources, permissions, and saved
             evidence stay in this workspace.
@@ -216,6 +221,38 @@ export default function McpConnectionGuide({
                   ? "Server URL copied. Paste it into your chat platform's connector settings."
                   : "Use this exact URL when adding Proof as a remote MCP server."}
               </p>
+              {selectedPlatform === "claude" &&
+                configuration?.oauthClientIds?.claude && (
+                  <>
+                    <label htmlFor={`${inputId}-client`}>
+                      Claude OAuth client ID
+                    </label>
+                    <div className="proof-mcp-copy">
+                      <input
+                        id={`${inputId}-client`}
+                        readOnly
+                        value={configuration.oauthClientIds.claude}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copy(configuration.oauthClientIds!.claude!, "client")
+                        }
+                      >
+                        {copied === "client" ? (
+                          <Check size={16} />
+                        ) : (
+                          <Copy size={16} />
+                        )}
+                        {copied === "client" ? "Copied" : "Copy ID"}
+                      </button>
+                    </div>
+                    <p>
+                      Paste this ID in Claude's advanced connector settings.
+                      Leave the client secret empty.
+                    </p>
+                  </>
+                )}
             </div>
           )}
         </>

@@ -502,7 +502,7 @@ export default function IntegrationWorkspace() {
             </h1>
             <p>
               {tab === "connections"
-                ? "Connect your chat and control what it can access."
+                ? "Connect ChatGPT or Claude and choose what it can access."
                 : tab === "library"
                   ? "Manage original sources for your connected checks."
                   : "Check exact text and keep the evidence in Proof."}

@@ -1,3 +1,4 @@
+import { inviteGate, hasInvite, inviteEnabled } from "./invite.js";
 import { installWorkOS, workosConfigured } from "./workos.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Express, Request } from "express";
@@ -12,6 +13,7 @@ export function installAccess(app: Express) {
       "Hosted Proof requires PROOF_ACCESS_KEY of at least 24 characters.",
     );
   const accounts = accountStore();
+  const gate = inviteGate(accounts);
   const sign = (value: string) =>
     createHmac("sha256", secret).update(value).digest("hex");
   const equal = (a: string, b: string) =>
@@ -33,7 +35,8 @@ export function installAccess(app: Express) {
       ? id
       : undefined;
   };
-  const authenticated = (req: Request) => !hosted || !!sessionId(req);
+  const authenticated = (req: Request) =>
+    (!hosted && !inviteEnabled()) || !!sessionId(req);
   const attempts = new Map<string, { count: number; since: number }>();
   app.get("/health", (_req, res) => res.json({ ok: true }));
   const session = (req: Request) => {
@@ -41,6 +44,7 @@ export function installAccess(app: Express) {
     return {
       authenticated: authenticated(req),
       hosted,
+      ...(a ? { inviteRequired: !hasInvite(a) } : {}),
       user: a
         ? {
             id: a.id,
@@ -106,6 +110,7 @@ export function installAccess(app: Express) {
       return res.json({
         authenticated: true,
         hosted,
+        inviteRequired: !hasInvite(account),
         user: {
           id: account.id,
           name: account.name,
@@ -130,6 +135,7 @@ export function installAccess(app: Express) {
       return res
         .status(401)
         .json({ error: "Sign in with your username and password." });
+    if (gate(req, res, sessionId(req) || "local")) return;
     res.locals.proofSession = sessionId(req) || "local";
     const id = sessionId(req);
     if (id)

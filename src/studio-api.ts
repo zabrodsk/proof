@@ -1,5 +1,7 @@
+import { readableDocumentTitle } from "./document-title";
 export interface Session {
   authenticated: boolean;
+  inviteRequired?: boolean;
   hosted: boolean;
   provider?: "workos";
   user?: { id: string; name: string; jevUsd: number; inputTokens?: number };
@@ -85,7 +87,7 @@ export function serverWork(row: {
 }): StudioWork {
   return {
     id: row.id,
-    title: row.title,
+    title: readableDocumentTitle(row.title),
     content: row.text,
     documentVersionId: row.current_version_id,
     type: "DRAFT",

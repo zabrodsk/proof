@@ -1,0 +1,110 @@
+.proof-invite .ps-modal {
+  width: min(100%, 440px);
+}
+.proof-invite-icon {
+  display: block;
+  margin: 32px 0 18px;
+  color: var(--proof-accent);
+}
+.proof-invite .ps-modal h1 {
+  font-family: Newsreader, Georgia, serif;
+  font-weight: 400;
+  font-size: 44px;
+  letter-spacing: -0.035em;
+}
+.proof-invite form {
+  display: grid;
+  gap: 12px;
+  margin-top: 26px;
+}
+.proof-invite .proof-invite-input {
+  height: 68px;
+  text-align: center;
+  font-size: 30px;
+  letter-spacing: 0.5em;
+  padding-left: calc(16px + 0.5em);
+  font-variant-numeric: tabular-nums;
+}
+.proof-invite .ps-primary {
+  justify-content: center;
+  gap: 12px;
+  min-height: 46px;
+}
+.proof-invite .proof-invite-account {
+  margin-top: 28px;
+  font-size: 13px;
+  color: var(--proof-muted);
+}
+.proof-invite-signout {
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  color: var(--proof-accent);
+  cursor: pointer;
+}
+.proof-invite input:focus-visible,
+.proof-invite button:focus-visible {
+  outline: 3px solid var(--proof-focus);
+  outline-offset: 4px;
+}
+
+@media (max-width: 760px) {
+  .proof-studio.ps-signin {
+    min-height: 100svh;
+    padding: 32px 20px;
+    align-items: start;
+    align-content: start;
+  }
+  .proof-studio.ps-signin .ps-modal {
+    padding: 24px;
+    max-height: none;
+    overflow: visible;
+    border-radius: 12px;
+    box-shadow: 0 10px 35px #1d302712;
+  }
+  .ps-signin .ps-brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .ps-signin .ps-field {
+    min-height: 48px;
+    font-size: 16px;
+  }
+  .ps-signin .ps-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ps-signin .ps-actions > * {
+    min-height: 48px;
+    width: 100%;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .proof-invite .ps-modal h1 {
+    font-size: 36px;
+  }
+  .proof-invite-icon {
+    margin-top: 20px;
+  }
+  .proof-invite .proof-invite-input {
+    font-size: 28px;
+    height: 64px;
+  }
+  .proof-invite .ps-primary {
+    min-height: 50px;
+    font-size: 16px;
+  }
+  .proof-invite .proof-invite-account {
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .proof-invite-signout {
+    min-height: 44px;
+    font-size: 15px;
+  }
+}

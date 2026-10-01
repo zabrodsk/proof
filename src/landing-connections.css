@@ -1,4 +1,49 @@
 /* Open typography and ruled connection rows, using the landing palette. */
+/* Platform actions remain distinct from the expandable setup instructions. */
+.landing .lp-connect-platform summary .lp-platform-chatgpt {
+  font-family: "OpenAI Sans", "DM Sans", sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.landing .lp-platform-connect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--lp-accent);
+  border-radius: 7px;
+  background: var(--lp-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.lp-platform-connect:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 4px;
+}
+.lp-connect-platform summary > svg {
+  flex-shrink: 0;
+}
+@media (max-width: 430px) {
+  .landing .lp-connect-platform > summary {
+    gap: 10px;
+  }
+  .landing .lp-connect-platform summary h3 {
+    font-size: 23px;
+  }
+  .lp-platform-connect {
+    padding: 10px 12px;
+    gap: 5px;
+    font-size: 13px;
+  }
+  .lp-connect-platform summary > img {
+    width: 26px;
+    height: 26px;
+  }
+}
 .lp-mcp-section {
   padding-block: 100px;
   scroll-margin-top: 90px;

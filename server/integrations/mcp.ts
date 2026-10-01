@@ -234,6 +234,12 @@ export function mcpRouter(
         );
       p = await verifier.verify(match[1]);
     } catch (error) {
+      if (req.headers.authorization) {
+        console.warn("Proof MCP authentication rejected", {
+          code: error instanceof IntegrationError ? error.code : "invalid_token",
+          type: error instanceof Error ? error.name : "unknown",
+        });
+      }
       const status =
         error instanceof IntegrationError && error.status === 503 ? 503 : 401;
       res.setHeader(

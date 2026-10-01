@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { ArrowRight, ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight, Plus } from "lucide-react";
 import "./landing-connections.css";
 
 const platforms = [
   {
+    id: "chatgpt",
     name: "ChatGPT",
     logo: "chatgpt.svg",
     steps: [
@@ -17,6 +18,7 @@ const platforms = [
       "https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt",
   },
   {
+    id: "claude",
     name: "Claude",
     logo: "claude.png",
     steps: [
@@ -52,22 +54,27 @@ export default function LandingConnections({
           Check claims and find sources from ChatGPT or Claude. Open your Proof
           report to read the evidence.
         </p>
-        <a className="lp-connect-cta" href={settingsHref}>
-          Connect your chat <ArrowRight size={18} aria-hidden="true" />
-        </a>
       </div>
       <div className="lp-connect-platforms">
         {platforms.map((platform) => (
           <details className="lp-connect-platform" key={platform.name}>
-            <summary>
+            <summary aria-label={`${platform.name} setup instructions`}>
               <img
                 src={`/images/ai/${platform.logo}`}
                 alt=""
                 width="32"
                 height="32"
               />
-              <h3>{platform.name}</h3>
-              <span>How to connect</span>
+              <h3 className={`lp-platform-name lp-platform-${platform.id}`}>
+                {platform.name}
+              </h3>
+              <a
+                className="lp-platform-connect"
+                href={`${settingsHref.split("#")[0]}${settingsHref.includes("?") ? "&" : "?"}platform=${platform.id}#connect`}
+                aria-label={`Connect ${platform.name}`}
+              >
+                Connect <ArrowUpRight size={16} aria-hidden="true" />
+              </a>
               <Plus size={18} aria-hidden="true" />
             </summary>
             <div className="lp-connect-instructions">
@@ -88,21 +95,6 @@ export default function LandingConnections({
             </div>
           </details>
         ))}
-        <p className="lp-connect-note">
-          Choose which sources to share. Disconnect at any time. Requires MCP
-          enabled in your Proof workspace.
-        </p>
-        <details className="lp-connect-help">
-          <summary>
-            Can't connect? <Plus size={14} aria-hidden="true" />
-          </summary>
-          <p>
-            Use the connection URL from your signed-in Proof workspace. If the
-            connection option is missing, check your chat account and workspace
-            permissions. If sign-in fails, reconnect or ask your workspace owner
-            to check setup.
-          </p>
-        </details>
       </div>
     </div>
   );

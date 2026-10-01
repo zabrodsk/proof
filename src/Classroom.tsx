@@ -1282,8 +1282,8 @@ export default function Classroom() {
                   <section className="class-card">
                     <h2>Let's check the receipts.</h2>
                     <p>
-                      Open a sentence to see its evidence. Uncertain means
-                      unverified.
+                      Open a sentence to see its evidence. Uncertain means the
+                      check needs more evidence.
                     </p>
                     {report.sentences.map((s, i) => (
                       <details className="class-sentence" key={s.id}>
@@ -1346,7 +1346,7 @@ export default function Classroom() {
                                   </details>
                                 </>
                               ) : (
-                                <p>Claim support remains unverified.</p>
+                                <p>This claim needs more evidence.</p>
                               )}
                               {c.contextFinding && (
                                 <>

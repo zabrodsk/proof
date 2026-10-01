@@ -104,6 +104,7 @@ test("successful WorkOS callback forwards the verified owner ID to protected API
       "accounts.json",
     ),
     PROOF_HOSTED: "false",
+    PROOF_INVITE_CODE: "0123",
   };
   const original = Object.fromEntries(
     Object.keys(values).map((key) => [key, process.env[key]]),
@@ -163,6 +164,35 @@ test("successful WorkOS callback forwards the verified owner ID to protected API
     );
     assert.equal(callback.status, 302);
     assert.equal(callback.headers.get("location"), "/app");
+    for (const [requested, expected] of [
+      [
+        "/app/integrations?platform=claude#connect",
+        "/app/integrations?platform=claude#connect",
+      ],
+      ["https://example.test/app", "/app"],
+      ["//example.test/app", "/app"],
+      ["/application", "/app"],
+      ["/app/../../auth/logout", "/app"],
+    ]) {
+      const start = await fetch(
+        base + "/auth/login?returnTo=" + encodeURIComponent(requested),
+        { redirect: "manual" },
+      );
+      const flowState = new URL(
+        start.headers.get("location")!,
+      ).searchParams.get("state")!;
+      const finish = await fetch(
+        base +
+          "/auth/callback?code=synthetic-code&state=" +
+          encodeURIComponent(flowState),
+        {
+          redirect: "manual",
+          headers: { Cookie: start.headers.get("set-cookie")!.split(";")[0] },
+        },
+      );
+      assert.equal(finish.status, 302);
+      assert.equal(finish.headers.get("location"), expected);
+    }
     const cookie = callback.headers
       .getSetCookie()
       .find((value) => value.startsWith("proof_workos="))!
@@ -172,11 +202,23 @@ test("successful WorkOS callback forwards the verified owner ID to protected API
     ).json();
     assert.equal(session.user.id, "user_synthetic_verified");
     assert.equal(session.provider, "workos");
+    assert.equal(session.inviteRequired, true);
+    assert.equal(
+      (await fetch(base + "/api/private", { headers: { Cookie: cookie } }))
+        .status,
+      403,
+    );
+    const accepted = await fetch(base + "/api/invite", {
+      method: "POST",
+      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "0123" }),
+    });
+    assert.equal(accepted.status, 200);
     const protectedResult = await (
       await fetch(base + "/api/private", { headers: { Cookie: cookie } })
     ).json();
     assert.equal(protectedResult.owner, "user_synthetic_verified");
-    assert.equal(exchange.mock.callCount(), 1);
+    assert.equal(exchange.mock.callCount(), 6);
   } finally {
     server?.close();
     exchange.mock.restore();

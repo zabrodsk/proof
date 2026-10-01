@@ -10,9 +10,11 @@ test("hosted API requires a signed session and limits failed access attempts", a
   const original = {
     hosted: process.env.PROOF_HOSTED,
     key: process.env.PROOF_ACCESS_KEY,
+    inviteCode: process.env.PROOF_INVITE_CODE,
     accountsFile: process.env.PROOF_ACCOUNTS_FILE,
   };
   process.env.PROOF_HOSTED = "true";
+  process.env.PROOF_INVITE_CODE = "1234";
   process.env.PROOF_ACCESS_KEY = "a-test-only-key-with-at-least-24-characters";
   process.env.PROOF_ACCOUNTS_FILE = join(
     mkdtempSync(join(tmpdir(), "proof-accounts-")),
@@ -55,6 +57,7 @@ test("hosted API requires a signed session and limits failed access attempts", a
     const authBody = await login.json();
     assert.equal(authBody.user.name, "Hackathon visitor");
     assert.equal(authBody.user.jevUsd, 0);
+    assert.equal(authBody.inviteRequired, true);
     const claim = (name: string, password = "replacement-password") =>
       fetch(base + "/api/session", {
         method: "POST",
@@ -83,6 +86,37 @@ test("hosted API requires a signed session and limits failed access attempts", a
     const cookie = login.headers.get("set-cookie")!;
     assert.match(cookie, /HttpOnly/);
     assert.match(cookie, /Secure/);
+    const headers = {
+      Cookie: cookie.split(";")[0],
+      "Content-Type": "application/json",
+    };
+    assert.equal((await fetch(base + "/api/private", { headers })).status, 403);
+    assert.equal(
+      (
+        await fetch(base + "/api/invite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: "1234" }),
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await fetch(base + "/api/invite", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ code: "0000" }),
+        })
+      ).status,
+      400,
+    );
+    const accepted = await fetch(base + "/api/invite", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ code: "1234" }),
+    });
+    assert.deepEqual(await accepted.json(), { inviteRequired: false });
     assert.equal(
       (
         await fetch(base + "/api/private", {
@@ -97,6 +131,7 @@ test("hosted API requires a signed session and limits failed access attempts", a
       })
     ).json();
     assert.equal(signedSession.user.id, authBody.user.id);
+    assert.equal(signedSession.inviteRequired, false);
     assert.equal("roster" in signedSession, false);
     const logout = await fetch(base + "/api/session", { method: "DELETE" });
     assert.match(logout.headers.get("set-cookie")!, /Max-Age=0/);
@@ -132,6 +167,8 @@ test("hosted API requires a signed session and limits failed access attempts", a
     );
   } finally {
     server.close();
+    if (original.inviteCode === undefined) delete process.env.PROOF_INVITE_CODE;
+    else process.env.PROOF_INVITE_CODE = original.inviteCode;
     if (original.hosted === undefined) delete process.env.PROOF_HOSTED;
     else process.env.PROOF_HOSTED = original.hosted;
     if (original.key === undefined) delete process.env.PROOF_ACCESS_KEY;

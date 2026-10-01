@@ -3495,16 +3495,6 @@ body {
   border-radius: 50%;
   transform: rotate(-2deg);
 }
-.lp-used-spark {
-  position: absolute;
-  right: -6px;
-  top: -2px;
-  width: 24px;
-  height: 24px;
-  stroke: var(--lp-ink);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
 .lp-used-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -5378,4 +5368,584 @@ body {
   .lp-schools-track {
     animation: none;
   }
+}
+
+/* Invite-only landing: readable citation cards and a compact navigation. */
+.lp-header {
+  position: sticky;
+  top: 0;
+  height: 84px;
+  border-bottom: 1px solid var(--lp-line);
+  background: var(--lp-paper);
+}
+.lp-header .lp-nav {
+  width: min(1440px, calc(100% - 96px));
+  gap: 28px;
+}
+.lp-header .lp-wordmark {
+  flex-shrink: 0;
+  font-size: 36px;
+  font-weight: 500;
+}
+.lp-header .proof-logo-mark {
+  width: 40px;
+  height: 40px;
+}
+.lp-header .lp-desktop-nav {
+  display: flex;
+  gap: clamp(20px, 2.5vw, 40px);
+  margin: 0;
+  color: var(--lp-muted);
+  font-size: 15px;
+}
+.lp-header .lp-desktop-nav a,
+.lp-header .lp-nav-actions a {
+  white-space: nowrap;
+}
+.lp-header .lp-nav-actions {
+  flex-shrink: 0;
+  gap: 16px;
+}
+.lp-header .lp-nav-ghost {
+  border: 0;
+  padding: 10px 4px;
+  background: transparent;
+}
+.lp-header .lp-nav-cta {
+  border: 1px solid var(--proof-line-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--lp-ink) !important;
+  padding: 12px 22px;
+}
+.lp-header .lp-nav-cta:hover {
+  background: var(--lp-tint);
+  border-color: var(--lp-accent);
+}
+.lp-header .lp-menu-toggle {
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--lp-ink);
+  border-radius: 6px;
+}
+.lp-header .lp-mobile-nav {
+  max-height: calc(100svh - 84px);
+  overflow-y: auto;
+  background: var(--lp-paper);
+  padding-inline: 28px;
+}
+.lp-header .lp-mobile-nav a {
+  min-height: 46px;
+}
+.lp-header a:focus-visible,
+.lp-header button:focus-visible,
+.lp-invite-cta:focus-visible {
+  outline: 3px solid var(--proof-focus);
+  outline-offset: 5px;
+}
+.lp-final-content .lp-invite-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 26px;
+  background: #eaf3eb;
+  color: var(--lp-ink);
+  border: 1px solid var(--proof-line-strong);
+  border-radius: 7px;
+  padding: 16px 25px;
+  font-size: 15px;
+}
+.lp-final-content .lp-invite-cta:hover {
+  background: #fff;
+}
+@media (max-width: 1150px) {
+  .lp-header .lp-nav {
+    width: calc(100% - 64px);
+  }
+}
+@media (max-width: 1050px) {
+  .lp-header .lp-desktop-nav {
+    display: none;
+  }
+  .lp-header .lp-menu-toggle {
+    display: inline-flex;
+  }
+  .lp-header .lp-nav-ghost {
+    display: inline-flex;
+  }
+  .lp-header .lp-nav-actions {
+    gap: 14px;
+  }
+}
+@media (max-width: 760px) {
+  .lp-header {
+    height: 72px;
+  }
+  .lp-header .lp-nav {
+    width: calc(100% - 40px);
+    gap: 14px;
+  }
+  .lp-header .lp-wordmark {
+    font-size: 30px;
+    gap: 7px;
+  }
+  .lp-header .proof-logo-mark {
+    width: 32px;
+    height: 32px;
+  }
+  .lp-header .lp-nav-cta {
+    min-height: 40px;
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+  .lp-header .lp-nav-actions {
+    gap: 8px;
+  }
+  .lp-header .lp-nav-ghost {
+    display: none;
+  }
+  .lp-header .lp-mobile-nav {
+    max-height: calc(100svh - 72px);
+  }
+}
+@media (max-width: 380px) {
+  .lp-header .lp-nav {
+    width: calc(100% - 28px);
+    gap: 8px;
+  }
+  .lp-header .lp-wordmark {
+    font-size: 27px;
+  }
+  .lp-header .lp-nav-cta {
+    padding-inline: 11px;
+  }
+}
+
+.lp-nav-login-label {
+  display: none;
+}
+/* Mobile reading order: a short introduction, one evidence example, then details. */
+@media (max-width: 760px) {
+  .landing {
+    overflow-x: clip;
+  }
+  .landing #main,
+  .landing section[id] {
+    scroll-margin-top: 88px;
+  }
+  .landing .lp-container,
+  .landing .lp-compare {
+    width: calc(100% - 40px);
+  }
+  .landing .lp-header {
+    height: 64px;
+  }
+  .landing .lp-header .lp-nav {
+    width: calc(100% - 32px);
+  }
+  .landing .lp-header .lp-nav-actions {
+    gap: 6px;
+  }
+  .landing .lp-header .lp-nav-cta {
+    min-height: 44px;
+    padding: 10px 17px;
+    font-size: 14px;
+  }
+  .landing .lp-nav-invite-label {
+    display: none;
+  }
+  .landing .lp-nav-login-label {
+    display: inline;
+  }
+  .landing .lp-header .lp-wordmark {
+    font-size: 29px;
+  }
+  .landing .lp-header .proof-logo-mark {
+    width: 30px;
+    height: 30px;
+  }
+  .landing .lp-header .lp-mobile-nav {
+    max-height: calc(100dvh - 64px);
+    padding: 8px 20px 16px;
+    box-shadow: 0 12px 24px #1d302712;
+  }
+  .landing .lp-mobile-nav a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 52px;
+    padding: 12px 4px;
+    font-size: 16px;
+  }
+  .landing .lp-mobile-nav a:last-child {
+    margin-top: 8px;
+    padding-inline: 16px;
+    border-radius: 7px;
+    background: var(--lp-accent);
+    color: white;
+  }
+  .landing .lp-mobile-nav a:focus-visible {
+    outline-offset: -2px;
+  }
+  .landing .lp-schools {
+    height: 62px;
+  }
+  .landing .lp-schools-group {
+    min-width: 0;
+    gap: 32px;
+    padding-inline: 16px;
+  }
+  .landing .lp-school-logo {
+    flex-basis: 118px;
+  }
+  .landing .lp-school-logo img {
+    max-width: 118px;
+    max-height: 29px;
+  }
+  .landing .lp-used-for {
+    padding-block: 36px 20px;
+  }
+  .landing .lp-used-heading {
+    font-size: 32px;
+    margin-bottom: 20px;
+  }
+  .landing .lp-compare {
+    padding-block: 32px 40px;
+  }
+  .landing .lp-compare-intro {
+    margin-bottom: 22px;
+  }
+  .landing .lp-compare-intro h2 {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+  .landing .lp-compare-intro > p {
+    font-size: 14px;
+    line-height: 1.55;
+    margin-top: 12px;
+  }
+  .landing .lp-compare-card {
+    padding: 18px;
+    gap: 16px;
+    border-radius: 14px;
+  }
+  .landing .lp-compare-question {
+    gap: 10px;
+    padding: 14px;
+    border-radius: 9px;
+  }
+  .landing .lp-compare-question > svg {
+    flex-shrink: 0;
+    width: 19px;
+  }
+  .landing .lp-compare-question p,
+  .landing .lp-compare-answer {
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .landing .lp-compare-answer {
+    padding-inline: 0;
+  }
+  .landing .lp-compare-citations {
+    padding-inline: 0;
+    padding-top: 16px;
+  }
+  .landing .lp-compare-citations ul {
+    gap: 8px;
+  }
+  .landing .lp-compare-citations li {
+    white-space: normal;
+    min-height: 36px;
+    font-size: 13px;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+  }
+  .landing .lp-compare-problems,
+  .landing .lp-compare-strengths {
+    border-radius: 9px;
+    padding: 14px;
+    gap: 12px;
+  }
+  .landing .lp-compare-verdict-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .landing .lp-compare-verdict-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .landing .lp-compare-problems h4,
+  .landing .lp-compare-strengths h4 {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  .landing .lp-compare-problems li,
+  .landing .lp-compare-strengths li {
+    gap: 8px;
+    font-size: 14px;
+    line-height: 1.55;
+    align-items: flex-start;
+  }
+  .landing .lp-compare-problems li svg,
+  .landing .lp-compare-strengths li svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .landing .lp-how-section {
+    padding-block: 16px 32px;
+  }
+  .landing .lp-how-panel {
+    padding: 28px 20px;
+    border-radius: 16px;
+  }
+  .landing .lp-how-intro {
+    margin-bottom: 28px;
+  }
+  .landing .lp-how-intro h2 {
+    font-size: 32px;
+    line-height: 1.1;
+  }
+  .landing .lp-how-intro p {
+    font-size: 14px;
+  }
+  .landing .lp-process {
+    padding: 0;
+  }
+  .landing .lp-process-steps {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .landing .lp-process-steps > li {
+    grid-template-columns: 58px minmax(0, 1fr);
+    column-gap: 14px;
+  }
+  .landing .lp-process-number {
+    top: -5px;
+    left: 0;
+    font-size: 14px;
+    width: 20px;
+    margin: 0;
+  }
+  .landing .lp-process-drawing {
+    width: 58px;
+    height: auto;
+    align-self: start;
+    margin-top: 14px;
+  }
+  .landing .lp-process-steps h3 {
+    font-size: 23px;
+    line-height: 1.15;
+    margin-bottom: 8px;
+  }
+  .landing .lp-process-steps p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .landing .lp-process-arrow,
+  .landing .lp-process-return,
+  .landing .lp-process-note {
+    display: none;
+  }
+  .landing .lp-process-finish {
+    margin-top: 28px;
+    padding-top: 0;
+  }
+  .landing .lp-process-cta {
+    width: 100%;
+    padding: 14px 12px;
+    min-height: 50px;
+    font-size: 15px;
+    gap: 10px;
+  }
+  .landing .lp-process-cta > svg:not(.ink-frame) {
+    width: 18px;
+    flex-shrink: 0;
+  }
+  .landing .lp-mcp-section {
+    padding-block: 32px 40px;
+  }
+  .landing .lp-connect {
+    gap: 24px;
+  }
+  .landing .lp-connect-copy h2 {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+  .landing .lp-connect-copy > p {
+    font-size: 16px;
+    line-height: 1.65;
+    margin-top: 20px;
+  }
+  .landing .lp-connect-copy .lp-connect-cta {
+    min-height: 48px;
+    font-size: 15px;
+    margin-top: 18px;
+  }
+  .landing .lp-connect-platform > summary {
+    min-height: 68px;
+    padding-block: 18px;
+    gap: 10px;
+  }
+  .landing .lp-connect-platform summary h3 {
+    font-size: 24px;
+  }
+  .landing .lp-connect-platform summary > span {
+    font-size: 12px;
+  }
+  .landing .lp-connect-instructions li {
+    font-size: 15px;
+    overflow-wrap: anywhere;
+  }
+  .landing .lp-connect-instructions > p,
+  .landing .lp-connect-platforms > .lp-connect-note,
+  .landing .lp-connect-help p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .landing .lp-connect-instructions > a {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .landing .lp-connect-help summary {
+    min-height: 48px;
+    font-size: 14px;
+  }
+  .landing .lp-faq-section {
+    padding-block: 24px 32px;
+  }
+  .landing .lp-faq-intro h2 {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+  .landing .lp-faq-list {
+    margin-top: 20px;
+  }
+  .landing .lp-faq-list summary {
+    min-height: 60px;
+    padding-block: 18px;
+    font-size: 16px;
+    line-height: 1.4;
+    gap: 18px;
+  }
+  .landing .lp-faq-list summary svg {
+    flex-shrink: 0;
+  }
+  .landing .lp-faq-list details p {
+    margin: 0 0 20px;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .landing .lp-final-section {
+    padding-block: 16px 28px;
+  }
+  .landing .lp-final-content {
+    padding: 28px 22px;
+    border-radius: 16px;
+  }
+  .landing .lp-final-content h2 {
+    font-size: 38px;
+    margin: 0;
+  }
+  .landing .lp-final-content > p {
+    font-size: 16px;
+    line-height: 1.6;
+    margin-top: 16px;
+  }
+  .landing .lp-final-content .lp-invite-cta {
+    width: 100%;
+    min-height: 50px;
+    margin-top: 22px;
+    padding: 14px 18px;
+    justify-content: space-between;
+    font-size: 16px;
+  }
+  .landing .lp-footer {
+    display: block;
+    padding-block: 24px max(24px, env(safe-area-inset-bottom));
+  }
+  .landing .lp-footer > div:first-child {
+    display: block;
+  }
+  .landing .lp-footer > div:first-child > span {
+    display: block;
+    margin-top: 12px;
+    font-size: 13px;
+  }
+  .landing .lp-footer > div:last-child {
+    display: flex;
+    gap: 4px 18px;
+    margin-top: 20px;
+    font-size: 14px;
+  }
+  .landing .lp-footer > div:last-child > span {
+    width: 100%;
+    font-size: 12px;
+  }
+  .landing .lp-footer > div:last-child a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-block: 10px;
+  }
+}
+@media (max-width: 360px) {
+  .landing .lp-compare-card {
+    padding: 14px;
+  }
+  .landing .lp-compare-card-head {
+    gap: 10px;
+  }
+  .landing .lp-compare-card-head h3 {
+    font-size: 21px;
+  }
+  .landing .lp-process-steps > li {
+    grid-template-columns: 42px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+  .landing .lp-process-drawing {
+    width: 42px;
+  }
+  .landing .lp-process-steps h3 {
+    font-size: 21px;
+  }
+}
+
+@media (max-width: 760px) {
+  .landing .lp-used-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    padding-bottom: 0;
+  }
+  .landing .lp-used-row li,
+  .landing .lp-used-row li:nth-child(4) {
+    grid-column: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0;
+  }
+  .landing .lp-used-row li:last-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+  .landing .lp-use-icon {
+    width: 38px;
+    height: 44px;
+  }
+  .landing .lp-used-row li > span:last-child {
+    font-size: 18px;
+    text-align: left;
+  }
+}
+.landing .lp-process-image { object-fit: contain; }
+.landing .lp-compare-avatar > img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
 }

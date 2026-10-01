@@ -1,14 +1,24 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Studio from "./Studio";
 import { api, type Session } from "./studio-api";
 import { useStudioSession } from "./studio-session";
 import "./studio.css";
-export default function StudioSession() {
+import "./app-motion.css";
+import InviteCode from "./InviteCode";
+export default function StudioSession({ children }: { children?: ReactNode }) {
   const { session, setSession, error, setError } = useStudioSession();
   const [busy, setBusy] = useState(false);
   const [register, setRegister] = useState(false);
-  if (session?.authenticated)
-    return <Studio key={session.user?.id || "local"} session={session} />;
+  const returnTo = encodeURIComponent(
+    window.location.pathname + window.location.search + window.location.hash,
+  );
+  if (session?.authenticated) {
+    if (session.inviteRequired)
+      return <InviteCode session={session} onAccepted={setSession} />;
+    return (
+      children || <Studio key={session.user?.id || "local"} session={session} />
+    );
+  }
   return (
     <main className="proof-studio ps-signin">
       <section className="ps-modal">
@@ -23,10 +33,13 @@ export default function StudioSession() {
           </p>
         ) : session.provider === "workos" ? (
           <div className="ps-actions">
-            <a className="ps-primary" href="/auth/login">
+            <a className="ps-primary" href={`/auth/login?returnTo=${returnTo}`}>
               Sign in
             </a>
-            <a className="ps-outline" href="/auth/login?screen=sign-up">
+            <a
+              className="ps-outline"
+              href={`/auth/login?screen=sign-up&returnTo=${returnTo}`}
+            >
               Create account
             </a>
           </div>

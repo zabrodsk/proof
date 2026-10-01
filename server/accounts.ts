@@ -14,6 +14,7 @@ type Account = {
   hash: string;
   inputTokens: number;
   jevUsd: number;
+  invitedAt?: string;
 };
 export const accountContext = new AsyncLocalStorage<{
   charge: (tokens: number, usd: number) => void;
@@ -48,12 +49,18 @@ export function accountStore(
       }
       return account;
     },
+    acceptInvite(id: string) {
+      const account = accounts.find((a) => a.id === id);
+      if (!account) throw Error("Account no longer exists");
+      account.invitedAt ||= new Date().toISOString();
+      save();
+    },
     claimed: (name: string) => !!find(name),
     get: (id: string) => accounts.find((a) => a.id === id),
     create(name: string, password: string) {
       if (find(name)) return undefined;
       const salt = randomBytes(16).toString("hex");
-      const account = {
+      const account: Account = {
         id: randomUUID(),
         name,
         salt,

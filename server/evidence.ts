@@ -77,7 +77,7 @@ export async function loadEvidenceSource(input: SourceInput): Promise<Source> {
     }
     if (!doi)
       throw new Error(
-        "I could not identify a published journal article. Paste its publisher link. Unverified source text is not used as evidence.",
+        "I could not identify a published journal article. Paste its publisher link. Source text with unconfirmed provenance is not used as evidence.",
       );
     const source = await resolveScholarly(doi);
     if (

@@ -1,0 +1,158 @@
+/* One quiet motion rhythm, shared by pointer, keyboard, and touch. */
+.landing {
+  --lp-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.landing
+  :is(
+    .lp-nav-cta,
+    .lp-nav-ghost,
+    .lp-hero-cta,
+    .lp-invite-cta,
+    .lp-process-cta,
+    .lp-platform-connect,
+    .lp-menu-toggle,
+    .lp-connect-cta,
+    .lp-back-top,
+    .lp-wordmark
+  ) {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 220ms ease,
+    translate 240ms var(--lp-motion-ease),
+    scale 160ms var(--lp-motion-ease);
+}
+.landing
+  :is(
+    .lp-hero-cta,
+    .lp-invite-cta,
+    .lp-process-cta,
+    .lp-platform-connect,
+    .lp-connect-cta,
+    .lp-back-top
+  )
+  > svg:not(.ink-frame) {
+  transition: translate 240ms var(--lp-motion-ease);
+}
+.landing
+  :is(
+    .lp-nav-cta,
+    .lp-nav-ghost,
+    .lp-hero-cta,
+    .lp-invite-cta,
+    .lp-process-cta,
+    .lp-platform-connect,
+    .lp-menu-toggle
+  ):active {
+  scale: 0.98;
+}
+.landing :is(.lp-faq-list, .lp-connect) summary {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease;
+}
+.landing :is(.lp-faq-list, .lp-connect) summary > svg {
+  transition: transform 260ms var(--lp-motion-ease);
+}
+.landing .lp-mobile-nav {
+  animation: lp-menu-arrive 220ms var(--lp-motion-ease) both;
+  transform-origin: top;
+}
+.landing .lp-mobile-nav > a {
+  animation: lp-menu-link-arrive 280ms var(--lp-motion-ease) both;
+}
+.landing .lp-mobile-nav > a:nth-child(2) {
+  animation-delay: 25ms;
+}
+.landing .lp-mobile-nav > a:nth-child(3) {
+  animation-delay: 50ms;
+}
+.landing .lp-mobile-nav > a:nth-child(4) {
+  animation-delay: 75ms;
+}
+@keyframes lp-menu-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes lp-menu-link-arrive {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .landing
+    :is(
+      .lp-nav-cta,
+      .lp-hero-cta,
+      .lp-invite-cta,
+      .lp-process-cta,
+      .lp-platform-connect
+    ):hover {
+    translate: 0 -2px;
+    box-shadow: 0 5px 12px #1d30270c;
+  }
+  .landing
+    :is(
+      .lp-hero-cta,
+      .lp-invite-cta,
+      .lp-process-cta,
+      .lp-platform-connect,
+      .lp-connect-cta,
+      .lp-back-top
+    ):hover
+    > svg:not(.ink-frame) {
+    translate: 3px 0;
+  }
+  .landing :is(.lp-faq-list, .lp-connect) summary:hover {
+    color: var(--lp-accent);
+  }
+  .landing .lp-wordmark:hover .proof-logo-mark {
+    rotate: -3deg;
+  }
+  .landing .lp-desktop-nav a::after {
+    display: block;
+    width: 100%;
+    scale: 0 1;
+    transform-origin: left;
+    transition: scale 240ms var(--lp-motion-ease);
+  }
+  .landing .lp-desktop-nav a:hover::after {
+    scale: 1;
+  }
+}
+.landing .proof-logo-mark {
+  transition: rotate 260ms var(--lp-motion-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .landing
+    :is(
+      .lp-nav-cta,
+      .lp-nav-ghost,
+      .lp-hero-cta,
+      .lp-invite-cta,
+      .lp-process-cta,
+      .lp-platform-connect,
+      .lp-menu-toggle
+    ):active {
+    scale: none;
+  }
+}

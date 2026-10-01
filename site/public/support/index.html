@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta
+      name="description"
+      content="Get help with Proof, connector access, and your data."
+    />
+    <title>Support | Proof · Review draft</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: #fafbf9;
+        color: #1d3027;
+        font:
+          17px/1.75 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      a {
+        color: #245c48;
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: #174533;
+      }
+      a:focus-visible {
+        outline: 3px solid #8fc5ab;
+        outline-offset: 5px;
+      }
+      .skip {
+        position: absolute;
+        left: 16px;
+        top: -100px;
+      }
+      .skip:focus {
+        top: 16px;
+        background: white;
+        padding: 8px;
+        z-index: 2;
+      }
+      header,
+      footer {
+        max-width: 1120px;
+        margin: auto;
+        padding: 24px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      header {
+        border-bottom: 1px solid #dce5df;
+      }
+      .brand {
+        font:
+          bold 32px Georgia,
+          serif;
+        text-decoration: none;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        font-size: 15px;
+      }
+      nav a[aria-current="page"] {
+        font-weight: 700;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 55px 32px 80px;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        line-height: 1.18;
+      }
+      h1 {
+        font-size: clamp(42px, 7vw, 66px);
+        margin: 0 0 18px;
+      }
+      h2 {
+        font-size: 29px;
+        margin: 0 0 15px;
+      }
+      .intro {
+        max-width: 720px;
+        font-size: 20px;
+        color: #5c6d63;
+      }
+      .notice {
+        background: #fff7e8;
+        border: 1px solid #e4cf9c;
+        border-radius: 12px;
+        padding: 20px 24px;
+        max-width: 850px;
+        margin: 28px 0 40px;
+      }
+      .notice p {
+        margin: 7px 0;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 740px);
+        gap: 60px;
+      }
+      .toc {
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        font-size: 15px;
+      }
+      .toc a {
+        text-decoration: none;
+      }
+      section {
+        scroll-margin-top: 25px;
+        border-top: 1px solid #dce5df;
+        padding: 28px 0 14px;
+      }
+      section:first-child {
+        border: 0;
+        padding-top: 0;
+      }
+      p {
+        margin: 0 0 17px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      .pending {
+        border-left: 3px solid #d1ad67;
+        padding: 8px 16px;
+        background: #fff7e8;
+        font-size: 15px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 15px;
+      }
+      th,
+      td {
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid #dce5df;
+      }
+      th {
+        background: #e7efe9;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      footer {
+        border-top: 1px solid #dce5df;
+        font-size: 14px;
+        color: #5c6d63;
+      }
+      .contact {
+        padding: 22px;
+        background: #e7efe9;
+        border-radius: 12px;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 760px) {
+        header,
+        footer {
+          padding: 20px;
+        }
+        main {
+          padding: 36px 20px 60px;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+        .toc {
+          position: static;
+          padding: 20px;
+          background: #f3f7f4;
+          border-radius: 12px;
+        }
+        nav {
+          gap: 14px;
+        }
+        .notice {
+          padding: 16px;
+        }
+        body {
+          font-size: 16px;
+        }
+        h2 {
+          font-size: 26px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header>
+      <a class="brand" href="/">Proof</a>
+      <nav aria-label="Public pages">
+        <a href="/privacy">Privacy</a><a href="/terms">Terms</a
+        ><a href="/support" aria-current="page">Support</a
+        ><a href="https://app-proof.up.railway.app/app">Open Proof</a>
+      </nav>
+    </header>
+    <main id="main">
+      <h1>Support</h1>
+      <p class="intro">Get help with Proof, connector access, and your data.</p>
+      <aside class="notice" aria-label="Draft status">
+        <strong>Review draft. Not yet effective.</strong>
+        <p>
+          The operator must approve the proposed rules and resolve the marked
+          details before publication. This page is not a final policy for a
+          directory submission.
+        </p>
+        <p>Prepared 30 September 2026.</p>
+      </aside>
+      <div class="layout">
+        <nav class="toc" aria-label="On this page">
+          <a href="#contact">Contact Proof</a
+          ><a href="#issues">Report a problem</a
+          ><a href="#checks">A check is incomplete or seems wrong</a
+          ><a href="#disconnect">Disconnect a connector</a
+          ><a href="#deletion">Request deletion or stop waitlist emails</a>
+        </nav>
+        <article>
+          <section id="contact">
+            <h2>Contact Proof</h2>
+            <div class="contact">
+              <p>
+                Proof is operated by Dusan Zabrodsky.<br />Palmova 68, 25101
+                Herink, Czech Republic.
+              </p>
+              <p>
+                Email
+                <a href="mailto:dusan.zabrodsky@gmail.com"
+                  >dusan.zabrodsky@gmail.com</a
+                >
+                for support and privacy requests.
+              </p>
+            </div>
+            <p>
+              For a service issue, privacy request, deletion request, or
+              suspected security problem, email the operator above. No
+              response-time guarantee is offered.
+            </p>
+          </section>
+          <section id="issues">
+            <h2>Report a problem</h2>
+            <p>
+              Include the page or feature, what you expected, what happened, the
+              approximate time, and any visible task or error identifier.
+              Include your account email only when it is needed to locate your
+              account.
+            </p>
+            <p>
+              Share a short, redacted example if it helps. Do not email
+              passwords, access tokens, API keys, confidential documents, or
+              sensitive personal records. A screenshot can expose document text;
+              check it before attaching it.
+            </p>
+          </section>
+          <section id="checks">
+            <h2>A check is incomplete or seems wrong</h2>
+            <p>
+              Open the finding and read the quoted evidence in the original
+              source. Abstract-only, unavailable, or incompletely extracted
+              sources may leave a claim unverified. Scanned PDFs may need
+              external OCR permission. Some layouts, tables, or equations may
+              not extract correctly.
+            </p>
+            <p>
+              Report the finding identifier and a redacted example. Do not
+              accept a wording change until you have reviewed it. An uncertain
+              result is not proof that a claim is false.
+            </p>
+          </section>
+          <section id="disconnect">
+            <h2>Disconnect a connector</h2>
+            <p>
+              Open Proof's integrations workspace and revoke the platform grant.
+              You can also disconnect in the assistant platform. Proof
+              revocation cancels associated checks; imports already underway may
+              finish. Previously shared results and saved sources remain until
+              separately deleted.
+            </p>
+            <p>
+              <a href="https://app-proof.up.railway.app/app/integrations"
+                >Open integrations</a
+              >
+            </p>
+          </section>
+          <section id="deletion">
+            <h2>Request deletion or stop waitlist emails</h2>
+            <p>
+              Email the support address with the subject "Proof account
+              deletion" or "Proof waitlist removal". Include the account or
+              waitlist email and specify what you want removed. Never include a
+              password or token.
+            </p>
+            <p>
+              Library source deletion and document archiving do different
+              things. Source deletion queues file cleanup and removes related
+              records. Archiving keeps the document stored. Clearing browser
+              data or signing out does not delete server data.
+            </p>
+            <p class="pending">
+              The manual account-deletion and waitlist-removal procedures
+              require operator approval before these pages go live.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer>
+      <span>Proof · Operated by Dusan Zabrodsky</span>
+      <nav aria-label="Footer">
+        <a href="/privacy">Privacy</a><a href="/terms">Terms</a
+        ><a href="/support" aria-current="page">Support</a>
+      </nav>
+    </footer>
+  </body>
+</html>

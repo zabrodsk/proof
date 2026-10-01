@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
+import { fileURLToPath } from "node:url";
 import { PDFDocument, PDFName, PDFString, StandardFonts } from "pdf-lib";
 import { extractFile } from "../server/backend/extraction.js";
 import { ocrUnreadable } from "../server/backend/ocr.js";
@@ -9,12 +10,27 @@ import { providerKey } from "../server/backend/providers.js";
 const key = providerKey("FIRECRAWL_API_KEY");
 if (!key) throw new Error("FIRECRAWL_API_KEY is not configured.");
 
+// Slim production containers have no system fonts. Use the bundled app font
+// so the synthetic scan contains text rather than a blank image.
+assert.ok(
+  GlobalFonts.registerFromPath(
+    fileURLToPath(
+      new URL(
+        "../node_modules/@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2",
+        import.meta.url,
+      ),
+    ),
+    "Proof OCR fixture",
+  ),
+  "The synthetic OCR fixture font could not be loaded.",
+);
+
 const canvas = createCanvas(1275, 1650);
 const context = canvas.getContext("2d");
 context.fillStyle = "white";
 context.fillRect(0, 0, canvas.width, canvas.height);
 context.fillStyle = "black";
-context.font = "42px sans-serif";
+context.font = '42px "Proof OCR fixture"';
 const lines = [
   "Synthetic OCR research source",
   "The study included 218 participants.",

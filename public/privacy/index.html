@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta
+      name="description"
+      content="How Proof handles accounts, documents, checks, waitlist details, and connector access."
+    />
+    <title>Privacy notice | Proof · Review draft</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: #fafbf9;
+        color: #1d3027;
+        font:
+          17px/1.75 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      a {
+        color: #245c48;
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: #174533;
+      }
+      a:focus-visible {
+        outline: 3px solid #8fc5ab;
+        outline-offset: 5px;
+      }
+      .skip {
+        position: absolute;
+        left: 16px;
+        top: -100px;
+      }
+      .skip:focus {
+        top: 16px;
+        background: white;
+        padding: 8px;
+        z-index: 2;
+      }
+      header,
+      footer {
+        max-width: 1120px;
+        margin: auto;
+        padding: 24px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      header {
+        border-bottom: 1px solid #dce5df;
+      }
+      .brand {
+        font:
+          bold 32px Georgia,
+          serif;
+        text-decoration: none;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        font-size: 15px;
+      }
+      nav a[aria-current="page"] {
+        font-weight: 700;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 55px 32px 80px;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        line-height: 1.18;
+      }
+      h1 {
+        font-size: clamp(42px, 7vw, 66px);
+        margin: 0 0 18px;
+      }
+      h2 {
+        font-size: 29px;
+        margin: 0 0 15px;
+      }
+      .intro {
+        max-width: 720px;
+        font-size: 20px;
+        color: #5c6d63;
+      }
+      .notice {
+        background: #fff7e8;
+        border: 1px solid #e4cf9c;
+        border-radius: 12px;
+        padding: 20px 24px;
+        max-width: 850px;
+        margin: 28px 0 40px;
+      }
+      .notice p {
+        margin: 7px 0;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 740px);
+        gap: 60px;
+      }
+      .toc {
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        font-size: 15px;
+      }
+      .toc a {
+        text-decoration: none;
+      }
+      section {
+        scroll-margin-top: 25px;
+        border-top: 1px solid #dce5df;
+        padding: 28px 0 14px;
+      }
+      section:first-child {
+        border: 0;
+        padding-top: 0;
+      }
+      p {
+        margin: 0 0 17px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      .pending {
+        border-left: 3px solid #d1ad67;
+        padding: 8px 16px;
+        background: #fff7e8;
+        font-size: 15px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 15px;
+      }
+      th,
+      td {
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid #dce5df;
+      }
+      th {
+        background: #e7efe9;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      footer {
+        border-top: 1px solid #dce5df;
+        font-size: 14px;
+        color: #5c6d63;
+      }
+      .contact {
+        padding: 22px;
+        background: #e7efe9;
+        border-radius: 12px;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 760px) {
+        header,
+        footer {
+          padding: 20px;
+        }
+        main {
+          padding: 36px 20px 60px;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+        .toc {
+          position: static;
+          padding: 20px;
+          background: #f3f7f4;
+          border-radius: 12px;
+        }
+        nav {
+          gap: 14px;
+        }
+        .notice {
+          padding: 16px;
+        }
+        body {
+          font-size: 16px;
+        }
+        h2 {
+          font-size: 26px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header>
+      <a class="brand" href="/">Proof</a>
+      <nav aria-label="Public pages">
+        <a href="/privacy" aria-current="page">Privacy</a
+        ><a href="/terms">Terms</a><a href="/support">Support</a
+        ><a href="https://app-proof.up.railway.app/app">Open Proof</a>
+      </nav>
+    </header>
+    <main id="main">
+      <h1>Privacy notice</h1>
+      <p class="intro">
+        How Proof handles accounts, documents, checks, waitlist details, and
+        connector access.
+      </p>
+      <aside class="notice" aria-label="Draft status">
+        <strong>Review draft. Not yet effective.</strong>
+        <p>
+          The operator must approve the proposed rules and resolve the marked
+          details before publication. This page is not a final policy for a
+          directory submission.
+        </p>
+        <p>Prepared 30 September 2026.</p>
+      </aside>
+      <div class="layout">
+        <nav class="toc" aria-label="On this page">
+          <a href="#scope">Who this notice covers</a
+          ><a href="#data">Data Proof handles</a
+          ><a href="#purposes">Why Proof uses data</a
+          ><a href="#providers">Providers and content sharing</a
+          ><a href="#connector">Connecting and disconnecting an assistant</a
+          ><a href="#storage">Storage and retention</a
+          ><a href="#rights">Deletion and privacy rights</a
+          ><a href="#decisions">Automated results and updates</a>
+        </nav>
+        <article>
+          <section id="scope">
+            <h2>Who this notice covers</h2>
+            <div class="contact">
+              <p>
+                Proof is operated by Dusan Zabrodsky.<br />Palmova 68, 25101
+                Herink, Czech Republic.
+              </p>
+              <p>
+                Email
+                <a href="mailto:dusan.zabrodsky@gmail.com"
+                  >dusan.zabrodsky@gmail.com</a
+                >
+                for support and privacy requests.
+              </p>
+            </div>
+            <p>
+              This notice covers the Proof website, waitlist, signed-in web app,
+              and Proof connector used through ChatGPT or another supported
+              assistant. The assistant platform has its own privacy policy for
+              your conversations and its handling of connector results.
+            </p>
+          </section>
+          <section id="data">
+            <h2>Data Proof handles</h2>
+            <ul>
+              <li>
+                Account identifiers and display names. WorkOS handles hosted
+                sign-in and receives authentication information such as your
+                email address. Local username accounts store a salted password
+                hash.
+              </li>
+              <li>
+                Draft text, document titles and versions, uploaded files, source
+                metadata, extracted pages and passages, reference entries, and
+                search requests.
+              </li>
+              <li>
+                Check inputs, findings, evidence excerpts, reports, task
+                progress, provider usage, and estimated processing costs linked
+                to your workspace.
+              </li>
+              <li>
+                Connector account identifiers, platform/client identifiers,
+                permission scopes, selected source identifiers, import requests,
+                and tool requests.
+              </li>
+              <li>
+                Waitlist email address, signup time, signup placement, and your
+                permission to receive early-access updates.
+              </li>
+              <li>
+                Technical request information used to operate the service and
+                limit abuse. The waitlist uses your IP address for rate
+                limiting.
+              </li>
+              <li>Information you choose to include in support emails.</li>
+            </ul>
+            <p>
+              Documents may contain personal information about other people.
+              Only submit material you have permission to process. Avoid
+              passwords, credentials, sensitive personal records, and
+              confidential material that you cannot share with the providers
+              described below.
+            </p>
+          </section>
+          <section id="purposes">
+            <h2>Why Proof uses data</h2>
+            <p>
+              Proof uses account and workspace data to authenticate you, store
+              your work, extract source text, retrieve evidence, run the checks
+              you request, return results, and manage connector permissions. It
+              uses technical and usage records to keep the service working,
+              limit abuse, and measure processing costs. Waitlist details are
+              used for early-access updates; support messages are used to answer
+              your request.
+            </p>
+            <p class="pending">
+              Proposed legal bases for operator approval: performance of the
+              service contract for requested account and analysis services;
+              legitimate interests in security, abuse prevention, operational
+              reliability, and handling support; consent for waitlist emails. A
+              provider-processing checkbox records your choice about that
+              operation and does not by itself establish a GDPR legal basis for
+              every item of personal data in an uploaded document.
+            </p>
+          </section>
+          <section id="providers">
+            <h2>Providers and content sharing</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Recipient</th>
+                    <th>What the operation can share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      Railway and the configured database and private
+                      file-storage providers
+                    </td>
+                    <td>
+                      Hosted requests, account and workspace records, uploaded
+                      files, and operational data.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>WorkOS</td>
+                    <td>
+                      Hosted authentication information and account identifiers.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>TypeSafe / Jev</td>
+                    <td>
+                      Claims, draft excerpts, and selected source passages
+                      submitted for model assessment.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Exa</td>
+                    <td>
+                      Search queries derived from the research request or
+                      claims.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Firecrawl</td>
+                    <td>
+                      PDF content sent for external extraction or OCR when you
+                      permit that upload operation.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      Crossref, OpenAlex, Europe PMC, DOAJ, and source websites
+                    </td>
+                    <td>
+                      Search terms, titles, identifiers, URLs, and requests for
+                      metadata or source text.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Your connected assistant platform</td>
+                    <td>
+                      Results returned by tools you invoke, including findings,
+                      citations, and available evidence excerpts under your
+                      permissions.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Google Gmail</td>
+                    <td>
+                      Support emails and attachments sent to the operator's
+                      Gmail address.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              Which providers receive data depends on the workflow, your
+              choices, and which services are configured. Persistent Studio
+              checks require provider processing to be allowed for the run.
+              External OCR requires separate upload permission. Legacy evidence
+              and class workflows send content for assessment when you start a
+              check. Connector check requests authorize provider processing as
+              part of that request.
+            </p>
+            <p class="pending">
+              Before publication: identify the live database and object-storage
+              vendors, their processing countries, and the actual contracts and
+              safeguards for any transfer outside the EEA. Provider retention
+              and model-training terms also need verification. This draft makes
+              no promise that providers keep no data or never use it for
+              training.
+            </p>
+            <p>
+              The production database and app services use Railway's
+              europe-west4 region, and the private library bucket uses Railway's
+              ams region. The configured storage endpoint matches Railway's
+              documented bucket service.
+            </p>
+            <p>
+              <a href="https://typesafe.ai/legal/privacy-policy"
+                >TypeSafe's privacy policy</a
+              >
+              says its services are hosted in the United States and that it does
+              not train or fine-tune models on submitted input. Its published
+              <a href="https://typesafe.ai/legal/data-processing"
+                >data processing addendum</a
+              >
+              includes standard contractual clauses for EEA transfers. The
+              operator still needs to confirm which agreement applies to the
+              Proof provider account.
+            </p>
+          </section>
+          <section id="connector">
+            <h2>Connecting and disconnecting an assistant</h2>
+            <p>
+              Proof links connector access to a Proof account and workspace. It
+              records the platform, authorized permissions, and selected
+              sources. The connector receives only the results of the tools it
+              calls under those permissions. This does not give Proof access to
+              your entire assistant conversation history.
+            </p>
+            <p>
+              You can revoke a platform grant in Proof's integrations workspace.
+              Revocation stops further authorized access and cancels associated
+              checks. Imports already underway may finish. Revocation does not
+              delete your stored sources, previous work, or copies already
+              returned to an assistant platform.
+            </p>
+          </section>
+          <section id="storage">
+            <h2>Storage and retention</h2>
+            <p>
+              Persistent workspace records live in a database. Original source
+              files live in private object storage. Account records and Railway
+              waitlist entries also use persistent server-side files. Earlier
+              class and evidence workflows keep some jobs and results
+              temporarily in server memory; those expiry periods do not delete
+              persistent Studio records.
+            </p>
+            <p>
+              Your browser stores drafts, workspace preferences, icons, and
+              onboarding state in local storage. Clearing site data removes that
+              browser copy. It does not delete server-side work. Hosted
+              authentication uses necessary session cookies, including a session
+              cookie with a seven-day lifetime and a short-lived login-flow
+              cookie. Expiry or signing out does not delete your account.
+            </p>
+            <p class="pending">
+              Proposed retention criteria: keep account and saved workspace
+              content while needed to provide the active account and saved-work
+              service, then remove it when an authenticated deletion request is
+              fulfilled. Keep waitlist details while early-access updates remain
+              relevant and permission remains active; remove them when
+              permission is withdrawn. Keep support and security records only as
+              needed to resolve the issue, prevent abuse, or meet applicable
+              legal duties. The code currently has no automatic inactive-account
+              or waitlist purge. The operator must approve these criteria and
+              establish deletion procedures. Backup, log, queue, and provider
+              retention remain to be verified.
+            </p>
+          </section>
+          <section id="rights">
+            <h2>Deletion and privacy rights</h2>
+            <p>
+              You can delete individual library sources in supported workspaces.
+              Proof removes related extraction and check records and queues
+              removal of the stored source file. Cleanup can wait for an
+              outstanding signed upload link to expire and for the worker to
+              run. Archiving a document hides it from the active list and keeps
+              it stored.
+            </p>
+            <p>
+              To request account deletion, access, correction, export, or
+              withdrawal of waitlist permission, email the support address
+              above. Include the account email or identifier and the request; do
+              not send your password or access token. Proof has no self-service
+              account deletion button.
+            </p>
+            <p>
+              Where applicable law grants them, you have rights to access,
+              correct, erase, restrict, object to processing, and obtain a
+              portable copy of your data. Withdrawing consent does not affect
+              processing that was lawful before withdrawal. You can complain to
+              your local supervisory authority, including the
+              <a href="https://uoou.gov.cz/en/consultation/contact"
+                >Czech Office for Personal Data Protection</a
+              >.
+            </p>
+            <p class="pending">
+              Operator approval required: accept and establish the manual
+              account-deletion and rights-request process, including identity
+              verification, account and workspace removal,
+              authentication-provider handling, and backup limitations. No fixed
+              completion deadline is promised in this draft.
+            </p>
+          </section>
+          <section id="decisions">
+            <h2>Automated results and updates</h2>
+            <p>
+              Proof generates evidence assessments using automated retrieval and
+              model judgments. Results can be incomplete or wrong. Proof's
+              checks are intended for human review, not decisions about a
+              person's legal rights or similarly significant decisions.
+            </p>
+            <p>
+              This is a review draft dated 30 September 2026. An approved notice
+              needs an effective date. Any later material change should be
+              communicated before it applies where required by law.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer>
+      <span>Proof · Operated by Dusan Zabrodsky</span>
+      <nav aria-label="Footer">
+        <a href="/privacy" aria-current="page">Privacy</a
+        ><a href="/terms">Terms</a><a href="/support">Support</a>
+      </nav>
+    </footer>
+  </body>
+</html>

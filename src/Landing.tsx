@@ -1,10 +1,9 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
   Check,
   FileText,
-  LoaderCircle,
   Menu,
   Plus,
   ShieldCheck,
@@ -12,8 +11,10 @@ import {
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
+import "./landing-motion.css";
+import { useLandingMotion } from "./landing-motion";
 import LandingConnections from "./LandingConnections";
-import { MotifIcon, InkFrame } from "./Drawn";
+import { InkFrame } from "./Drawn";
 
 const documentTypes = [
   { kind: "papers", label: "Research papers" },
@@ -80,128 +81,6 @@ function SchoolLogoRow() {
   );
 }
 
-function WaitlistForm({ placement }: { placement: "hero" | "footer" }) {
-  const id = useId();
-  const [state, setState] = useState<"idle" | "loading" | "success" | "error">(
-    "idle",
-  );
-  const [message, setMessage] = useState("");
-  const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
-  async function join(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (state === "loading") return;
-    const form = new FormData(event.currentTarget);
-    setState("loading");
-    setMessage("");
-    controller.current = new AbortController();
-    const timeout = window.setTimeout(() => controller.current?.abort(), 15000);
-    try {
-      const response = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.current.signal,
-        body: JSON.stringify({
-          email: form.get("email"),
-          website: form.get("website"),
-          consent: true,
-          source: placement,
-        }),
-      });
-      const result: unknown = await response.json();
-      if (!response.ok)
-        throw new Error(
-          result &&
-            typeof result === "object" &&
-            "error" in result &&
-            typeof result.error === "string"
-            ? result.error
-            : "We could not save your email. Please try again.",
-        );
-      setState("success");
-    } catch (error) {
-      setState("error");
-      setMessage(
-        error instanceof Error &&
-          error.name !== "AbortError" &&
-          error.message !== "Failed to fetch"
-          ? error.message
-          : "Could not reach Proof. Please try again.",
-      );
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
-  return (
-    <div className="lp-waitlist-wrap">
-      {state === "success" ? (
-        <div className="lp-joined" role="status">
-          <span>
-            <Check size={20} />
-          </span>
-          <div>
-            You're on the list.
-            <small>We'll email you when early access opens.</small>
-          </div>
-        </div>
-      ) : (
-        <form
-          className="lp-waitlist"
-          onSubmit={join}
-          aria-label={`Join the waitlist, ${placement}`}
-        >
-          <label htmlFor={`${id}-email`} className="lp-sr-only">
-            Email address
-          </label>
-          <input
-            id={`${id}-email`}
-            type="email"
-            name="email"
-            placeholder="Email address"
-            required
-            maxLength={254}
-            autoComplete="email"
-            inputMode="email"
-            aria-describedby={`${id}-note${state === "error" ? ` ${id}-error` : ""}`}
-            disabled={state === "loading"}
-          />
-          <div className="lp-honeypot" aria-hidden="true">
-            <label htmlFor={`${id}-website`}>Leave this field empty</label>
-            <input
-              id={`${id}-website`}
-              type="text"
-              name="website"
-              tabIndex={-1}
-              autoComplete="off"
-            />
-          </div>
-          <button type="submit" disabled={state === "loading"}>
-            {state === "loading" ? (
-              <>
-                Joining
-                <LoaderCircle size={17} className="lp-spin" />
-              </>
-            ) : (
-              <>
-                Join the waitlist
-                <ArrowUpRight size={18} />
-              </>
-            )}
-          </button>
-        </form>
-      )}
-      {state === "error" && (
-        <p id={`${id}-error`} className="lp-form-error" role="alert">
-          {message}
-        </p>
-      )}
-      <p id={`${id}-note`} className="lp-form-note">
-        Join for early-access updates.
-      </p>
-    </div>
-  );
-}
-
 function HeroArtwork() {
   return (
     <div
@@ -259,7 +138,7 @@ function AnswerCompare() {
         </p>
         <div className="lp-compare-citations">
           <ul>
-            {["Missing source", "Unverified reference"].map((citation) => (
+            {["Missing source", "Reference needs evidence"].map((citation) => (
               <li key={citation}>
                 <FileText size={21} aria-hidden="true" />
                 {citation}
@@ -293,7 +172,12 @@ function AnswerCompare() {
       <article className="lp-compare-card lp-compare-proof">
         <header className="lp-compare-card-head">
           <span className="lp-compare-avatar" aria-hidden="true">
-            <MotifIcon name="book" size={18} />
+            <img
+              src="/images/proof-logo-drawn-v1.png"
+              alt=""
+              width="40"
+              height="40"
+            />
           </span>
           <h3>
             proof<span>.</span>
@@ -360,63 +244,23 @@ function UsedForRow() {
   );
 }
 
+const processImages = [
+  "upload",
+  "find-sources",
+  "check-claims",
+  "review-findings",
+];
 function ProcessDrawing({ step }: { step: number }) {
   return (
-    <svg
-      className="lp-process-drawing"
-      viewBox="0 0 180 140"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {step === 0 && (
-        <>
-          <path className="lp-process-paper" d="m51 23 66-2 20 20-2 87-84 2Z" />
-          <path d="m117 21-1 22 21-2M51 31l-10 2 1 103 84-2M65 59l49-1M65 70l46 1M65 82l51-1M65 105l30-1" />
-          <path className="lp-process-highlight" d="m62 89 57-1-1 9-55 1Z" />
-          <path d="M67 94l47-1M90 41l-1-27m-9 9 9-10 10 9" />
-        </>
-      )}
-      {step === 1 && (
-        <>
-          <path className="lp-process-paper" d="m28 26 42 1-1 60-41-2Z" />
-          <path className="lp-process-paper" d="m84 17 43-1 1 60-44 1Z" />
-          <path className="lp-process-paper" d="m111 89 43-1-1 40-42 1Z" />
-          <path d="m37 39 23 1M37 48l22 1M37 58l16 1M94 29l23-1M94 39h23M94 49l16-1M121 101l22-1M121 111l17-1" />
-          <path d="M70 57c11 0 7-14 14-14M107 77c-1 11 15 5 17 11M44 88c0 21 24 27 43 17" />
-          <circle className="lp-process-highlight" cx="69" cy="101" r="21" />
-          <path d="m60 102 7 7 12-15M151 49l7-3M149 37l5-6" />
-        </>
-      )}
-      {step === 2 && (
-        <>
-          <path
-            className="lp-process-paper"
-            d="m18 31 60-2 1 88-60 2ZM102 26l59 2-2 89-59-2Z"
-          />
-          <path d="m29 46 35-1M29 58h34M29 82l34-1M29 96h25M113 43l34 1M113 55l34 1M113 80l32 1M113 96l25 1" />
-          <path
-            className="lp-process-highlight"
-            d="m25 65 45-1v10l-44 1ZM109 62l43 1-1 10-42-1Z"
-          />
-          <path d="M31 70h31M116 68h28M72 70c15 0 14-3 36-2m-7-6 7 6-8 6" />
-          <path d="M79 19c9-5 17-5 24-2M83 129c10 3 19 3 29-1" />
-        </>
-      )}
-      {step === 3 && (
-        <>
-          <path className="lp-process-paper" d="m43 18 86 2-2 110-82-1Z" />
-          <path d="m57 33 45 1M78 56l36-1M78 78l34 1M78 104l28-1" />
-          <path className="lp-process-highlight" d="m75 96 42 1v13l-43-1Z" />
-          <path d="m55 54 5 5 9-12M55 78l5 5 9-12M55 102l5 5 9-12M80 103l28 1" />
-          <path d="m139 39 12 7-36 58-16 11 4-19 36-57Zm-36 57 12 8M135 46l11 7M99 115l7-4M29 27l-9-3M30 40l-12 1" />
-        </>
-      )}
-    </svg>
+    <img
+      className="lp-process-drawing lp-process-image"
+      src={`/images/process/${processImages[step]}-v1.png`}
+      alt=""
+      width="180"
+      height="140"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }
 
@@ -508,7 +352,7 @@ const faqs = [
   {
     question: "What if a source is behind a paywall?",
     answer:
-      "Proof tells you what it could access. If it can only read an abstract, that limit appears in the findings. If it cannot access enough evidence, it marks the claim as unverified. You can upload a source you have access to.",
+      "Proof tells you what it could access. If it can only read an abstract, that limit appears in the findings. If it cannot access enough evidence, it marks the claim as needing evidence. You can upload a source you have access to.",
   },
   {
     question: "Can I trust every finding?",
@@ -518,54 +362,52 @@ const faqs = [
   {
     question: "When can I try it?",
     answer:
-      "Open the workspace to sign in. You can also join the waitlist for early-access updates.",
+      "Proof is invite only. Sign in or create an account, then enter your four-digit invite code to open the workspace.",
   },
 ];
 
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
-  const privacy = useRef<HTMLDialogElement>(null);
+  const motionRoot = useLandingMotion();
+  const menuToggle = useRef<HTMLButtonElement>(null);
+  const mobileNav = useRef<HTMLElement>(null);
   useEffect(() => {
     document.title = "Proof · Check your paper's citations";
   }, []);
   useEffect(() => {
-    const elements = document.querySelectorAll(".lp-reveal");
-    if (
-      !("IntersectionObserver" in window) ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("lp-visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.08 },
-    );
-    elements.forEach((element) => {
-      element.classList.add("lp-will-reveal");
-      observer.observe(element);
-    });
-    return () => observer.disconnect();
-  }, []);
-  useEffect(() => {
-    if (privacyOpen) privacy.current?.showModal();
-    else privacy.current?.close();
-  }, [privacyOpen]);
-  useEffect(() => {
+    if (!mobileOpen) return;
+    mobileNav.current?.querySelector<HTMLAnchorElement>("a")?.focus();
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        menuToggle.current?.focus();
+      }
+    };
+    const outside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !mobileNav.current?.contains(event.target) &&
+        !menuToggle.current?.contains(event.target)
+      )
+        setMobileOpen(false);
     };
     window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
+    window.addEventListener("pointerdown", outside);
+    return () => {
+      window.removeEventListener("keydown", escape);
+      window.removeEventListener("pointerdown", outside);
+    };
+  }, [mobileOpen]);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1051px)");
+    const close = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
+    desktop.addEventListener("change", close);
+    return () => desktop.removeEventListener("change", close);
   }, []);
   return (
-    <div className="landing">
+    <div className="landing" ref={motionRoot}>
       <a className="lp-skip" href="#main">
         Skip to content
       </a>
@@ -574,7 +416,7 @@ export default function Landing() {
           <Wordmark />
           <nav className="lp-desktop-nav" aria-label="Main navigation">
             <a href="#how-it-works">How it works</a>
-            <a href="#connect">Connect your chat</a>
+            <a href="#connect">AI connections</a>
             <a href="#questions">Questions</a>
           </nav>
           <div className="lp-nav-actions">
@@ -582,10 +424,12 @@ export default function Landing() {
               Log in
             </a>
             <a className="lp-nav-cta" href="/app">
-              Get started
+              <span className="lp-nav-invite-label">Invite Only</span>
+              <span className="lp-nav-login-label">Log in</span>
             </a>
             <button
               className="lp-menu-toggle"
+              ref={menuToggle}
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
               aria-expanded={mobileOpen}
@@ -597,6 +441,7 @@ export default function Landing() {
         </div>
         {mobileOpen && (
           <nav
+            ref={mobileNav}
             id="mobile-navigation"
             className="lp-mobile-nav"
             aria-label="Mobile navigation"
@@ -605,16 +450,13 @@ export default function Landing() {
               How it works
             </a>
             <a href="#connect" onClick={() => setMobileOpen(false)}>
-              Connect your chat
+              AI connections
             </a>
             <a href="#questions" onClick={() => setMobileOpen(false)}>
               Questions
             </a>
             <a href="/app" onClick={() => setMobileOpen(false)}>
-              Log in
-            </a>
-            <a href="/app" onClick={() => setMobileOpen(false)}>
-              Get started
+              Log in to Proof <ArrowUpRight size={18} aria-hidden="true" />
             </a>
           </nav>
         )}
@@ -632,7 +474,7 @@ export default function Landing() {
                 Proof checks your cited sources, verifies claims, and helps you
                 build stronger, more credible academic writing.
               </p>
-              <a className="lp-hero-cta" href="/app">
+              <a className="lp-hero-cta" href={"/app"}>
                 Get started
                 <ArrowRight size={18} />
               </a>
@@ -691,14 +533,15 @@ export default function Landing() {
             ))}
           </div>
         </section>
-        <section className="lp-final-section lp-container" id="waitlist">
+        <section className="lp-final-section lp-container" id="invite">
           <div className="lp-ink-panel lp-final-content">
-            <h2>
-              Check your citations
-              <span> before you submit.</span>
-            </h2>
-            <p>Join the waitlist for early-access updates.</p>
-            <WaitlistForm placement="footer" />
+            <h2>Invite Only</h2>
+            <p>
+              Sign in, then enter your four-digit invite code to open Proof.
+            </p>
+            <a className="lp-invite-cta" href={"/app"}>
+              Log in to Proof <ArrowUpRight size={18} aria-hidden="true" />
+            </a>
           </div>
         </section>
       </main>
@@ -709,48 +552,15 @@ export default function Landing() {
         </div>
         <div>
           <span>© {new Date().getFullYear()} Proof</span>
-          <button onClick={() => setPrivacyOpen(true)}>Waitlist privacy</button>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/support">Support</a>
           <a href="#main" className="lp-back-top">
             Back to top
             <ArrowUpRight size={13} />
           </a>
         </div>
       </footer>
-      <dialog
-        ref={privacy}
-        className="lp-privacy"
-        onCancel={() => setPrivacyOpen(false)}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) setPrivacyOpen(false);
-        }}
-        aria-labelledby="privacy-title"
-      >
-        <div>
-          <ShieldCheck size={22} />
-          <button
-            onClick={() => setPrivacyOpen(false)}
-            aria-label="Close privacy information"
-          >
-            <X size={21} />
-          </button>
-        </div>
-        <h2 id="privacy-title">About the waitlist.</h2>
-        <p>
-          Joining the waitlist gives Proof permission to email you about early
-          access. We save your email address, signup time, and this permission.
-        </p>
-        <p>
-          The comparison on this page is an illustration. Viewing it does not
-          upload a document or send its content anywhere.
-        </p>
-        <button
-          className="lp-privacy-close"
-          onClick={() => setPrivacyOpen(false)}
-        >
-          Got it
-          <Check size={16} />
-        </button>
-      </dialog>
     </div>
   );
 }

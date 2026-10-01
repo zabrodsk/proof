@@ -202,6 +202,11 @@ export async function processRun(
             sourceSnapshots[assetId] ??= snapshot;
         };
         const referenceNotices: string[] = [];
+        const resolvedReferenceIds = new Set<string>(
+          (run.config.references || [])
+            .filter((r: any) => r.status === "matched_ready" && r.asset_id)
+            .map((r: any) => r.id),
+        );
         if (
           input.mode === "source_check" &&
           input.externalAccess === "resolve_selected_references" &&
@@ -220,6 +225,13 @@ export async function processRun(
               sourceSelections.push(s);
           referenceNotices.push(...resolved.notices);
           rememberSnapshots(resolved.sourceSnapshots || {});
+          for (const candidate of resolved.candidates)
+            if (
+              candidate.referenceEntryId &&
+              candidate.assetId &&
+              resolved.selections.some((s) => s.assetId === candidate.assetId)
+            )
+              resolvedReferenceIds.add(candidate.referenceEntryId);
         }
         for (const claimRow of claims) {
           controller.signal.throwIfAborted();
@@ -328,8 +340,10 @@ export async function processRun(
             citedSource: Support[] = [];
           let semanticFailures = 0,
             attempts = 0,
+            retrievedPassages = 0,
             locatorKnown = true,
             hadLocator = false;
+          const primaryAssessments: Finding["status"][] = [];
           const proposedFixes: NonNullable<BackendFinding["fix"]>[] = [];
           const allEligible =
             sources.length > 0 &&
@@ -379,6 +393,7 @@ export async function processRun(
                     modelDirectory: run.config.embeddingModelDirectory,
                   },
             );
+            retrievedPassages += retrieved.passages.length;
             if (isCited && actualLocator && !retrieved.locatorKnown)
               locatorKnown = false;
             const source: Source = {
@@ -497,6 +512,7 @@ export async function processRun(
               if (assessment.method !== "unverified")
                 for (const p of packet) inspected.add(p.id);
               const support = supportOf(assessment);
+              if (!alternativeOnly) primaryAssessments.push(assessment.status);
               (alternativeOnly ? alternative : primary).push(support);
               if (isCited) citedSource.push(support);
               const passage = packet.find(
@@ -511,11 +527,17 @@ export async function processRun(
               }
               notices.push(assessment.explanation);
               if (
-                isCited &&
+                (isCited || input.checkScope === "selected_library") &&
                 !ambiguous &&
-                assessment.fixKind === "number" &&
                 assessment.fix &&
-                assessment.numericCorrection &&
+                ((assessment.fixKind === "number" &&
+                  assessment.numericCorrection) ||
+                  (assessment.fixKind === "quotation" &&
+                    assessment.evidenceExcerpt &&
+                    passage?.text.includes(assessment.evidenceExcerpt) &&
+                    assessment.fix.includes(
+                      `"${assessment.evidenceExcerpt}"`,
+                    ))) &&
                 passage &&
                 !alternativeOnly &&
                 !source.publicationWarning
@@ -526,7 +548,8 @@ export async function processRun(
                   start: claim.start,
                   end: claim.end,
                   documentVersionId: input.documentVersionId,
-                  kind: "number",
+                  kind:
+                    assessment.fixKind === "number" ? "number" : "quotation",
                 });
             }
           }
@@ -565,7 +588,7 @@ export async function processRun(
           if (semanticFailures && support === "supported") support = "partial";
           if (ambiguous && support === "supported") support = "not_verified";
           const fix =
-            support === "contradicted" &&
+            ["contradicted", "overstated", "partial"].includes(support) &&
             semanticFailures === 0 &&
             !ambiguous &&
             proposedFixes.length > 0 &&
@@ -577,6 +600,27 @@ export async function processRun(
             claim: claimRow.data,
             support,
             citation,
+            basis:
+              input.sourcePolicy === "user_supplied"
+                ? "supplied_text"
+                : "academic_research",
+            ...(support === "not_verified"
+              ? {
+                  evidenceGap: !retrievedPassages
+                    ? ("source_unavailable" as const)
+                    : input.sourcePolicy === "academic" &&
+                        !sources.some((s) => s.asset.eligibility === "eligible")
+                      ? ("source_requirements" as const)
+                      : !attempts || semanticFailures
+                        ? ("check_incomplete" as const)
+                        : primaryAssessments.length > 0 &&
+                            primaryAssessments.every(
+                              (s) => s === "not_addressed",
+                            )
+                          ? ("not_addressed" as const)
+                          : ("insufficient_evidence" as const),
+                }
+              : {}),
             eligibility: allEligible
               ? "eligible"
               : sources.some((s) => s.asset.eligibility === "ineligible")
@@ -680,7 +724,7 @@ export async function processRun(
               (c) => c.unreadablePages?.length || c.omittedPages?.length,
             ) ||
             (run.config.references || []).some(
-              (r: any) => r.status !== "matched_ready",
+              (r: any) => !resolvedReferenceIds.has(r.id),
             );
           const status = isPartial ? "partial" : "complete";
           await tx.query(
@@ -692,7 +736,7 @@ export async function processRun(
               JSON.stringify({
                 sources: sourceCoverage,
                 unresolvedReferences: (run.config.references || [])
-                  .filter((r: any) => r.status !== "matched_ready")
+                  .filter((r: any) => !resolvedReferenceIds.has(r.id))
                   .map((r: any) => ({ id: r.id, status: r.status })),
               }),
             ],

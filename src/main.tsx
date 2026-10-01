@@ -35,7 +35,11 @@ createRoot(document.getElementById("root")!).render(
           </div>
         }
       >
-        {workspace}
+        <Studio>
+          {/^\/app\/(integrations|checks|evidence|class)(?:\/|$)/.test(path)
+            ? workspace
+            : undefined}
+        </Studio>
       </Suspense>
     ) : (
       <Landing />

@@ -370,7 +370,7 @@ export async function judgeClaim(
       ...base,
       status: "uncertain",
       method: "unverified",
-      explanation: `${error instanceof Error && error.message.startsWith("Jev returned HTTP") ? error.message : "Jev could not complete a valid judgment."} The claim remains unverified. Try the audit again.`,
+      explanation: `${error instanceof Error && error.message.startsWith("Jev returned HTTP") ? error.message : "Jev could not complete a valid judgment."} This claim needs more evidence. Try the audit again.`,
     };
   }
 }

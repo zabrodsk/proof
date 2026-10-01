@@ -33,6 +33,14 @@ export function integrationApi(
     res.json({
       mcpEnabled: !!verifier,
       mcpUrl: verifier?.config.resource,
+      oauthClientIds: verifier
+        ? Object.fromEntries(
+            Object.entries(verifier.config.clients).map(([id, platform]) => [
+              platform,
+              id,
+            ]),
+          )
+        : {},
       platforms: verifier
         ? [...new Set(Object.values(verifier.config.clients))]
         : [],

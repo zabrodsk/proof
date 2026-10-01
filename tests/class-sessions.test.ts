@@ -9,6 +9,7 @@ import { installAccess } from "../server/access.js";
 import { classroomRouter } from "../server/classroom.js";
 test("five browser sessions can review concurrently without reading each otherâ€™s results", async () => {
   process.env.PROOF_HOSTED = "true";
+  process.env.PROOF_INVITE_CODE = "1234";
   process.env.PROOF_ACCESS_KEY = "session-test-key-at-least-24-characters";
   process.env.TYPESAFE_API_KEY = "fixture-key";
   process.env.PROOF_ACCOUNTS_FILE = join(
@@ -78,6 +79,12 @@ test("five browser sessions can review concurrently without reading each otherâ€
         }),
       });
       cookies.push(r.headers.get("set-cookie")!.split(";")[0]);
+      const invitation = await original(base + "/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookies[i] },
+        body: JSON.stringify({ code: "1234" }),
+      });
+      assert.equal(invitation.status, 200);
     }
     const start = (i: number) =>
       original(base + "/api/class/reviews", {
@@ -174,6 +181,7 @@ test("five browser sessions can review concurrently without reading each otherâ€
     stub.mock.restore();
     server.close();
     delete process.env.PROOF_HOSTED;
+    delete process.env.PROOF_INVITE_CODE;
     delete process.env.PROOF_ACCESS_KEY;
     delete process.env.TYPESAFE_API_KEY;
   }

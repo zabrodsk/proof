@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BackendFinding } from "../shared/backend";
-import { documentHighlights, findingTone } from "../src/studio-document";
+import {
+  documentHighlights,
+  findingTone,
+  findingLabel,
+  findingAssessment,
+  sourceCheckScope,
+} from "../src/studio-document";
 
 function finding(text: string, start = 0): BackendFinding {
   return {
@@ -46,4 +52,35 @@ test("incomplete or unverified evidence cannot look supported", () => {
   assert.equal(findingTone({ ...f, support: "not_verified" }), "unverified");
   assert.equal(findingTone({ ...f, eligibility: "unknown" }), "review");
   assert.equal(findingTone({ ...f, citation: "wrong_source" }), "review");
+});
+
+test("supplied material support does not require certified scholarly provenance", () => {
+  const f = {
+    ...finding("Claim."),
+    basis: "supplied_text" as const,
+    eligibility: "unknown" as const,
+    citation: "not_checked" as const,
+  };
+  assert.equal(findingLabel(f), "Supported");
+  assert.match(findingAssessment(f).meaning, /not whether the material itself/);
+  assert.equal(findingLabel({ ...f, support: "contradicted" }), "Unsupported");
+  assert.equal(findingLabel({ ...f, processing: "partial" }), "Unsupported");
+  assert.equal(sourceCheckScope(1, true), "selected_library");
+  assert.equal(sourceCheckScope(0, true), "cited_first_then_selected_library");
+});
+
+test("unsupported claims explain a missing source and a contradiction differently", () => {
+  const f = finding("Claim.");
+  assert.match(
+    findingAssessment({
+      ...f,
+      support: "not_verified",
+      evidenceGap: "source_unavailable",
+    }).meaning,
+    /could not read/,
+  );
+  assert.match(
+    findingAssessment({ ...f, support: "contradicted" }).meaning,
+    /disagrees/,
+  );
 });

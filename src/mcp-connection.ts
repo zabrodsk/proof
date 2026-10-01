@@ -1,5 +1,6 @@
 export type McpPlatform = "chatgpt" | "claude";
 export type McpConfiguration = {
+  oauthClientIds?: Partial<Record<McpPlatform, string>>;
   mcpEnabled: boolean;
   mcpUrl?: string;
   platforms?: string[];
@@ -35,7 +36,7 @@ export const mcpPlatforms = [
       "Choose Connect and sign in to Proof. Review the requested permissions.",
       "Open the plus menu in a conversation, choose Connectors, and enable Proof.",
     ],
-    note: "If advanced settings need OAuth client details, ask your workspace owner for the registered client information.",
+    note: "In Advanced settings, paste the OAuth client ID from this page and leave the client secret empty.",
     guide:
       "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
   },
