@@ -19,7 +19,7 @@ import {
   evidenceRoute,
   routeLabels,
   claimContext,
-  citationRequirement,
+  citationRequirementForSpan,
   commonKnowledgeReason,
 } from "../shared/claims";
 import {
@@ -148,26 +148,45 @@ export default function StudioAnalysis({
       notices?: string[];
     }[]
   >([]);
+  const [claimSearch, setClaimSearch] = useState("");
   const preview = useMemo(() => selectClaims(work.content), [work.content]);
   const approvedClaims = [
     ...preview.candidates.filter((c) => !excludedClaims.has(c.start)),
     ...preview.skipped.filter((c) => includedSkipped.has(c.start)),
   ].sort((a, b) => a.start - b.start);
   useEffect(() => {
+    setClaimSearch("");
     setExcludedClaims(new Set());
     setIncludedSkipped(new Set());
     setCitationOverrides({ content: work.content, choices: new Map() });
   }, [work.content]);
+  const visibleClaims = preview.candidates.filter((c) =>
+    c.text.toLowerCase().includes(claimSearch.trim().toLowerCase()),
+  );
+  const citationExemptCount = approvedClaims.filter(
+    (c) =>
+      citationRequirementForSpan(
+        work.content,
+        c.start,
+        c.end,
+        currentOverrides.get(c.start),
+      ) === "common_knowledge",
+  ).length;
   function citationChoice(claim: { start: number; end: number }) {
     const text = work.content.slice(claim.start, claim.end);
-    const context = claimContext(work.content, claim.start, claim.end);
-    const requirement = citationRequirement(
-      text,
-      context,
+    const requirement = citationRequirementForSpan(
+      work.content,
+      claim.start,
+      claim.end,
       currentOverrides.get(claim.start),
     );
     const protectedClaim =
-      citationRequirement(text, context, "common_knowledge") === "required";
+      citationRequirementForSpan(
+        work.content,
+        claim.start,
+        claim.end,
+        "common_knowledge",
+      ) === "required";
     return (
       <label className="ps-claim-citation-choice">
         <span>Citation requirement</span>
@@ -487,10 +506,10 @@ export default function StudioAnalysis({
         "POST",
         { idempotencyKey },
       );
-      setCitationPlan((current) =>
-        current
-          ? { ...current, status: "applied", resultVersionId: result.id }
-          : current,
+      setCitationPlan(
+        await api<CitationPlan>(
+          `/api/v1/runs/${citationPlan.runId}/citation-plan`,
+        ),
       );
       await onUpdated();
       await openRun(result.runId);
@@ -800,9 +819,10 @@ export default function StudioAnalysis({
         <details className="ps-claim-preview" open>
           <summary>Review claims · {approvedClaims.length} selected</summary>
           <p className="ps-setup-copy">
-            Uncertain candidates are selected too. Remove anything you do not
-            want checked. Common knowledge does not need a citation. It stays
-            selected for fact-checking.
+            Select the statements you want checked. Uncertain statements are
+            included. Names, headings and instructions appear under skipped
+            text. Common knowledge needs no citation; Fact-check still checks
+            its accuracy.
           </p>
           {mode === "source_check" && approvedClaims.length === 0 && (
             <p className="ps-setup-copy">
@@ -810,12 +830,37 @@ export default function StudioAnalysis({
               audited.
             </p>
           )}
-          {preview.candidates.map((claim) => (
+          <div className="ps-claim-tools">
+            <p className="ps-claim-counts" role="status">
+              {approvedClaims.length - citationExemptCount} need citations ·{" "}
+              {citationExemptCount} common knowledge
+            </p>
+            {preview.candidates.length > 4 && (
+              <label className="ps-claim-search">
+                <span>Find a statement</span>
+                <input
+                  type="search"
+                  aria-label="Find a statement"
+                  value={claimSearch}
+                  onChange={(event) => setClaimSearch(event.target.value)}
+                  placeholder="Search your claims"
+                />
+              </label>
+            )}
+            {claimSearch && (
+              <p className="ps-setup-copy">
+                Showing {visibleClaims.length} of {preview.candidates.length}{" "}
+                statements. Searching does not change your selection.
+              </p>
+            )}
+          </div>
+          {visibleClaims.map((claim) => (
             <div className="ps-claim-preview-row" key={claim.start}>
               <label className="ps-claim-option" key={claim.start}>
                 <input
                   type="checkbox"
                   checked={!excludedClaims.has(claim.start)}
+                  disabled={!!busy || active}
                   onChange={(event) =>
                     setExcludedClaims((current) => {
                       const next = new Set(current);
@@ -828,10 +873,20 @@ export default function StudioAnalysis({
                 <span>
                   {claim.text}
                   <small>
-                    {claimKind(
-                      claim.text,
-                      claimContext(work.content, claim.start, claim.end),
-                    )}{" "}
+                    {
+                      {
+                        factual: "Factual statement",
+                        interpretive: "Interpretation",
+                        quotation: "Quotation",
+                        personal: "Personal statement",
+                        uncertain: "Check this statement",
+                      }[
+                        claimKind(
+                          claim.text,
+                          claimContext(work.content, claim.start, claim.end),
+                        )
+                      ]
+                    }{" "}
                     ·{" "}
                     {
                       routeLabels[

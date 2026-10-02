@@ -13,7 +13,7 @@ import {
   selectClaims,
   claimKind,
   claimContext,
-  citationRequirement,
+  citationRequirementForSpan,
 } from "../claims.js";
 import { planResearch } from "./research-plan.js";
 import { citations, matchesCitation } from "../parse.js";
@@ -60,9 +60,10 @@ export function claimCandidates(text: string, spans: RunInput["claimSpans"]) {
       end: s.end,
       context,
       kind: claimKind(s.text, context),
-      citationRequirement: citationRequirement(
-        s.text,
-        context,
+      citationRequirement: citationRequirementForSpan(
+        text,
+        s.start,
+        s.end,
         spans?.find((span) => span.start === s.start && span.end === s.end)
           ?.citationRequirement,
       ),
@@ -334,9 +335,10 @@ export async function processRun(
           input.mode === "source_check" ||
           (input.mode === "discover" && input.citationOutput === "generate");
         const needsCitationEvidence = (claim: any) =>
-          citationRequirement(
-            claim.text,
-            claim.context,
+          citationRequirementForSpan(
+            document.text,
+            claim.start,
+            claim.end,
             claim.citationRequirement,
           ) === "required" || citations(claim.text).length > 0;
         const researchPlan = planResearch(
@@ -346,9 +348,10 @@ export async function processRun(
               (claim) =>
                 !citationWorkflow ||
                 (input.mode === "discover"
-                  ? citationRequirement(
-                      claim.text,
-                      claim.context,
+                  ? citationRequirementForSpan(
+                      document.text,
+                      claim.start,
+                      claim.end,
                       claim.citationRequirement,
                     ) === "required"
                   : needsCitationEvidence(claim)),
@@ -464,9 +467,10 @@ export async function processRun(
             continue;
           claimRow.data = {
             ...claimRow.data,
-            citationRequirement: citationRequirement(
-              claimRow.data.text,
-              claimRow.data.context,
+            citationRequirement: citationRequirementForSpan(
+              document.text,
+              claimRow.data.start,
+              claimRow.data.end,
               input.claimSpans?.find(
                 (span) =>
                   span.start === claimRow.data.start &&
@@ -528,14 +532,14 @@ export async function processRun(
             let failed = false;
             for (const selection of sourceSelections) {
               const live = await asset(db, ws, selection.assetId);
-              const frozen = sourceSnapshots[selection.assetId];
-              const current = frozen ? { ...live, ...frozen } : live;
               const extraction = (
                 await db.query(
-                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2",
-                  [ws, selection.extractionId],
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2 AND asset_id=$3",
+                  [ws, selection.extractionId, selection.assetId],
                 )
               ).rows[0];
+              const frozen = sourceSnapshots[selection.assetId];
+              const current = frozen ? { ...live, ...frozen } : live;
               failed ||= extraction?.status !== "complete";
               const retrieved = await retrieve(
                 db,
@@ -668,6 +672,12 @@ export async function processRun(
           const sources = await Promise.all(
             selections.map(async (selection) => {
               const live = await asset(db, ws, selection.assetId);
+              const extraction = (
+                await db.query(
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2 AND asset_id=$3",
+                  [ws, selection.extractionId, selection.assetId],
+                )
+              ).rows[0];
               let frozen = sourceSnapshots[selection.assetId];
               // New research results from compatibility adapters may predate the
               // richer research contract. Freeze their first assessment input too.
@@ -693,6 +703,7 @@ export async function processRun(
               return {
                 selection,
                 provenanceFrozen: !!frozen,
+                extractionComplete: extraction?.status === "complete",
                 asset: frozen
                   ? { ...live, ...frozen }
                   : { ...live, eligibility: "unknown", access: "unavailable" },
@@ -894,8 +905,14 @@ export async function processRun(
               }
               notices.push(assessment.explanation);
               if (
-                (isCited || input.checkScope === "selected_library") &&
+                (isCited ||
+                  input.checkScope === "selected_library" ||
+                  (!claim.citations.length &&
+                    input.selectedSources.some(
+                      (s) => s.assetId === item.selection.assetId,
+                    ))) &&
                 !ambiguous &&
+                item.extractionComplete &&
                 assessment.fix &&
                 ((assessment.fixKind === "number" &&
                   assessment.numericCorrection) ||

@@ -50,6 +50,8 @@ export interface CitationPlan {
   };
   previewText: string;
   resultVersionId?: string;
+  appliedOperationIds?: string[];
+  deferredOperationIds?: string[];
   audit?: {
     occurrences: {
       id: string;

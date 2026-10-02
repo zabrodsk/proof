@@ -1,3 +1,4 @@
+import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
 import type { BackendFinding, EvidenceLink } from "../../shared/backend.js";
 import { bibliography, citationDois } from "../../shared/mla.js";
@@ -18,9 +19,12 @@ import {
   type ReferenceMetadata,
 } from "./citations.js";
 import { assignmentProfiles } from "../../shared/citation-profiles.js";
-import { citationRequirement, documentSentences } from "../../shared/claims.js";
+import {
+  citationRequirementForSpan,
+  documentSentences,
+} from "../../shared/claims.js";
 
-const planVersion = "citation-plan-2";
+const planVersion = "citation-plan-3";
 function stable(value: any): any {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === "object")
@@ -244,9 +248,10 @@ export async function citationPlan(
         (s) => s.start <= occurrence.start && s.end >= occurrence.end,
       );
       return (
-        citationRequirement(
-          claim?.text || sentence?.text || occurrence.raw,
-          claim?.context || "",
+        citationRequirementForSpan(
+          version.text,
+          claim?.start ?? sentence?.start ?? occurrence.start,
+          claim?.end ?? sentence?.end ?? occurrence.end,
           claim?.citationRequirement,
         ) !== "common_knowledge"
       );
@@ -335,9 +340,10 @@ export async function citationPlan(
       );
     for (const finding of findings) {
       if (
-        citationRequirement(
-          finding.claim.text,
-          finding.claim.context,
+        citationRequirementForSpan(
+          version.text,
+          finding.claim.start,
+          finding.claim.end,
           finding.claim.citationRequirement,
         ) === "common_knowledge"
       ) {
@@ -1113,6 +1119,22 @@ export async function applyCitationPlan(
           ...plan,
           status: "applied",
           resultVersionId: result.id,
+          previewText: text,
+          appliedOperationIds: operationIds,
+          deferredOperationIds: plan.operations
+            .filter((op) => !operationIds.includes(op.id))
+            .map((op) => op.id),
+          gaps: [
+            ...plan.gaps,
+            ...plan.operations
+              .filter((op) => !operationIds.includes(op.id))
+              .map((op) => ({
+                findingId: op.findingId || op.id,
+                claim: op.original || "Bibliography entry",
+                reason:
+                  "This citation change was not applied. Run a new check to review it against the saved document.",
+              })),
+          ],
         }),
       ],
     );
@@ -1173,7 +1195,7 @@ export async function applyVerifiedFixes(
     for (const id of findingIds) {
       const row = (
         await tx.query(
-          "SELECT f.data,r.document_version_id,r.invalidated FROM findings f JOIN runs r ON r.workspace_id=f.workspace_id AND r.id=f.run_id WHERE f.workspace_id=$1 AND f.id=$2",
+          "SELECT f.data,r.document_version_id,r.invalidated,r.config FROM findings f JOIN runs r ON r.workspace_id=f.workspace_id AND r.id=f.run_id WHERE f.workspace_id=$1 AND f.id=$2",
           [ws, id],
         )
       ).rows[0];
@@ -1199,6 +1221,7 @@ export async function applyVerifiedFixes(
         version.text.slice(fix.start, fix.end) !== fix.original
       )
         throw new HttpError(409, "An edit span no longer matches the draft.");
+      await validateFixEvidence(tx, ws, row.data, row.config);
       fixes.push(fix);
     }
     fixes.sort((a, b) => a.start - b.start);

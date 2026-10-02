@@ -50,14 +50,21 @@ export default function StudioCitationPlan({
       aria-labelledby="citation-proposals-title"
     >
       <h3 id="citation-proposals-title">Citation proposals</h3>
-      <p>
-        {plan.coverage.citableClaims} of {citationNeededCount} claims needing
-        citations have citation-ready evidence. Each selected citation includes
-        its matching Works Cited entry.
-      </p>
+      {!applied && (
+        <p>
+          {plan.coverage.citableClaims} of {citationNeededCount} claims needing
+          citations have citation-ready evidence. Each selected citation
+          includes its matching Works Cited entry. Review the changes, then save
+          your selection.
+        </p>
+      )}
       {applied ? (
         <p role="status">
           Approved citations are saved in a new document version.
+          {plan.appliedOperationIds &&
+            ` ${plan.appliedOperationIds.length} changes saved.`}
+          {!!plan.deferredOperationIds?.length &&
+            ` ${plan.deferredOperationIds.length} left for review; see the gaps below. Run a new check to continue.`}
         </p>
       ) : stale ? (
         <p role="status">
@@ -139,6 +146,11 @@ export default function StudioCitationPlan({
               {(error || preview.error) && (
                 <p role="alert">{error || preview.error}</p>
               )}
+              <p className="ps-review-muted" role="status">
+                {selected.length} of {plan.operations.length} changes selected.
+                {selected.length < plan.operations.length &&
+                  " Unselected changes will remain listed for review."}
+              </p>
               <button
                 className="ps-primary"
                 disabled={disabled || !selected.length || !!preview.error}

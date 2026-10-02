@@ -163,6 +163,17 @@ export function parseCitationOccurrences(
       ) {
         continue;
       }
+      // Unknown author-and-year forms must still look like a name, not a
+      // factual aside such as "its population doubled in 2024".
+      if (
+        !candidates.length &&
+        !quoted &&
+        author &&
+        !/^(?:(?:de|van|von|der|den|da|di)\s+)*[\p{Lu}][\p{L}\p{N}.'’-]*(?:\s+(?:and|of|the|de|van|von|der|den|da|di|et al\.|[\p{Lu}][\p{L}\p{N}.'’-]*))*$/u.test(
+          author,
+        )
+      )
+        continue;
       items.push({
         raw,
         author: author || undefined,

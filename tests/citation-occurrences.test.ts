@@ -112,3 +112,25 @@ test("unknown APA narrative and recognized author-only references remain visible
   assert.equal(parsed[0].items[0].status, "matched");
   assert.equal(parsed[0].items[0].locator, undefined);
 });
+
+test("factual parentheticals with a year are not citations", () => {
+  assert.deepEqual(
+    parseCitationOccurrences(
+      "Paris is the capital of France (its population doubled in 2024).",
+      references,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    parseCitationOccurrences(
+      "The trial grew (Its sample increased in 2024).",
+      references,
+    ),
+    [],
+  );
+  assert.equal(
+    parseCitationOccurrences("A finding (Unknown 2024).", references)[0]
+      .items[0].status,
+    "unmatched",
+  );
+});

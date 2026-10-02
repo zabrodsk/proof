@@ -88,7 +88,12 @@ function hasQuotedText(text: string) {
 export function commonKnowledgeReason(text: string): string | undefined {
   if (hasQuotedText(text)) return;
   const value = text
-    .replace(/\s+\([^()]+\)\s*\.?$/, "")
+    // Strip only a recognizable author-and-locator citation. Factual asides
+    // remain part of the assertion and cannot inherit a basic-fact exemption.
+    .replace(
+      /\s+\(\p{Lu}[\p{L}'’-]*(?:\s+(?:and\s+)?\p{Lu}[\p{L}'’-]*|\s+et al\.)*(?:,\s*|\s+)(?:pp?\.\s*)?\d{1,4}(?:[–-]\d{1,4})?\)\s*\.?$/u,
+      "",
+    )
     .trim()
     .replace(/[.!]+$/, "")
     .replace(/\s+/g, " ");
@@ -127,6 +132,26 @@ export function citationRequirement(
   )
     return "required";
   return override === "common_knowledge" ? "common_knowledge" : "required";
+}
+
+/** Preserve quotation membership across sentence and paragraph boundaries. */
+export function citationRequirementForSpan(
+  document: string,
+  start: number,
+  end: number,
+  override?: CitationRequirement,
+): CitationRequirement {
+  for (const quote of document.matchAll(
+    /“[^”]+”|"[^"]+"|‘(?:[^’]|(?<=\p{L})’(?=\p{L}))+’|(?:^|[\s,:])'(?:[^']|(?<=\p{L})'(?=\p{L}))+'(?=\s|[.!?,;:]|$)/gu,
+  )) {
+    if (quote.index! < end && quote.index! + quote[0].length > start)
+      return "required";
+  }
+  return citationRequirement(
+    document.slice(start, end),
+    claimContext(document, start, end),
+    override,
+  );
 }
 
 export function documentSentences(text: string) {

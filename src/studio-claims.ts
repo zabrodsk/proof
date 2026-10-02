@@ -1,4 +1,4 @@
-import { citationRequirement, claimContext } from "../shared/claims";
+import { citationRequirementForSpan } from "../shared/claims";
 
 export type CitationRequirement = "required" | "common_knowledge";
 export type CitationOverrides = {
@@ -40,9 +40,10 @@ export function approvedClaimSpans(
       ...(manual === undefined
         ? {}
         : {
-            citationRequirement: citationRequirement(
-              content.slice(start, end),
-              claimContext(content, start, end),
+            citationRequirement: citationRequirementForSpan(
+              content,
+              start,
+              end,
               manual,
             ),
           }),

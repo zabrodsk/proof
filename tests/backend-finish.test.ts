@@ -283,7 +283,7 @@ test("automatic review checks the essay body, records skipped header spans, and 
   assert.equal(run.coverage.totalClaims, 2);
   assert.equal(run.coverage.completedClaims, 2);
   assert.equal(run.coverage.skippedSpans.length, 4);
-  assert.equal(run.config.claimSelection, "proof-claims-2");
+  assert.equal(run.config.claimSelection, "proof-claims-3");
   const findings = (
     await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
   ).rows;

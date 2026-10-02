@@ -118,7 +118,8 @@ globalThis.fetch = async (input, options) => {
     const numeric =
       /120 adults/.test(request.state.claim) &&
       choicesByPassage.some(([, value]) => value.includes("218 adults"));
-    const supports = !!supportingPassage;
+    const supports =
+      !!supportingPassage && !/population doubled/.test(request.state.claim);
     const conflictPassage = choicesByPassage.find(([, value]) =>
       value.includes("The moon is a rocky natural satellite"),
     );
@@ -405,8 +406,10 @@ app.use(express.static("dist"));
 app.get("/{*path}", (_q, r) =>
   r.sendFile("index.html", { root: process.cwd() + "/dist" }),
 );
-const server = app.listen(4333, "127.0.0.1", () =>
-  console.log("Review E2E fixture ready"),
+const server = app.listen(
+  Number(process.env.PROOF_E2E_PORT || 4333),
+  "127.0.0.1",
+  () => console.log("Review E2E fixture ready"),
 );
 process.on("SIGTERM", () => {
   clearInterval(workerTimer);

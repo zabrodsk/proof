@@ -1061,3 +1061,36 @@
     animation: none;
   }
 }
+
+.ps-claim-tools {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--sage-light, #eff3ed);
+  border-radius: 10px;
+}
+.ps-claim-counts {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+.ps-claim-search {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.proof-studio .ps-claim-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  background: var(--white);
+  color: var(--ink);
+}
+.proof-studio .ps-claim-search input:focus-visible {
+  outline: 2px solid var(--sage-dark, #326b4d);
+  outline-offset: 2px;
+}

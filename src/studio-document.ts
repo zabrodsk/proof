@@ -65,7 +65,13 @@ export function findingDetail(f: BackendFinding, mode?: RunInput["mode"]) {
   if (f.support === "overstated") return "Overstated";
   if (f.support === "partial" || f.support === "mixed")
     return "Partly supported";
-  if (f.support === "supported") return "Citation issue";
+  if (f.support === "supported") {
+    if (f.citation === "wrong_locator") return "Wrong citation page";
+    if (f.citation === "wrong_source") return "Wrong source cited";
+    if (f.citation === "missing") return "Citation missing";
+    if (f.citation === "ambiguous") return "Citation unclear";
+    return "Citation needs review";
+  }
   if (f.evidenceGap === "not_addressed") return "Not in your sources";
   if (f.evidenceGap === "source_requirements") return "Source not eligible";
   if (f.evidenceGap === "source_unavailable") return "No readable source";
@@ -122,7 +128,7 @@ export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
     return {
       meaning:
         "The source does not meet the requirements for this research check.",
-      next: "For notes and testing materials, use Check my materials.",
+      next: "For notes and testing materials, use Check citations.",
     };
   if (f.support === "supported")
     return {
@@ -137,12 +143,11 @@ export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
 }
 
 export function sourceCheckScope(
-  selectedCount: number,
-  bibliographyReady: boolean,
+  _selectedCount: number,
+  _bibliographyReady: boolean,
 ) {
-  return selectedCount > 0 || !bibliographyReady
-    ? "selected_library"
-    : "cited_first_then_selected_library";
+  // Check citations must inspect the cited work/page even with uploaded sources.
+  return "cited_first_then_selected_library" as const;
 }
 
 export function documentDownloadName(title: string, format: "txt" | "html") {

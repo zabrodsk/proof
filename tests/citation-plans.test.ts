@@ -600,3 +600,80 @@ test("incomplete checks and provisional metadata never generate a citation", asy
   assert.equal(plan.operations.length, 0);
   assert.equal(plan.gaps.length, 2);
 });
+
+test("verified fixes reject a refreshed ineligible source without changing the document", async () => {
+  const f = await fixture("The trial included 300 adults.");
+  const finding = {
+    ...f.finding,
+    support: "contradicted",
+    fix: {
+      original: f.text,
+      replacement: "The trial included 218 adults.",
+      start: 0,
+      end: f.text.length,
+      documentVersionId: f.versionId,
+      kind: "number",
+    },
+  };
+  await db.query(
+    "UPDATE findings SET data=$3 WHERE workspace_id=$1 AND id=$2",
+    [f.ws, f.finding.id, JSON.stringify(finding)],
+  );
+  await db.query(
+    "UPDATE source_assets SET eligibility='ineligible', metadata=metadata||$3::jsonb WHERE workspace_id=$1 AND id=$2",
+    [f.ws, f.source.id, JSON.stringify({ publicationWarning: true })],
+  );
+  await assert.rejects(
+    applyVerifiedFixes(
+      db,
+      f.ws,
+      f.documentId,
+      f.versionId,
+      [f.finding.id],
+      randomUUID(),
+    ),
+    /evidence behind this edit changed/,
+  );
+  const saved = await documentExport(db, f.ws, f.documentId);
+  assert.equal(saved.text, f.text);
+  assert.equal(saved.versionId, f.versionId);
+});
+
+test("selective approval persists pending changes and the actual saved preview", async () => {
+  const claim = "The trial included 218 adults.";
+  const f = await fixture(claim + "\n\n" + claim);
+  const start = claim.length + 2;
+  await f.save(
+    {
+      ...f.finding,
+      id: randomUUID(),
+      claim: {
+        ...f.finding.claim,
+        text: claim,
+        start,
+        end: start + claim.length,
+      },
+    },
+    1,
+  );
+  const plan = await citationPlan(db, f.ws, f.run.id);
+  assert.equal(plan.operations.length, 2);
+  await applyCitationPlan(
+    db,
+    f.ws,
+    f.documentId,
+    plan.id,
+    f.versionId,
+    [plan.operations[0].id],
+    randomUUID(),
+  );
+  const saved = await documentExport(db, f.ws, f.documentId);
+  const review = await citationPlan(db, f.ws, f.run.id);
+  assert.deepEqual(review.appliedOperationIds, [plan.operations[0].id]);
+  assert.equal(review.deferredOperationIds?.length, 1);
+  assert.equal(review.previewText, saved.text);
+  assert.equal(review.status, "applied");
+  assert.equal(review.gaps.length, 1);
+  assert.match(review.gaps[0].reason, /not applied/);
+  assert.ok(saved.text.includes("\n\n" + claim + "\n\nWorks Cited"));
+});

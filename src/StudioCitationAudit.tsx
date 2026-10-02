@@ -31,9 +31,12 @@ export default function StudioCitationAudit({
     >
       <h3 id="citation-audit-title">Citation audit</h3>
       <p>
-        {audit.counts.occurrences} citation occurrences ·{" "}
-        {audit.counts.distinctCitedWorks} distinct cited works ·{" "}
-        {audit.counts.bibliographyEntries} bibliography entries
+        {audit.counts.occurrences} in-text citation
+        {audit.counts.occurrences === 1 ? "" : "s"} ·{" "}
+        {audit.counts.distinctCitedWorks} cited work
+        {audit.counts.distinctCitedWorks === 1 ? "" : "s"} ·{" "}
+        {audit.counts.bibliographyEntries} bibliography{" "}
+        {audit.counts.bibliographyEntries === 1 ? "entry" : "entries"}
       </p>
       <p className="ps-review-muted">
         Matching a source identifies the work. Evidence and locator checks are

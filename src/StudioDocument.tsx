@@ -428,7 +428,9 @@ export default function StudioDocument({
                   {counts.citationExempt > 0 && (
                     <>
                       <span aria-hidden="true"> · </span>
-                      <strong>{counts.citationExempt}</strong> need no citation
+                      <strong>{counts.citationExempt}</strong>{" "}
+                      {counts.citationExempt === 1 ? "needs" : "need"} no
+                      citation
                     </>
                   )}
                 </p>

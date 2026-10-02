@@ -77,7 +77,7 @@ test("supplied material support does not require certified scholarly provenance"
   assert.match(findingAssessment(f).meaning, /not whether the material itself/);
   assert.equal(findingLabel({ ...f, support: "contradicted" }), "Unsupported");
   assert.equal(findingLabel({ ...f, processing: "partial" }), "Unsupported");
-  assert.equal(sourceCheckScope(1, true), "selected_library");
+  assert.equal(sourceCheckScope(1, true), "cited_first_then_selected_library");
   assert.equal(sourceCheckScope(0, true), "cited_first_then_selected_library");
 });
 
@@ -125,7 +125,7 @@ test("review labels name the specific problem without overstating support", () =
   assert.equal(findingDetail({ ...f, support: "overstated" }), "Overstated");
   assert.equal(
     findingDetail({ ...f, citation: "wrong_source" }),
-    "Citation issue",
+    "Wrong source cited",
   );
   assert.equal(
     findingDetail({ ...f, processing: "partial" }),
