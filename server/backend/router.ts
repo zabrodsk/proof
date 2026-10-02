@@ -10,6 +10,12 @@ import { carryForward, editRegion } from "./carry-forward.js";
 import { HttpError, limits, notFound } from "./config.js";
 import { formatReference } from "./citations.js";
 import { providerKey } from "./providers.js";
+import {
+  citationPlan,
+  applyCitationPlan,
+  applyVerifiedFixes,
+  documentExport,
+} from "./citation-plans.js";
 const uuid = (value: unknown) => z.string().uuid().parse(value);
 const page = (value: unknown, fallback: number, max: number) =>
   value === undefined
@@ -69,6 +75,23 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       [ws, id],
     );
     res.json({ items: result.rows });
+  });
+  r.get("/documents/:id/export", async (req, res) => {
+    const format = z.enum(["html", "text"]).parse(req.query.format || "text");
+    const result = await documentExport(
+      db,
+      res.locals.workspace,
+      uuid(req.params.id),
+      req.query.versionId ? uuid(req.query.versionId) : undefined,
+    );
+    res.set(
+      "Content-Disposition",
+      `attachment; filename="proof-document.${format === "html" ? "html" : "txt"}"`,
+    );
+    res.set("Cache-Control", "private, no-store");
+    res
+      .type(format === "html" ? "text/html" : "text/plain")
+      .send(result[format]);
   });
   r.get("/documents/:id/bibliography", async (req, res) => {
     const ws = res.locals.workspace,
@@ -618,6 +641,51 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         uuid(req.params.id),
         v.documentVersionId,
         v.findingId,
+      ),
+    );
+  });
+  r.post("/documents/:id/apply-fixes", async (req, res) => {
+    const value = z
+      .strictObject({
+        approved: z.literal(true),
+        documentVersionId: z.string().uuid(),
+        findingIds: z.array(z.string().uuid()).min(1).max(100),
+      })
+      .parse(req.body);
+    res.json(
+      await applyVerifiedFixes(
+        db,
+        res.locals.workspace,
+        uuid(req.params.id),
+        value.documentVersionId,
+        value.findingIds,
+        req.get("Idempotency-Key") || "",
+      ),
+    );
+  });
+  r.get("/runs/:id/citation-plan", async (req, res) => {
+    res.json(await citationPlan(db, res.locals.workspace, uuid(req.params.id)));
+  });
+  r.post("/runs/:id/citation-plan", async (req, res) => {
+    res.json(await citationPlan(db, res.locals.workspace, uuid(req.params.id)));
+  });
+  r.post("/documents/:id/citation-plans/:planId/apply", async (req, res) => {
+    const value = z
+      .strictObject({
+        approved: z.literal(true),
+        documentVersionId: z.string().uuid(),
+        operationIds: z.array(z.string().uuid()).min(1).max(200),
+      })
+      .parse(req.body);
+    res.json(
+      await applyCitationPlan(
+        db,
+        res.locals.workspace,
+        uuid(req.params.id),
+        uuid(req.params.planId),
+        value.documentVersionId,
+        value.operationIds,
+        req.get("Idempotency-Key") || "",
       ),
     );
   });

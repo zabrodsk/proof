@@ -34,9 +34,7 @@ test("claim preview controls the actual checked spans and skips a punctuated nam
     .uncheck();
   await selectSource(page);
   await consent(page);
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   await expect(
     page.getByText("1 of 1 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -59,9 +57,7 @@ test("numeric correction has exact evidence, changes only the approved claim, an
   await page.goto(`/app/works/${doc.id}`);
   await selectSource(page);
   await consent(page);
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   const card = page
     .locator(".ps-changes > li")
     .filter({ hasText: "120 adults" });
@@ -118,11 +114,12 @@ test("research exposes inaccessible and retracted candidates, recorded usage, an
     "Tutoring improves adult reading scores. Tutoring does not improve adult reading scores.";
   const doc = await draft(request, text);
   await page.goto(`/app/works/${doc.id}`);
-  await page.getByRole("button", { name: "Research", exact: true }).click();
-  await consent(page);
   await page
-    .getByRole("button", { name: "Check my text", exact: true })
+    .getByRole("group", { name: "Check type" })
+    .getByRole("button", { name: "Fact-check", exact: true })
     .click();
+  await consent(page);
+  await page.locator(".ps-setup-start").click();
   await expect(
     page.getByText("2 of 2 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -140,11 +137,29 @@ test("research exposes inaccessible and retracted candidates, recorded usage, an
     await (await request.get(`/api/v1/documents/${doc.id}/runs`)).json()
   ).items[0];
   const result = await (await request.get(`/api/v1/runs/${run.id}`)).json();
-  expect(
-    result.usage
-      .filter((u: any) => u.provider === "exa")
-      .reduce((n: number, u: any) => n + u.requests, 0),
-  ).toBe(2);
+  const searchCalls = result.usage
+    .filter((u: any) => u.provider === "exa")
+    .reduce((n: number, u: any) => n + u.requests, 0);
+  // A cold run shares the relevance and conflict queries across both claims.
+  // Later browser projects may legitimately reuse those scoped search results.
+  expect([0, 2]).toContain(searchCalls);
+  const research = (
+    await (await request.get(`/api/v1/runs/${run.id}/research`)).json()
+  ).items;
+  if (searchCalls === 0)
+    expect(
+      research.some((item: any) =>
+        item.notices.some((notice: string) =>
+          notice.includes(
+            "Recent search results were reused within this workspace and source scope",
+          ),
+        ),
+      ),
+    ).toBe(true);
+  const outbound = (
+    await (await request.get(`/__e2e/provider-requests?runId=${run.id}`)).json()
+  ).items.filter((item: any) => item.url.includes("api.exa.ai/search"));
+  expect(outbound).toHaveLength(searchCalls);
   expect(result.coverage.completedClaims).toBe(2);
   const findings = (
     await (await request.get(`/api/v1/runs/${run.id}/findings`)).json()
@@ -157,12 +172,13 @@ test("a supplied source that covers a public claim prevents all external searche
 }) => {
   const doc = await draft(request, "Paris is the capital of France.");
   await page.goto(`/app/works/${doc.id}`);
-  await page.getByRole("button", { name: "Research", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Check type" })
+    .getByRole("button", { name: "Fact-check", exact: true })
+    .click();
   await selectSource(page);
   await consent(page);
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   await expect(
     page.getByText("1 of 1 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -193,10 +209,7 @@ test("starting a check waits for delayed autosave and uses the new version", asy
   });
   const text = "The trial included 120 adults.";
   await page.getByRole("textbox", { name: "Document text" }).fill(text);
-  const start = page.getByRole("button", {
-    name: "Check my text",
-    exact: true,
-  });
+  const start = page.locator(".ps-setup-start");
   await expect(start).toBeDisabled();
   await page.getByRole("textbox", { name: "Document text" }).blur();
   await expect(start).toBeEnabled();
@@ -315,9 +328,7 @@ test("uploaded PDF exposes unreadable pages and honest physical locators after r
     }),
   ).toBeEnabled();
   await consent(page);
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   await expect(
     page.getByText("Source extraction gaps", { exact: true }),
   ).toBeVisible();

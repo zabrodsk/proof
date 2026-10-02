@@ -9,7 +9,7 @@ export const limits = {
 };
 export const versions = {
   parser: "proof-pages-2",
-  claimSelection: "proof-claims-2",
+  claimSelection: "proof-claims-3",
   prompt: "proof-assessment-2",
   policy: "proof-policy-2",
   embedding: "Xenova/bge-small-en-v1.5",

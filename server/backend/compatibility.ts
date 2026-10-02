@@ -289,6 +289,8 @@ export async function processCompatibilityJob(
   }
   const sourceCheck = current.kind === "evidence" && input.mode === "supplied";
   const runInput: RunInput = {
+    citationProfile: "mla9",
+    citationOutput: "audit",
     documentVersionId: current.result.documentVersionId,
     mode: sourceCheck
       ? "source_check"

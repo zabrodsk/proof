@@ -45,7 +45,7 @@ const article: Source = {
 test("MLA journal entry uses first author et al, quoted title, italic journal, and DOI", () => {
   assert.equal(
     formatMla(source).entry,
-    'Noetel, Michael, et al. "Effect of Exercise for Depression: Systematic Review and Network Meta-analysis of Randomised Controlled Trials." *BMJ*, vol. 384, 2024, https://doi.org/10.1136/bmj-2023-075847.',
+    'Noetel, Michael, et al. "Effect of Exercise for Depression: Systematic Review and Network Meta-Analysis of Randomised Controlled Trials." *BMJ*, vol. 384, 2024, https://doi.org/10.1136/bmj-2023-075847.',
   );
   assert.equal(formatMla(source).inText, "(Noetel et al.)");
   assert.equal(formatMla(source, "pp. 42-45").inText, "(Noetel et al. 42-45)");

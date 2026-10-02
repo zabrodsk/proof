@@ -136,6 +136,103 @@ test("the draft and earlier four-source assignment have different requirements",
     "issue",
   );
 });
+test("classroom counts distinct eligible article identities even without a DOI", () => {
+  const papers = ["Smith", "Jones", "Márquez"].map((family, index) => ({
+    ...paper(),
+    id: `paper-${index}`,
+    metadata: {
+      ...paper().metadata,
+      doi: undefined,
+      title: `${family} study`,
+      authors: [`Jane ${family}`],
+      scholarly: {
+        eligible: true,
+        reason: "Verified fixture policy and complete text",
+        checkedAt: "2026-09-29",
+      },
+    },
+    mla: {
+      ...paper().mla,
+      doi: "",
+      title: `${family} Study`,
+      authors: `${family}, Jane`,
+    },
+    pages: [1, 2, 3, 4, 5].map((index) => ({
+      index,
+      text: "A complete article page.",
+    })),
+  }));
+  const text =
+    "Evidence holds (Smith 325). More evidence (Jones 325). Further evidence (Márquez 326).";
+  const report = assignmentChecks(text, papers, "draft");
+  assert.equal(
+    report.checks.find(
+      (entry) => entry.label === "Three different academic articles",
+    )?.status,
+    "pass",
+  );
+  const duplicate = { ...papers[0], id: "same-work-another-upload" };
+  const duplicateReport = assignmentChecks(
+    text,
+    [papers[0], duplicate, papers[1]],
+    "draft",
+  );
+  assert.equal(
+    duplicateReport.checks.find(
+      (entry) => entry.label === "Three different academic articles",
+    )?.status,
+    "issue",
+  );
+  const tooShort = {
+    ...papers[2],
+    metadata: { ...papers[2].metadata, pages: "325-326" },
+    mla: { ...papers[2].mla, pages: "325-326" },
+  };
+  assert.equal(
+    assignmentChecks(
+      text,
+      [...papers.slice(0, 2), tooShort],
+      "draft",
+    ).checks.find(
+      (entry) => entry.label === "Three different academic articles",
+    )?.status,
+    "issue",
+  );
+});
+test("word count reports possible title separately and does not invent the teacher convention", () => {
+  const report = assignmentChecks(
+    "A short title\n\nThis is the body.\n\nBibliography\nOne entry",
+    [],
+    "draft",
+  );
+  assert.equal(report.wordCounts.title, 3);
+  assert.equal(report.wordCounts.body, 4);
+  assert.equal(report.wordCounts.bibliography, 2);
+  assert.equal(report.words, 7);
+  assert.match(
+    report.checks.find((entry) => entry.label === "600-word exploratory draft")!
+      .detail,
+    /teacher did not define/,
+  );
+});
+test("classroom formatting leaves absent and invalid access dates absent", () => {
+  assert.doesNotMatch(classMla({ ...paper(), accessed: "" }), /Accessed/);
+  assert.doesNotMatch(
+    classMla({ ...paper(), accessed: "2026-02-30" }),
+    /Accessed/,
+  );
+  assert.match(
+    classMla({
+      ...paper(),
+      mla: {
+        ...paper().mla,
+        authors: "Smith, Jane\nJones, Robert\nAdams, Abby",
+      },
+    }),
+    /^Smith et al\./,
+  );
+  assert.match(classMla(paper()), /"Evidence for Classroom Research"\./);
+});
 test("PDF and source checks flag wrong, incomplete and unreadable papers without claiming peer review", () => {
   const p = paper();
   p.pages = [

@@ -167,9 +167,7 @@ try {
   await page
     .getByRole("checkbox", { name: "Allow AI providers", exact: false })
     .check();
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   const run = await wait<any>(
     async () => (await json(`/api/v1/documents/${documentId}/runs`)).items[0],
     (r) => r && !["queued", "running"].includes(r.status),
@@ -231,7 +229,7 @@ try {
   });
   console.log("Live browser correction workflow passed.");
   // Run a small real public-source search and retain its honest evidence gaps.
-  const publicText = "The Moon orbits Earth.";
+  const publicText = "Paris is the capital of France.";
   const doc = await json(
     "/api/v1/documents",
     { title: "Synthetic public research acceptance", text: publicText },
@@ -241,9 +239,9 @@ try {
     "/api/v1/runs",
     {
       documentVersionId: doc.documentVersionId,
-      mode: "discover",
+      mode: "fact_check",
       externalAccess: "research",
-      sourcePolicy: "matched",
+      sourcePolicy: "public",
       allowProviderProcessing: true,
       budgetPreset: "small",
     },
@@ -270,7 +268,10 @@ try {
       assert.equal(stored.text, e.text);
     }
   await page.goto(base + `/app/works/${doc.id}`);
-  await page.getByRole("button", { name: "Find sources", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Check type" })
+    .getByRole("button", { name: "Fact-check", exact: true })
+    .click();
   await page
     .getByText("Retrieved sources and access gaps", { exact: true })
     .waitFor({ timeout: 30000 });
@@ -283,7 +284,7 @@ try {
   });
   report.checks.push({
     workflow:
-      "Live Exa authoritative research, retrieval, durable findings and visible access gaps",
+      "Live Exa public search, retrieval, durable findings and visible access gaps",
     status: researchFindings.some((f: any) => f.evidence.length)
       ? "passed with inspectable evidence"
       : "finished with explicit evidence gaps",

@@ -9,7 +9,12 @@ import type {
   Support,
 } from "../../shared/backend.js";
 import type { Source, Finding, Claim } from "../../shared/types.js";
-import { selectClaims, claimKind, claimContext } from "../claims.js";
+import {
+  selectClaims,
+  claimKind,
+  claimContext,
+  citationRequirementForSpan,
+} from "../claims.js";
 import { planResearch } from "./research-plan.js";
 import { citations, matchesCitation } from "../parse.js";
 import { judgeClaim } from "../judge.js";
@@ -55,6 +60,13 @@ export function claimCandidates(text: string, spans: RunInput["claimSpans"]) {
       end: s.end,
       context,
       kind: claimKind(s.text, context),
+      citationRequirement: citationRequirementForSpan(
+        text,
+        s.start,
+        s.end,
+        spans?.find((span) => span.start === s.start && span.end === s.end)
+          ?.citationRequirement,
+      ),
       compound: /\b(and|but|whereas|although)\b/i.test(s.text),
     };
   });
@@ -90,6 +102,18 @@ export type EngineDeps = {
   resolveReferences: typeof resolveSelectedReferences;
 };
 
+function requireEvidencePassage(assessment: Finding): Finding {
+  if (assessment.status !== "supported" || assessment.evidence?.trim())
+    return assessment;
+  return {
+    ...assessment,
+    status: "uncertain",
+    fix: undefined,
+    explanation:
+      "This support judgment did not include an exact assessed source passage. Support and automatic correction were withheld.",
+  };
+}
+
 async function assessPacket(
   db: Database,
   ws: string,
@@ -114,6 +138,11 @@ async function assessPacket(
       prompt: run.config.prompt,
       policy: run.config.policy,
       source: metadata,
+      eligibility,
+      access: source.access,
+      academicRequired,
+      provenanceFrozen,
+      sourcePolicy: input.sourcePolicy,
     }),
   );
   let assessment: Finding | undefined = (
@@ -145,6 +174,7 @@ async function assessPacket(
         packet.map((p) => p.text),
         { context: claimData.context },
       );
+    assessment = requireEvidencePassage(assessment);
     assertEvidence(assessment, packet);
     const quotes = [...claim.text.matchAll(/["“]([^"”]{20,})["”]/g)].map((m) =>
       m[1].replace(/\s+/g, " "),
@@ -179,7 +209,7 @@ async function assessPacket(
       );
     });
   }
-  return assessment;
+  return requireEvidencePassage(assessment);
 }
 
 const defaults: EngineDeps = {
@@ -301,9 +331,32 @@ export async function processRun(
             )
           ).rows;
         }
+        const citationWorkflow =
+          input.mode === "source_check" ||
+          (input.mode === "discover" && input.citationOutput === "generate");
+        const needsCitationEvidence = (claim: any) =>
+          citationRequirementForSpan(
+            document.text,
+            claim.start,
+            claim.end,
+            claim.citationRequirement,
+          ) === "required" || citations(claim.text).length > 0;
         const researchPlan = planResearch(
-          claims.map((c) => c.data),
-          input.sourcePolicy === "matched",
+          claims
+            .map((c) => c.data)
+            .filter(
+              (claim) =>
+                !citationWorkflow ||
+                (input.mode === "discover"
+                  ? citationRequirementForSpan(
+                      document.text,
+                      claim.start,
+                      claim.end,
+                      claim.citationRequirement,
+                    ) === "required"
+                  : needsCitationEvidence(claim)),
+            ),
+          input.sourcePolicy,
         );
         const sourceSelections = [...input.selectedSources];
         const sourceSnapshots = { ...(run.config.sourceSnapshots || {}) };
@@ -343,6 +396,62 @@ export async function processRun(
             )
               resolvedReferenceIds.add(candidate.referenceEntryId);
         }
+        const persistFinding = async (
+          claimRow: any,
+          result: BackendFinding,
+          claimCitations: string[],
+          citedAssetIds: string[],
+        ) => {
+          await db.transaction(async (tx) => {
+            const current = await ownedRun(tx, ws, id, true);
+            if (current.cancel_requested) throw new Error("Run cancelled.");
+            const inserted = await tx.query(
+              "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(run_id,claim_id) DO NOTHING RETURNING id",
+              [
+                result.id,
+                ws,
+                id,
+                claimRow.id,
+                claimRow.ordinal,
+                JSON.stringify(result),
+              ],
+            );
+            if (!inserted.rows.length) return;
+            for (const e of result.evidence)
+              await tx.query(
+                "INSERT INTO evidence_links(id,workspace_id,finding_id,passage_id,data) VALUES($1,$2,$3,$4,$5)",
+                [
+                  randomUUID(),
+                  ws,
+                  result.id,
+                  e.id,
+                  JSON.stringify({ role: e.role, support: e.support }),
+                ],
+              );
+            await tx.query(
+              "INSERT INTO citation_links(id,workspace_id,claim_id,data) VALUES($1,$2,$3,$4)",
+              [
+                randomUUID(),
+                ws,
+                claimRow.id,
+                JSON.stringify({
+                  citations: claimCitations,
+                  assetIds: citedAssetIds,
+                  status: result.citation,
+                }),
+              ],
+            );
+            await tx.query(
+              "UPDATE runs SET coverage=jsonb_set(coverage,'{completedClaims}',to_jsonb((SELECT count(*)::int FROM findings WHERE run_id=$2 AND workspace_id=$1))),updated_at=now() WHERE workspace_id=$1 AND id=$2",
+              [ws, id],
+            );
+            await event(tx, ws, id, "finding", {
+              id: result.id,
+              ordinal: claimRow.ordinal,
+              processing: result.processing,
+            });
+          });
+        };
         for (const claimRow of claims) {
           controller.signal.throwIfAborted();
           run = await ownedRun(db, ws, id);
@@ -356,11 +465,52 @@ export async function processRun(
             ).rows.length
           )
             continue;
+          claimRow.data = {
+            ...claimRow.data,
+            citationRequirement: citationRequirementForSpan(
+              document.text,
+              claimRow.data.start,
+              claimRow.data.end,
+              input.claimSpans?.find(
+                (span) =>
+                  span.start === claimRow.data.start &&
+                  span.end === claimRow.data.end,
+              )?.citationRequirement ?? claimRow.data.citationRequirement,
+            ),
+          };
+          const commonKnowledge =
+            claimRow.data.citationRequirement === "common_knowledge";
           const claim: Claim = {
             id: claimRow.id,
             ...claimRow.data,
             citations: citations(claimRow.data.text),
           };
+          if (
+            citationWorkflow &&
+            commonKnowledge &&
+            (!claim.citations.length || !sourceSelections.length)
+          ) {
+            const finding: BackendFinding = {
+              id: randomUUID(),
+              claim: claimRow.data,
+              support: "not_verified",
+              citation: "not_required",
+              basis: "supplied_text",
+              eligibility: "unknown",
+              processing: "complete",
+              evidence: [],
+              explanation: [
+                "Common knowledge does not require a citation. Factual accuracy was not assessed in this citation workflow.",
+              ],
+              checkedPassageIds: [],
+            };
+            if (claim.citations.length)
+              finding.explanation.push(
+                "The existing citation had no selected source text to compare. No additional evidence was researched for this common fact.",
+              );
+            await persistFinding(claimRow, finding, claim.citations, []);
+            continue;
+          }
           let selections = [...sourceSelections];
           let researchCandidates: any[] = [];
           let researchBudgetExhausted = false;
@@ -369,7 +519,10 @@ export async function processRun(
           const plan = researchPlan.get(claim.start);
           const wholeAcademicText =
             input.sourcePolicy === "academic" ||
-            (input.sourcePolicy === "matched" && plan?.route === "academic");
+            (["matched", "public"].includes(input.sourcePolicy) &&
+              plan?.route === "academic");
+          const inspectWholeText =
+            wholeAcademicText || input.sourcePolicy === "public";
           if (
             input.mode !== "source_check" &&
             input.allowProviderProcessing &&
@@ -379,14 +532,14 @@ export async function processRun(
             let failed = false;
             for (const selection of sourceSelections) {
               const live = await asset(db, ws, selection.assetId);
-              const frozen = sourceSnapshots[selection.assetId];
-              const current = frozen ? { ...live, ...frozen } : live;
               const extraction = (
                 await db.query(
-                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2",
-                  [ws, selection.extractionId],
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2 AND asset_id=$3",
+                  [ws, selection.extractionId, selection.assetId],
                 )
               ).rows[0];
+              const frozen = sourceSnapshots[selection.assetId];
+              const current = frozen ? { ...live, ...frozen } : live;
               failed ||= extraction?.status !== "complete";
               const retrieved = await retrieve(
                 db,
@@ -394,7 +547,7 @@ export async function processRun(
                 selection,
                 claim.text,
                 undefined,
-                wholeAcademicText ? Number.MAX_SAFE_INTEGER : 10,
+                inspectWholeText ? Number.MAX_SAFE_INTEGER : 10,
                 {
                   enabled: !!run.config.embeddingEnabled,
                   revision: run.config.embeddingRevision,
@@ -427,7 +580,9 @@ export async function processRun(
                   current.metadata,
                   current.eligibility,
                   !!frozen,
-                  input.sourcePolicy === "academic",
+                  input.sourcePolicy === "academic" ||
+                    (input.sourcePolicy === "public" &&
+                      plan?.route === "academic"),
                   deps.judge,
                 );
                 supports.push(supportOf(assessment));
@@ -464,7 +619,8 @@ export async function processRun(
             input.mode !== "source_check" &&
             input.allowProviderProcessing &&
             !suppliedSufficient &&
-            externalPermitted
+            externalPermitted &&
+            !(citationWorkflow && commonKnowledge)
           ) {
             const found = await deps
               .research(
@@ -475,7 +631,11 @@ export async function processRun(
                 run.config.researchQuery || plan?.query || claim.text,
                 input.mode,
                 run.config.limits.candidates,
-                plan?.route === "authoritative" ? "authoritative" : "academic",
+                plan?.route === "public"
+                  ? "public"
+                  : plan?.route === "authoritative"
+                    ? "authoritative"
+                    : "academic",
               )
               .catch((error: unknown) => {
                 if (
@@ -512,6 +672,12 @@ export async function processRun(
           const sources = await Promise.all(
             selections.map(async (selection) => {
               const live = await asset(db, ws, selection.assetId);
+              const extraction = (
+                await db.query(
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2 AND asset_id=$3",
+                  [ws, selection.extractionId, selection.assetId],
+                )
+              ).rows[0];
               let frozen = sourceSnapshots[selection.assetId];
               // New research results from compatibility adapters may predate the
               // richer research contract. Freeze their first assessment input too.
@@ -537,6 +703,7 @@ export async function processRun(
               return {
                 selection,
                 provenanceFrozen: !!frozen,
+                extractionComplete: extraction?.status === "complete",
                 asset: frozen
                   ? { ...live, ...frozen }
                   : { ...live, eligibility: "unknown", access: "unavailable" },
@@ -590,7 +757,7 @@ export async function processRun(
             sources.length > 0 &&
             sources.every((s) => s.asset.eligibility === "eligible");
           for (const item of sources) {
-            if (wholeAcademicText) {
+            if (inspectWholeText) {
               const extraction = (
                 await db.query(
                   "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2",
@@ -636,7 +803,7 @@ export async function processRun(
               item.selection,
               claim.text,
               actualLocator,
-              wholeAcademicText ? Number.MAX_SAFE_INTEGER : 10,
+              inspectWholeText ? Number.MAX_SAFE_INTEGER : 10,
               run.config.embeddingEnabled === undefined
                 ? undefined
                 : {
@@ -697,6 +864,8 @@ export async function processRun(
                 item.asset.eligibility,
                 item.provenanceFrozen,
                 input.sourcePolicy === "academic" ||
+                  (input.sourcePolicy === "public" &&
+                    plan?.route === "academic") ||
                   (input.sourcePolicy === "matched" &&
                     !sourceSelections.some(
                       (s) => s.assetId === item.selection.assetId,
@@ -711,24 +880,39 @@ export async function processRun(
                 for (const p of packet) inspected.add(p.id);
               const support = supportOf(assessment);
               academicUncertainty ||=
-                wholeAcademicText && assessment.status === "uncertain";
+                inspectWholeText && assessment.status === "uncertain";
               if (!alternativeOnly) primaryAssessments.push(assessment.status);
               (alternativeOnly ? alternative : primary).push(support);
-              if (isCited) citedSource.push(support);
               const passage = packet.find(
                 (p) => p.text === assessment.evidence,
               );
               const isCitedPacket = packet.some((p) =>
                 retrieved.citedIds.includes(p.id),
               );
-              if (isCited && isCitedPacket) citedLocation.push(support);
+              if (isCited)
+                citedSource.push(
+                  passage || support !== "supported" ? support : "not_verified",
+                );
+              if (isCited && isCitedPacket)
+                citedLocation.push(
+                  (passage && retrieved.citedIds.includes(passage.id)) ||
+                    support !== "supported"
+                    ? support
+                    : "not_verified",
+                );
               if (passage) {
                 evidence.push({ ...passage, role, support });
               }
               notices.push(assessment.explanation);
               if (
-                (isCited || input.checkScope === "selected_library") &&
+                (isCited ||
+                  input.checkScope === "selected_library" ||
+                  (!claim.citations.length &&
+                    input.selectedSources.some(
+                      (s) => s.assetId === item.selection.assetId,
+                    ))) &&
                 !ambiguous &&
+                item.extractionComplete &&
                 assessment.fix &&
                 ((assessment.fixKind === "number" &&
                   assessment.numericCorrection) ||
@@ -784,12 +968,21 @@ export async function processRun(
             )
               citation = "wrong_source";
           }
+          if (commonKnowledge) {
+            if (claim.citations.length && citation !== "not_checked")
+              notices.push(
+                `Common knowledge does not require a citation. The existing citation was assessed as ${citation.replaceAll("_", " ")}.`,
+              );
+            citation = "not_required";
+          }
           let support = combineSupport(primary);
           if (academicUncertainty && support === "supported")
             support = "not_verified";
           if (academicUncertainty)
             notices.push(
-              "Academic content or extraction remained incomplete or uncertain. Complete support and automatic correction were withheld.",
+              wholeAcademicText
+                ? "Academic content or extraction remained incomplete or uncertain. Complete support and automatic correction were withheld."
+                : "Source content or extraction remained incomplete or uncertain. Complete support and automatic correction were withheld.",
             );
           if (semanticFailures && support === "supported") support = "partial";
           if (ambiguous && support === "supported") support = "not_verified";
@@ -812,7 +1005,7 @@ export async function processRun(
               suppliedSufficient ||
               !externalPermitted
                 ? "supplied_text"
-                : plan?.route === "authoritative"
+                : ["authoritative", "public"].includes(plan?.route || "")
                   ? "public_sources"
                   : "academic_research",
             ...(support === "not_verified"
@@ -821,7 +1014,7 @@ export async function processRun(
                     ? ("check_incomplete" as const)
                     : !retrievedPassages
                       ? ("source_unavailable" as const)
-                      : input.sourcePolicy === "academic" &&
+                      : wholeAcademicText &&
                           !sources.some(
                             (s) => s.asset.eligibility === "eligible",
                           )
@@ -856,55 +1049,12 @@ export async function processRun(
             result.explanation.push(
               `${researchCandidates.filter((c) => !c.assetId).length} candidate works have no assessable text. Candidate details are retained with the research results.`,
             );
-          await db.transaction(async (tx) => {
-            const current = await ownedRun(tx, ws, id, true);
-            if (current.cancel_requested) throw new Error("Run cancelled.");
-            const inserted = await tx.query(
-              "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(run_id,claim_id) DO NOTHING RETURNING id",
-              [
-                result.id,
-                ws,
-                id,
-                claim.id,
-                claimRow.ordinal,
-                JSON.stringify(result),
-              ],
-            );
-            if (!inserted.rows.length) return;
-            for (const e of evidence)
-              await tx.query(
-                "INSERT INTO evidence_links(id,workspace_id,finding_id,passage_id,data) VALUES($1,$2,$3,$4,$5)",
-                [
-                  randomUUID(),
-                  ws,
-                  result.id,
-                  e.id,
-                  JSON.stringify({ role: e.role, support: e.support }),
-                ],
-              );
-            await tx.query(
-              "INSERT INTO citation_links(id,workspace_id,claim_id,data) VALUES($1,$2,$3,$4)",
-              [
-                randomUUID(),
-                ws,
-                claim.id,
-                JSON.stringify({
-                  citations: claim.citations,
-                  assetIds: cited.map((s) => s.selection.assetId),
-                  status: citation,
-                }),
-              ],
-            );
-            await tx.query(
-              "UPDATE runs SET coverage=jsonb_set(coverage,'{completedClaims}',to_jsonb((SELECT count(*)::int FROM findings WHERE run_id=$2 AND workspace_id=$1))),updated_at=now() WHERE workspace_id=$1 AND id=$2",
-              [ws, id],
-            );
-            await event(tx, ws, id, "finding", {
-              id: result.id,
-              ordinal: claimRow.ordinal,
-              processing: result.processing,
-            });
-          });
+          await persistFinding(
+            claimRow,
+            result,
+            claim.citations,
+            cited.map((source) => source.selection.assetId),
+          );
         }
         const sourceCoverage: any[] = [];
         for (const selection of sourceSelections) {

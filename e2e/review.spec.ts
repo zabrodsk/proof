@@ -65,8 +65,9 @@ for (const mode of ["source_check", "fact_check", "discover"] as const) {
     await page.goto(`/app/works/${doc.id}`);
     if (mode !== "source_check")
       await page
+        .getByRole("group", { name: "Check type" })
         .getByRole("button", {
-          name: mode === "fact_check" ? "Research" : "Find sources",
+          name: mode === "fact_check" ? "Fact-check" : "Generate citations",
           exact: true,
         })
         .click();
@@ -77,13 +78,13 @@ for (const mode of ["source_check", "fact_check", "discover"] as const) {
       page.getByText("4 text segments skipped.", { exact: false }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", {
+      page.getByRole("group", { name: "Check type" }).getByRole("button", {
         name:
           mode === "source_check"
-            ? "My sources"
+            ? "Check citations"
             : mode === "fact_check"
-              ? "Research"
-              : "Find sources",
+              ? "Fact-check"
+              : "Generate citations",
         exact: true,
       }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -109,13 +110,22 @@ test("user can start a source check with consent and see only claim cards", asyn
       exact: false,
     })
     .check();
-  await page
-    .getByRole("button", { name: "Check my text", exact: true })
-    .click();
+  await page.locator(".ps-setup-start").click();
   await expect(
     page.getByText("4 text segments skipped.", { exact: false }),
   ).toBeVisible();
+  await page
+    .getByRole("group", { name: "Show", exact: true })
+    .getByRole("button", { name: "All", exact: true })
+    .click();
   await expect(page.locator(".ps-changes > li")).toHaveCount(2);
+  await expect(page.locator(".ps-changes")).toContainText(
+    "The trial included 218 adults.",
+  );
+  await expect(page.locator(".ps-changes")).toContainText(
+    "John was born on the Reservation.",
+  );
+  await expect(page.locator(".ps-changes")).not.toContainText("Jane Smith");
   await expect(
     page.getByRole("textbox", { name: "Document text" }),
   ).toHaveValue(essay);
@@ -182,10 +192,7 @@ test("consent is required before a user can start a source check", async ({
 }) => {
   const doc = await draft(request);
   await page.goto(`/app/works/${doc.id}`);
-  const start = page.getByRole("button", {
-    name: "Check my text",
-    exact: true,
-  });
+  const start = page.locator(".ps-setup-start");
   await expect(start).toBeDisabled();
   await page
     .getByRole("checkbox", { name: "Synthetic source", exact: false })

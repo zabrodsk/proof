@@ -34,8 +34,11 @@ export const runInput = z
       .enum(["none", "resolve_selected_references", "research"])
       .default("none"),
     sourcePolicy: z
-      .enum(["user_supplied", "academic", "matched"])
+      .enum(["user_supplied", "academic", "matched", "public"])
       .default("user_supplied"),
+    citationProfile: z.enum(["mla9", "classroom"]).default("mla9"),
+    citationOutput: z.enum(["audit", "generate"]).default("audit"),
+    assignmentProfile: z.enum(["draft", "bibliography"]).optional(),
     allowProviderProcessing: z.boolean().default(false),
     budgetPreset: z.enum(["small", "standard"]).default("standard"),
     claimSpans: z
@@ -44,6 +47,9 @@ export const runInput = z
           .object({
             start: z.number().int().nonnegative(),
             end: z.number().int().positive(),
+            citationRequirement: z
+              .enum(["required", "common_knowledge"])
+              .optional(),
           })
           .refine((s) => s.end > s.start),
       )
@@ -59,11 +65,26 @@ export const runInput = z
     if (
       v.mode !== "source_check" &&
       (v.externalAccess !== "research" ||
-        !["academic", "matched"].includes(v.sourcePolicy))
+        !["academic", "matched", "public"].includes(v.sourcePolicy))
     )
       c.addIssue({
         code: "custom",
-        message: "Discovery and fact checks require academic research access.",
+        message:
+          "Discovery and fact checks require research access and a research source policy.",
+      });
+    if (
+      v.citationOutput === "generate" &&
+      (v.mode !== "discover" || v.citationProfile === "classroom")
+    )
+      c.addIssue({
+        code: "custom",
+        message:
+          "Citation generation requires discovery with a general citation profile. Classroom work uses citation audit.",
+      });
+    if (v.assignmentProfile && v.citationProfile !== "classroom")
+      c.addIssue({
+        code: "custom",
+        message: "Assignment checks require the classroom profile.",
       });
     if (
       v.mode === "source_check" &&
@@ -76,6 +97,7 @@ export const runInput = z
       });
   });
 export type RunInput = z.infer<typeof runInput>;
+export type RunRequest = z.input<typeof runInput>;
 export type Selection = z.infer<typeof selectionSchema>;
 export type Support =
   | "supported"
@@ -90,7 +112,8 @@ export type Citation =
   | "wrong_locator"
   | "missing"
   | "ambiguous"
-  | "not_checked";
+  | "not_checked"
+  | "not_required";
 export type Eligibility = "eligible" | "ineligible" | "unknown";
 export type Processing = "complete" | "partial" | "failed";
 export interface Passage {
@@ -116,6 +139,7 @@ export interface BackendFinding {
     end: number;
     kind: string;
     context: string;
+    citationRequirement?: "required" | "common_knowledge";
   };
   support: Support;
   citation: Citation;
@@ -149,5 +173,29 @@ export const sourceMetadata = z.object({
   edition: z.string().max(200).optional(),
   language: z.string().max(40).optional(),
   publisher: z.string().max(300).optional(),
+  type: z
+    .enum([
+      "book",
+      "chapter",
+      "article-journal",
+      "article-magazine",
+      "article-newspaper",
+      "paper-conference",
+      "thesis",
+      "report",
+      "webpage",
+      "manuscript",
+      "document",
+    ])
+    .optional(),
+  containerTitle: z.string().max(500).optional(),
+  volume: z.string().max(100).optional(),
+  issue: z.string().max(100).optional(),
+  pages: z.string().max(100).optional(),
+  url: z.string().url().max(2000).optional(),
+  accessed: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 export type SourceMetadata = z.infer<typeof sourceMetadata>;

@@ -1,5 +1,6 @@
+import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
-import { runInput, type RunInput } from "../../shared/backend.js";
+import { runInput, type RunRequest } from "../../shared/backend.js";
 import { type Database, type Sql, enqueue, event } from "./db.js";
 import { asset, checksum, validateSelection } from "./library.js";
 import { HttpError, notFound, limits, versions } from "./config.js";
@@ -15,11 +16,11 @@ export async function ownedRun(db: Sql, ws: string, id: string, lock = false) {
 export async function createRun(
   db: Database,
   ws: string,
-  input: RunInput,
+  inputValue: RunRequest,
   key: string,
   trusted: { researchQuery?: string } = {},
 ) {
-  input = runInput.parse(input);
+  const input = runInput.parse(inputValue);
   if (!key || key.length > 200)
     throw new HttpError(
       400,
@@ -147,7 +148,7 @@ export async function applyFix(
       );
     const row = (
       await tx.query(
-        "SELECT f.data,r.document_version_id,r.invalidated FROM findings f JOIN runs r ON r.id=f.run_id AND r.workspace_id=f.workspace_id WHERE f.workspace_id=$1 AND f.id=$2",
+        "SELECT f.data,r.document_version_id,r.invalidated,r.config FROM findings f JOIN runs r ON r.id=f.run_id AND r.workspace_id=f.workspace_id WHERE f.workspace_id=$1 AND f.id=$2",
         [ws, findingId],
       )
     ).rows[0];
@@ -159,6 +160,7 @@ export async function applyFix(
       fix.documentVersionId !== versionId
     )
       throw new HttpError(409, "This finding has no current verified edit.");
+    await validateFixEvidence(tx, ws, row.data, row.config);
     const version = (
       await tx.query(
         "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",

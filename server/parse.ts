@@ -1,6 +1,8 @@
 import { selectClaims } from "./claims.js";
 import type { Claim, Source } from "../shared/types.js";
 import { mlaAuthorKey, mlaFromSource } from "../shared/mla.js";
+import { parseCitationOccurrences } from "../shared/citation-occurrences.js";
+import type { CitationReference } from "../shared/citation-format.js";
 export const DOI_PATTERN = /10\.\d{4,9}\/[\w.();/:+-]+/gi;
 export function dois(text: string): string[] {
   return [
@@ -27,24 +29,32 @@ export function referenceLines(text: string) {
         );
 }
 export function citations(text: string, sources: Source[] = []): string[] {
-  const authorKeys = sources
-    .map((s) => mlaAuthorKey(mlaFromSource(s)).toLowerCase())
-    .filter(Boolean);
-  const parens = [...text.matchAll(/\(([^()\n]{2,180})\)/g)]
-    .filter(
-      (m) =>
-        /[A-ZÀ-Ž][a-zà-ž-]+/.test(m[1]) &&
-        (/\b(?:19|20)\d{2}[a-z]?\b/.test(m[1]) ||
-          /\b\d{1,4}(?:[–-]\d+)?$/.test(m[1]) ||
-          authorKeys.includes(m[1].trim().toLowerCase())),
-    )
-    .flatMap((m) => m[1].split(/;\s*/));
-  const narrative = [
-    ...text.matchAll(
-      /\b([A-ZÀ-Ž][a-zà-ž-]+(?:\s+et al\.)?)\s*\(((?:19|20)\d{2})\)/g,
+  const references: CitationReference[] = sources.map((source) => ({
+    id: source.id,
+    metadata: {
+      title: source.title,
+      year: source.year,
+      doi: source.doi,
+      authors: source.authorDetails?.length
+        ? source.authorDetails.map((author) =>
+            author.name
+              ? { literal: author.name }
+              : { family: author.family, given: author.given },
+          )
+        : source.authors,
+    },
+  }));
+  return [
+    ...new Set(
+      parseCitationOccurrences(text, references).flatMap((occurrence) =>
+        occurrence.items.map((item) =>
+          occurrence.form === "narrative" && item.author
+            ? `${item.author} ${item.raw}`
+            : item.raw,
+        ),
+      ),
     ),
-  ].map((m) => `${m[1]} ${m[2]}`);
-  return [...new Set([...parens, ...narrative, ...dois(text)])];
+  ];
 }
 export function extractClaims(
   text: string,

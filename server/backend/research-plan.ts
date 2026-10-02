@@ -13,17 +13,23 @@ const terms = (text: string) =>
   );
 export function planResearch(
   claims: { text: string; context: string; start: number }[],
-  matched: boolean,
+  policy: boolean | "academic" | "matched" | "public" | "user_supplied",
 ) {
   const groups: {
-    route: EvidenceRoute;
+    route: EvidenceRoute | "public";
     claims: typeof claims;
     words: Set<string>;
   }[] = [];
   for (const claim of claims) {
-    const route = matched
-      ? evidenceRoute(claim.text, claim.context)
-      : "academic";
+    const natural = evidenceRoute(claim.text, claim.context);
+    const route =
+      natural === "private" || natural === "primary_text"
+        ? natural
+        : policy === false || policy === "academic"
+          ? "academic"
+          : policy === "public" && natural === "authoritative"
+            ? "public"
+            : natural;
     const words = terms(claim.text);
     const existing = groups.find(
       (group) =>

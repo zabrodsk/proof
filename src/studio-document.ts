@@ -1,4 +1,4 @@
-import type { BackendFinding } from "../shared/backend";
+import type { BackendFinding, RunInput } from "../shared/backend";
 
 // Never attach evidence to a different sentence, including after a draft edit.
 export function documentHighlights(
@@ -35,6 +35,7 @@ export function findingTone(finding: BackendFinding) {
       finding.basis === "public_sources" ||
       finding.eligibility === "eligible") &&
     (finding.citation === "correct" ||
+      finding.citation === "not_required" ||
       (finding.basis !== undefined && finding.citation === "not_checked"))
   )
     return "supported";
@@ -45,7 +46,18 @@ export function findingLabel(finding: BackendFinding) {
   return findingTone(finding) === "supported" ? "Supported" : "Unsupported";
 }
 
-export function findingDetail(f: BackendFinding) {
+export function citationExempt(f: BackendFinding, mode?: RunInput["mode"]) {
+  return (
+    mode !== "fact_check" &&
+    f.citation === "not_required" &&
+    f.processing === "complete" &&
+    f.support === "not_verified" &&
+    !f.evidenceGap
+  );
+}
+
+export function findingDetail(f: BackendFinding, mode?: RunInput["mode"]) {
+  if (citationExempt(f, mode)) return "No citation needed";
   if (findingTone(f) === "supported") return "Supported";
   if (f.processing !== "complete" || f.evidenceGap === "check_incomplete")
     return "Check incomplete";
@@ -53,14 +65,26 @@ export function findingDetail(f: BackendFinding) {
   if (f.support === "overstated") return "Overstated";
   if (f.support === "partial" || f.support === "mixed")
     return "Partly supported";
-  if (f.support === "supported") return "Citation issue";
+  if (f.support === "supported") {
+    if (f.citation === "wrong_locator") return "Wrong citation page";
+    if (f.citation === "wrong_source") return "Wrong source cited";
+    if (f.citation === "missing") return "Citation missing";
+    if (f.citation === "ambiguous") return "Citation unclear";
+    return "Citation needs review";
+  }
   if (f.evidenceGap === "not_addressed") return "Not in your sources";
   if (f.evidenceGap === "source_requirements") return "Source not eligible";
   if (f.evidenceGap === "source_unavailable") return "No readable source";
   return "Needs evidence";
 }
 
-export function findingAssessment(f: BackendFinding) {
+export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
+  if (citationExempt(f, mode))
+    return {
+      meaning:
+        "This statement is marked as common knowledge and does not need a citation. Its accuracy has not been fact-checked in this citation workflow.",
+      next: "Use Fact-check if you want to verify the statement.",
+    };
   if (findingTone(f) === "supported")
     return {
       meaning:
@@ -104,7 +128,7 @@ export function findingAssessment(f: BackendFinding) {
     return {
       meaning:
         "The source does not meet the requirements for this research check.",
-      next: "For notes and testing materials, use Check my materials.",
+      next: "For notes and testing materials, use Check citations.",
     };
   if (f.support === "supported")
     return {
@@ -119,10 +143,18 @@ export function findingAssessment(f: BackendFinding) {
 }
 
 export function sourceCheckScope(
-  selectedCount: number,
-  bibliographyReady: boolean,
+  _selectedCount: number,
+  _bibliographyReady: boolean,
 ) {
-  return selectedCount > 0 || !bibliographyReady
-    ? "selected_library"
-    : "cited_first_then_selected_library";
+  // Check citations must inspect the cited work/page even with uploaded sources.
+  return "cited_first_then_selected_library" as const;
+}
+
+export function documentDownloadName(title: string, format: "txt" | "html") {
+  const name = title
+    .trim()
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 80);
+  return `${name || "proof-document"}.${format}`;
 }
