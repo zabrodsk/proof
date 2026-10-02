@@ -16,6 +16,7 @@ import {
   findingAssessment,
   findingDetail,
   findingTone,
+  citationExempt,
 } from "./studio-document";
 import { citationLabel, runStageLabel } from "./studio-status";
 import "./studio-review.css";
@@ -25,21 +26,24 @@ export type CheckMode = RunInput["mode"];
 export const checkModes = [
   {
     value: "source_check",
-    label: "My sources",
-    description: "Compare each claim with the sources you upload or cite.",
+    label: "Check citations",
+    description:
+      "Check evidence, in-text citations, and references against your sources.",
     icon: BookOpen,
   },
   {
-    value: "fact_check",
-    label: "Research",
-    description: "Check your sources first, then research evidence gaps.",
-    icon: ShieldCheck,
+    value: "discover",
+    label: "Generate citations",
+    description:
+      "Find evidence and review citations before adding them to your draft.",
+    icon: Search,
   },
   {
-    value: "discover",
-    label: "Find sources",
-    description: "Find relevant evidence for claims that need a source.",
-    icon: Search,
+    value: "fact_check",
+    label: "Fact-check",
+    description:
+      "Check your selected claims using the search scope you choose.",
+    icon: ShieldCheck,
   },
 ] as const;
 
@@ -70,6 +74,10 @@ export default function StudioDocument({
   sourceTitle,
   sourcePagination,
   researchResults = [],
+  resultSettings,
+  citationReview,
+  citationFocus,
+  documentActions,
   onEditorReady,
   onSave,
   onAccept,
@@ -108,6 +116,10 @@ export default function StudioDocument({
     }[];
     notices?: string[];
   }[];
+  resultSettings?: string;
+  citationReview?: ReactNode;
+  citationFocus?: { start: number; end: number; token: number };
+  documentActions?: ReactNode;
   onEditorReady?: (ready: boolean) => void;
   onSave: (text: string) => Promise<void>;
   onAccept: (finding: BackendFinding) => Promise<void>;
@@ -130,11 +142,29 @@ export default function StudioDocument({
   latest.current = draft;
 
   useEffect(() => {
-    setDraft((current) => (current === saved.current ? content : current));
+    const previous = saved.current;
+    setDraft((current) => (current === previous ? content : current));
     saved.current = content;
   }, [content]);
   useEffect(() => setSetupOpen(false), [run?.id, mode]);
   useEffect(() => setSelected(undefined), [run?.id]);
+  useEffect(() => {
+    if (
+      !citationFocus ||
+      stale ||
+      !input.current ||
+      citationFocus.start < 0 ||
+      citationFocus.end < citationFocus.start ||
+      citationFocus.end > latest.current.length
+    )
+      return;
+    input.current.focus({ preventScroll: true });
+    input.current.setSelectionRange(citationFocus.start, citationFocus.end);
+    input.current.scrollIntoView({
+      block: "center",
+      behavior: reducedMotion() ? "instant" : "smooth",
+    });
+  }, [citationFocus, stale]);
 
   const dirty = draft !== saved.current;
   const readOnly = active || locked;
@@ -174,19 +204,28 @@ export default function StudioDocument({
     (finding) => showDismissed || !dismissed.has(dismissKey(finding)),
   );
   const highlights = useMemo(
-    () => documentHighlights(draft, visible, stale),
-    [draft, visible, stale],
+    () =>
+      documentHighlights(
+        draft,
+        visible.filter((finding) => !citationExempt(finding, mode)),
+        stale,
+      ),
+    [draft, visible, stale, mode],
   );
   const counts = {
-    review: visible.filter((f) => findingTone(f) !== "supported").length,
+    review: visible.filter(
+      (f) => findingTone(f) !== "supported" && !citationExempt(f, mode),
+    ).length,
     supported: visible.filter((f) => findingTone(f) === "supported").length,
+    citationExempt: visible.filter((f) => citationExempt(f, mode)).length,
   };
   const listed = visible.filter((finding) =>
     filter === "all"
       ? true
       : filter === "supported"
         ? findingTone(finding) === "supported"
-        : findingTone(finding) !== "supported",
+        : findingTone(finding) !== "supported" &&
+          !citationExempt(finding, mode),
   );
   const acceptable = visible.filter(
     (finding) => finding.fix && !dismissed.has(dismissKey(finding)),
@@ -322,6 +361,7 @@ export default function StudioDocument({
             />
           </div>
         </div>
+        {documentActions}
       </section>
 
       <aside className="ps-review" aria-label="Proposed changes">
@@ -340,6 +380,9 @@ export default function StudioDocument({
         </div>
         {!showSetup && (
           <p className="ps-review-mode-note">{modeInfo.description}</p>
+        )}
+        {!showSetup && resultSettings && (
+          <p className="ps-review-muted">{resultSettings}</p>
         )}
 
         {showSetup ? (
@@ -360,7 +403,13 @@ export default function StudioDocument({
               <div className="ps-review-progress" role="status">
                 <LoaderCircle size={18} className="ps-spin" />
                 <div>
-                  <strong>Checking your text</strong>
+                  <strong>
+                    {mode === "source_check"
+                      ? "Checking citations"
+                      : mode === "discover"
+                        ? "Finding evidence for citations"
+                        : "Fact-checking selected claims"}
+                  </strong>
                   <span>
                     {runStageLabel(run.stage)} · results appear as each claim is
                     checked
@@ -376,6 +425,12 @@ export default function StudioDocument({
                   <strong>{counts.review}</strong> to review
                   <span aria-hidden="true"> · </span>
                   <strong>{counts.supported}</strong> supported
+                  {counts.citationExempt > 0 && (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <strong>{counts.citationExempt}</strong> need no citation
+                    </>
+                  )}
                 </p>
                 <button
                   className="ps-review-link"
@@ -509,6 +564,7 @@ export default function StudioDocument({
                 {run.error}
               </p>
             )}
+            {citationReview}
             {findings.length > 0 && (
               <div className="ps-review-toolbar">
                 <div
@@ -563,7 +619,7 @@ export default function StudioDocument({
                 const tone = findingTone(finding);
                 const open = selected === finding.id;
                 const isDismissed = dismissed.has(dismissKey(finding));
-                const assessment = findingAssessment(finding);
+                const assessment = findingAssessment(finding, mode);
                 return (
                   <li
                     key={finding.id}
@@ -576,7 +632,7 @@ export default function StudioDocument({
                       onClick={() => selectFinding(finding)}
                     >
                       <span className={`ps-change-tag ${tone}`}>
-                        {findingDetail(finding)}
+                        {findingDetail(finding, mode)}
                       </span>
                       <span className="ps-change-claim">
                         {finding.claim.text}

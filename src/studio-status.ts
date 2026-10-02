@@ -41,6 +41,7 @@ export const citationLabel = (citation: Citation) =>
     missing: "Citation missing",
     ambiguous: "Citation unclear",
     not_checked: "Citation not checked",
+    not_required: "No citation needed",
   })[citation];
 export const processingLabel = (processing: Processing) =>
   ({

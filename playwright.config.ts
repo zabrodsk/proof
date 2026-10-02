@@ -14,6 +14,10 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
     {
+      name: "chromium-mobile",
+      use: { ...devices["iPhone 13"], defaultBrowserType: "chromium" },
+    },
+    {
       name: "mobile",
       use: { ...devices["iPhone 13"], defaultBrowserType: "webkit" },
     },

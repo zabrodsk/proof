@@ -41,7 +41,7 @@ export interface Source {
   publicationType?: string;
   notice?: string;
   publicationWarning?: boolean;
-  evidencePolicy?: "authoritative";
+  evidencePolicy?: "authoritative" | "public";
   retrievedAt: string;
 }
 export interface Claim {

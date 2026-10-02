@@ -75,13 +75,67 @@ export function selectClaims(text: string) {
   return { candidates, skipped };
 }
 
+export type CitationRequirement = "required" | "common_knowledge";
+
+function hasQuotedText(text: string) {
+  return (
+    /["“][^"”]+["”]/.test(text) ||
+    /(?:^|[\s,:])['‘][^'\n’]{2,}['’](?=\s|[.!?,;:]|$)/.test(text)
+  );
+}
+
+/** A narrow default. Audience-specific common knowledge stays reviewable. */
+export function commonKnowledgeReason(text: string): string | undefined {
+  if (hasQuotedText(text)) return;
+  const value = text
+    .replace(/\s+\([^()]+\)\s*\.?$/, "")
+    .trim()
+    .replace(/[.!]+$/, "")
+    .replace(/\s+/g, " ");
+  const basicFacts = [
+    /^(?:Paris is (?:the )?capital of France|France's capital is Paris)$/i,
+    /^(?:Prague is (?:the )?capital of (?:the )?(?:Czech Republic|Czechia))$/i,
+    /^(?:London is (?:the )?capital of (?:the )?United Kingdom)$/i,
+    /^(?:the )?Earth (?:is a planet|orbits (?:the )?Sun|revolves around (?:the )?Sun)$/i,
+    /^(?:the )?Sun is a star$/i,
+    /^(?:a )?week has seven days$/i,
+    /^(?:there are seven days in a week|there are twelve months in a year)$/i,
+    /^(?:William )?Shakespeare wrote Hamlet$/i,
+    /^World War (?:II|Two|2) ended in 1945$/i,
+  ];
+  if (basicFacts.some((pattern) => pattern.test(value)))
+    return "This is a broadly known, stable fact. A citation is not required.";
+}
+
+export function citationRequirement(
+  text: string,
+  context = "",
+  override?: CitationRequirement,
+): CitationRequirement {
+  // Quotes and interpretations depend on a source even when their subject is familiar.
+  const kind = claimKind(text, context);
+  if (hasQuotedText(text) || kind === "quotation" || kind === "interpretive")
+    return "required";
+  if (override === "required") return "required";
+  if (commonKnowledgeReason(text)) return "common_knowledge";
+  // Study results, specialist assertions and statistical quantities remain source-dependent.
+  if (
+    evidenceRoute(text, context) === "academic" ||
+    /\d|\b(?:percent|percentage|statistics?|survey|according to|million|billion|thousand|hundred)\b/i.test(
+      text,
+    )
+  )
+    return "required";
+  return override === "common_knowledge" ? "common_knowledge" : "required";
+}
+
 export function documentSentences(text: string) {
   const body = text.slice(0, bibliography(text).heading?.start ?? text.length);
   const sentences: { id: string; text: string; start: number; end: number }[] =
     [];
   for (const line of body.matchAll(/[^\r\n]+/g)) {
     const protectedText = line[0]
-      .replace(/[.!?](?=["”]?\s*\([^()]+\))/g, "∯")
+      .replace(/[.!?](?=["”'’]?\s*\([^()]+\))/g, "∯")
       .replace(/\([^()]*\)/g, (s) => s.replace(/[.!?]/g, "∯"))
       .replace(
         /\bet al\.|\b(?:Dr|Mr|Mrs|Prof|vs)\.|\b[A-Z]\.(?=\s*[A-Z])/g,
@@ -92,7 +146,7 @@ export function documentSentences(text: string) {
       )
       .replace(/\b(?:e\.g|i\.e)\./g, (s) => s.replace(/\./g, "∯"))
       .replace(/(\d)\.(?=\d)/g, "$1∯");
-    for (const part of protectedText.matchAll(/[^.!?]+(?:[.!?]+["”]?|$)/g)) {
+    for (const part of protectedText.matchAll(/[^.!?]+(?:[.!?]+["”'’]?|$)/g)) {
       const start =
         line.index! + part.index! + part[0].length - part[0].trimStart().length;
       const end = line.index! + part.index! + part[0].trimEnd().length;
@@ -150,7 +204,7 @@ export function claimKind(text: string, context = "") {
     )
   )
     return "interpretive";
-  if (/["“][^"”]+["”]/.test(text)) return "quotation";
+  if (hasQuotedText(text)) return "quotation";
   if (
     /\b(?:is|are|was|were|has|have|had|can|could|will|did|does|causes?|caused|found|shows?|showed|reports?|reported|increases?|increased|reduces?|reduced|includes?|included|improves?|improved|died|born|teaches|published|est|je)\b/i.test(
       text,

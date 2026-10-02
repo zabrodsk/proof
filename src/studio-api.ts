@@ -39,14 +39,17 @@ export async function api<T>(
   path: string,
   body?: unknown,
   method?: string,
+  options?: { idempotencyKey?: string },
 ): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined && !(body instanceof FormData))
+    headers["Content-Type"] = "application/json";
+  if (options?.idempotencyKey)
+    headers["Idempotency-Key"] = options.idempotencyKey;
   const response = await fetch(path, {
     method: method || (body === undefined ? "GET" : "POST"),
     credentials: "same-origin",
-    headers:
-      body === undefined || body instanceof FormData
-        ? undefined
-        : { "Content-Type": "application/json" },
+    headers: Object.keys(headers).length ? headers : undefined,
     body:
       body === undefined
         ? undefined

@@ -8,6 +8,8 @@ import {
   findingAssessment,
   findingDetail,
   sourceCheckScope,
+  documentDownloadName,
+  citationExempt,
 } from "../src/studio-document";
 
 function finding(text: string, start = 0): BackendFinding {
@@ -23,6 +25,15 @@ function finding(text: string, start = 0): BackendFinding {
     checkedPassageIds: [],
   };
 }
+
+test("document download names preserve Unicode titles and cannot create paths", () => {
+  assert.equal(
+    documentDownloadName("Český dokument / chapter", "html"),
+    "Český-dokument-chapter.html",
+  );
+  assert.equal(documentDownloadName("../../", "txt"), "proof-document.txt");
+  assert.equal(documentDownloadName("", "txt"), "proof-document.txt");
+});
 test("only exact current-draft offsets receive highlights, including repeated sentences", () => {
   const text = "Claim.\n\nClaim.";
   const first = finding("Claim.");
@@ -83,6 +94,28 @@ test("unsupported claims explain a missing source and a contradiction differentl
   assert.match(
     findingAssessment({ ...f, support: "contradicted" }).meaning,
     /disagrees/,
+  );
+});
+
+test("common knowledge is distinct from verified support and remains checkable in fact-check", () => {
+  const common = {
+    ...finding("Paris is the capital of France."),
+    citation: "not_required" as const,
+    support: "not_verified" as const,
+  };
+  assert.equal(findingTone(common), "unverified");
+  assert.equal(citationExempt(common, "discover"), true);
+  assert.equal(citationExempt(common, "fact_check"), false);
+  assert.equal(findingDetail(common, "source_check"), "No citation needed");
+  assert.equal(findingDetail(common, "fact_check"), "Needs evidence");
+  assert.match(
+    findingAssessment(common, "source_check").meaning,
+    /accuracy has not been fact-checked/,
+  );
+  assert.equal(findingTone({ ...common, support: "supported" }), "supported");
+  assert.equal(
+    findingDetail({ ...common, support: "contradicted" }, "fact_check"),
+    "Contradicted",
   );
 });
 

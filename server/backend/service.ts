@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { runInput, type RunInput } from "../../shared/backend.js";
+import { runInput, type RunRequest } from "../../shared/backend.js";
 import { type Database, type Sql, enqueue, event } from "./db.js";
 import { asset, checksum, validateSelection } from "./library.js";
 import { HttpError, notFound, limits, versions } from "./config.js";
@@ -15,11 +15,11 @@ export async function ownedRun(db: Sql, ws: string, id: string, lock = false) {
 export async function createRun(
   db: Database,
   ws: string,
-  input: RunInput,
+  inputValue: RunRequest,
   key: string,
   trusted: { researchQuery?: string } = {},
 ) {
-  input = runInput.parse(input);
+  const input = runInput.parse(inputValue);
   if (!key || key.length > 200)
     throw new HttpError(
       400,

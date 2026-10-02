@@ -50,3 +50,32 @@ test("shared app API preserves integration error messages and HTTP status", asyn
     globalThis.fetch = original;
   }
 });
+
+test("approved edits send the same idempotency key when a request is retried", async () => {
+  const original = globalThis.fetch;
+  const seen: string[] = [];
+  globalThis.fetch = async (_url, options) => {
+    const headers = new Headers(options?.headers);
+    assert.equal(headers.get("Content-Type"), "application/json");
+    seen.push(headers.get("Idempotency-Key")!);
+    assert.equal(options?.body, JSON.stringify({ approved: true }));
+    return Response.json({ id: "saved-version" });
+  };
+  try {
+    await api(
+      "/api/v1/documents/document/apply-fixes",
+      { approved: true },
+      "POST",
+      { idempotencyKey: "same-approved-edits" },
+    );
+    await api(
+      "/api/v1/documents/document/apply-fixes",
+      { approved: true },
+      "POST",
+      { idempotencyKey: "same-approved-edits" },
+    );
+    assert.deepEqual(seen, ["same-approved-edits", "same-approved-edits"]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

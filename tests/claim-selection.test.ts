@@ -196,3 +196,40 @@ test("preview and engine share paragraph routing while retaining factual past-te
   assert.equal(evidenceRoute(claims[1].text, claims[1].context), "academic");
   assert.equal(claimKind(claims[1].text), "factual");
 });
+
+test("claim candidates retain common facts while freezing citation requirements and manual overrides", () => {
+  const common = "Paris is the capital of France.";
+  const automatic = claimCandidates(common, undefined);
+  assert.equal(automatic.length, 1);
+  assert.equal(automatic[0].citationRequirement, "common_knowledge");
+  assert.equal(
+    claimCandidates(common, [
+      { start: 0, end: common.length, citationRequirement: "required" },
+    ])[0].citationRequirement,
+    "required",
+  );
+  const specialized = "The moon has a rocky surface.";
+  assert.equal(
+    claimCandidates(specialized, [
+      {
+        start: 0,
+        end: specialized.length,
+        citationRequirement: "common_knowledge",
+      },
+    ])[0].citationRequirement,
+    "common_knowledge",
+  );
+  for (const text of [
+    '"Paris is the capital of France."',
+    "The trial included 218 adults.",
+    "France has 68 million residents.",
+    "The moon symbolizes isolation in this poem.",
+  ])
+    assert.equal(
+      claimCandidates(text, [
+        { start: 0, end: text.length, citationRequirement: "common_knowledge" },
+      ])[0].citationRequirement,
+      "required",
+      text,
+    );
+});

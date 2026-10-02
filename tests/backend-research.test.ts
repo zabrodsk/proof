@@ -8,6 +8,7 @@ import {
   resolveSelectedReferences,
   type ResearchCandidate,
 } from "../server/backend/research.js";
+import { planResearch } from "../server/backend/research-plan.js";
 import { providerContext } from "../server/backend/providers.js";
 import type { Database } from "../server/backend/db.js";
 import type { BlobStore } from "../server/backend/storage.js";
@@ -21,7 +22,11 @@ const blobs: BlobStore = {
   },
   async delete() {},
 };
-function fixture(mode: string = "fact_check", snapshot?: any) {
+function fixture(
+  mode: string = "fact_check",
+  snapshot?: any,
+  policy = "academic",
+) {
   const saved = new Map<string, any>();
   let cancelled = false,
     calls = 0;
@@ -42,7 +47,7 @@ function fixture(mode: string = "fact_check", snapshot?: any) {
                           ? "resolve_selected_references"
                           : "research",
                       allowProviderProcessing: true,
-                      sourcePolicy: "academic",
+                      sourcePolicy: policy,
                     },
                     cancel_requested: cancelled,
                   },
@@ -65,6 +70,8 @@ function fixture(mode: string = "fact_check", snapshot?: any) {
         return { rows: [] };
       }
       if (sql.startsWith("UPDATE provider_calls")) return { rows: [] };
+      if (sql.startsWith("SELECT r.data FROM research_results"))
+        return { rows: [] };
       if (sql.startsWith("SELECT data FROM research_results"))
         return {
           rows: saved.has(values[2])
@@ -312,6 +319,8 @@ test("cached text gets a new publication-status check without re-extraction", as
         title: "Cached study",
         doi: "10.1234/cached",
         lastPublicationCheckRunId: "old-run",
+        textFingerprint: "controlled-immutable-version",
+        retrievedAt: new Date().toISOString(),
       },
     };
     const f = fixture("discover", snapshot);
@@ -395,6 +404,166 @@ test("a permanently unresolved candidate is looked up once across different rese
         research(f.db, blobs, "workspace", "run", query, "discover", 2),
       );
     assert.equal(identityRequests, 1);
+  } finally {
+    stub.mock.restore();
+    if (old === undefined) delete process.env.EXA_API_KEY;
+    else process.env.EXA_API_KEY = old;
+  }
+});
+
+test("public routing broadens public facts while preserving scientific and private boundaries", () => {
+  const claims = [
+    {
+      text: "Paris is the capital of France.",
+      context: "Paris is the capital of France.",
+      start: 0,
+    },
+    {
+      text: "The trial reduced patient symptoms.",
+      context: "The trial reduced patient symptoms.",
+      start: 50,
+    },
+    {
+      text: "I visited Prague last summer.",
+      context: "I visited Prague last summer.",
+      start: 100,
+    },
+    {
+      text: "The moon symbolizes isolation in this poem.",
+      context: "The moon symbolizes isolation in this poem.",
+      start: 150,
+    },
+  ];
+  assert.deepEqual(
+    [...planResearch(claims, "public").values()].map((p) => p.route),
+    ["public", "academic", "private", "primary_text"],
+  );
+  assert.deepEqual(
+    [...planResearch(claims, "academic").values()].map((p) => p.route),
+    ["academic", "academic", "private", "primary_text"],
+  );
+});
+test("research rejects scope widening and private/scientific public queries before provider calls", async () => {
+  const academic = fixture("discover");
+  await assert.rejects(
+    academic.run(() =>
+      research(
+        academic.db,
+        blobs,
+        "workspace",
+        "run",
+        "Paris is the capital of France",
+        "discover",
+        4,
+        "public",
+      ),
+    ),
+    /Academic-only/,
+  );
+  const publicRun = fixture("discover", undefined, "public");
+  for (const query of [
+    "I visited Prague last summer",
+    "The trial reduced patient symptoms",
+    "The moon symbolizes isolation in this poem",
+  ])
+    await assert.rejects(
+      publicRun.run(() =>
+        research(
+          publicRun.db,
+          blobs,
+          "workspace",
+          "run",
+          query,
+          "discover",
+          4,
+          "public",
+        ),
+      ),
+      /require/,
+    );
+  assert.equal(academic.calls + publicRun.calls, 0);
+});
+test("source URL identity keeps edition parameters, distinct hosts and slash-specific versions", () => {
+  const candidate = (url: string): ResearchCandidate => ({
+    title: url,
+    url,
+    status: "promising",
+    eligibility: "unknown",
+    searchIntents: ["relevance"],
+  });
+  const urls = [
+    "https://example.com/paper?edition=1",
+    "https://example.com/paper?edition=2",
+    "https://example.com/paper/",
+    "https://www.example.com/paper/",
+  ];
+  assert.equal(deduplicateCandidates(urls.map(candidate)).length, 4);
+  assert.equal(
+    deduplicateCandidates([
+      {
+        ...candidate("https://doi.org/10.1234/version"),
+        assetId: "published-version",
+      },
+      {
+        ...candidate("https://doi.org/10.1234/version"),
+        assetId: "author-manuscript",
+      },
+    ]).length,
+    2,
+  );
+});
+test("concurrent related queries resolve a shared candidate once without sharing verdicts", async () => {
+  const f = fixture("discover");
+  const old = process.env.EXA_API_KEY;
+  process.env.EXA_API_KEY = "fixture";
+  let searches = 0,
+    identities = 0;
+  const stub = mock.method(globalThis, "fetch", async (input: any) => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    if (String(input).includes("api.exa.ai")) {
+      searches++;
+      return Response.json({
+        results: [
+          {
+            title: "Shared unresolved source",
+            url: "https://publisher.test/source",
+          },
+        ],
+      });
+    }
+    identities++;
+    return Response.json({ message: { items: [] } });
+  });
+  try {
+    const results = await f.run(() =>
+      Promise.all([
+        research(
+          f.db,
+          blobs,
+          "workspace",
+          "run",
+          "Tutoring improves adult scores",
+          "discover",
+          2,
+        ),
+        research(
+          f.db,
+          blobs,
+          "workspace",
+          "run",
+          "Tutoring reduces adult stress",
+          "discover",
+          2,
+        ),
+      ]),
+    );
+    assert.equal(searches, 2);
+    assert.equal(
+      identities,
+      1,
+      "two concurrent resolutions are reduced to one",
+    );
+    assert.ok(results.every((result) => result.candidates[0].resolved));
   } finally {
     stub.mock.restore();
     if (old === undefined) delete process.env.EXA_API_KEY;

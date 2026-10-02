@@ -448,6 +448,8 @@ export class IntegrationStore {
           externalAccess: input.kind === "check_sources" ? "none" : "research",
           sourcePolicy:
             input.kind === "check_sources" ? "user_supplied" : "academic",
+          citationProfile: "mla9",
+          citationOutput: "audit",
           allowProviderProcessing: true,
           budgetPreset: "standard",
           ...(input.kind === "find_sources"

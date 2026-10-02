@@ -1,4 +1,4 @@
-import type { BackendFinding } from "../shared/backend";
+import type { BackendFinding, RunInput } from "../shared/backend";
 
 // Never attach evidence to a different sentence, including after a draft edit.
 export function documentHighlights(
@@ -35,6 +35,7 @@ export function findingTone(finding: BackendFinding) {
       finding.basis === "public_sources" ||
       finding.eligibility === "eligible") &&
     (finding.citation === "correct" ||
+      finding.citation === "not_required" ||
       (finding.basis !== undefined && finding.citation === "not_checked"))
   )
     return "supported";
@@ -45,7 +46,18 @@ export function findingLabel(finding: BackendFinding) {
   return findingTone(finding) === "supported" ? "Supported" : "Unsupported";
 }
 
-export function findingDetail(f: BackendFinding) {
+export function citationExempt(f: BackendFinding, mode?: RunInput["mode"]) {
+  return (
+    mode !== "fact_check" &&
+    f.citation === "not_required" &&
+    f.processing === "complete" &&
+    f.support === "not_verified" &&
+    !f.evidenceGap
+  );
+}
+
+export function findingDetail(f: BackendFinding, mode?: RunInput["mode"]) {
+  if (citationExempt(f, mode)) return "No citation needed";
   if (findingTone(f) === "supported") return "Supported";
   if (f.processing !== "complete" || f.evidenceGap === "check_incomplete")
     return "Check incomplete";
@@ -60,7 +72,13 @@ export function findingDetail(f: BackendFinding) {
   return "Needs evidence";
 }
 
-export function findingAssessment(f: BackendFinding) {
+export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
+  if (citationExempt(f, mode))
+    return {
+      meaning:
+        "This statement is marked as common knowledge and does not need a citation. Its accuracy has not been fact-checked in this citation workflow.",
+      next: "Use Fact-check if you want to verify the statement.",
+    };
   if (findingTone(f) === "supported")
     return {
       meaning:
@@ -125,4 +143,13 @@ export function sourceCheckScope(
   return selectedCount > 0 || !bibliographyReady
     ? "selected_library"
     : "cited_first_then_selected_library";
+}
+
+export function documentDownloadName(title: string, format: "txt" | "html") {
+  const name = title
+    .trim()
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 80);
+  return `${name || "proof-document"}.${format}`;
 }
