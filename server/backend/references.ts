@@ -16,7 +16,12 @@ export function reconstructReferences(text: string) {
     const clean = line.trim();
     if (!clean || /^(works cited|references|bibliography|\d+)$/i.test(clean))
       continue;
-    const start = /^(?:[A-ZÀ-Ž][\p{L}'’-]+,\s+[^\d]|[—-]{3}\.)/u.test(clean);
+    const start =
+      /^(?:[A-ZÀ-Ž][\p{L}'’-]+,\s+[^\d]|[—-]{3}\.)/u.test(clean) ||
+      /^[\p{Lu}][^.]{2,100}\.\s+["“][^"”]+["”]/u.test(clean) ||
+      /^[\p{Lu}][^.]{2,100}\.\s+.{3,}\.\s+(?:.*\b)?(?:1[5-9]|20)\d{2}\b/u.test(
+        clean,
+      );
     if (start && current) {
       entries.push(current);
       current = "";
@@ -77,7 +82,30 @@ export async function importReferences(
     const { original, parsed } = entries[ordinal];
     const candidates: any[] = [];
     let status = "unidentified";
-    if (external && parsed.isbn && !parsed.doi) {
+    const uploads = await db.query(
+      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
+      [ws],
+    );
+    const matches = uploads.rows.filter(
+      (a) =>
+        (!parsed.isbn ||
+          normalize(a.metadata.isbn || "") === normalize(parsed.isbn)) &&
+        (!parsed.doi ||
+          normalize(a.metadata.doi || "") === normalize(parsed.doi)) &&
+        normalize(a.metadata.title || "") ===
+          normalize(parsed.title || "MISSING") &&
+        (!parsed.edition ||
+          normalize(a.metadata.edition || "") === normalize(parsed.edition)) &&
+        (!parsed.year || a.metadata.year === parsed.year) &&
+        parsed.authors.some((author) =>
+          (a.metadata.authors || []).some(
+            (other: string) =>
+              normalize(author).includes(normalize(other)) ||
+              normalize(other).includes(normalize(author.split(",")[0])),
+          ),
+        ),
+    );
+    if (external && !matches.length && parsed.isbn && !parsed.doi) {
       try {
         const book = await resolveIsbn(parsed.isbn);
         if (book) {
@@ -93,7 +121,12 @@ export async function importReferences(
         status = "unidentified";
       }
     }
-    if (external && !parsed.isbn && (parsed.doi || parsed.title))
+    if (
+      external &&
+      !matches.length &&
+      !parsed.isbn &&
+      (parsed.doi || parsed.title)
+    )
       try {
         const url = parsed.doi
           ? `https://api.crossref.org/works/${encodeURIComponent(parsed.doi)}`
@@ -136,29 +169,6 @@ export async function importReferences(
       } catch {
         status = "unidentified";
       }
-    const uploads = await db.query(
-      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
-      [ws],
-    );
-    const matches = uploads.rows.filter(
-      (a) =>
-        (!parsed.isbn ||
-          normalize(a.metadata.isbn || "") === normalize(parsed.isbn)) &&
-        (!parsed.doi ||
-          normalize(a.metadata.doi || "") === normalize(parsed.doi)) &&
-        normalize(a.metadata.title || "") ===
-          normalize(parsed.title || "MISSING") &&
-        (!parsed.edition ||
-          normalize(a.metadata.edition || "") === normalize(parsed.edition)) &&
-        (!parsed.year || a.metadata.year === parsed.year) &&
-        parsed.authors.some((author) =>
-          (a.metadata.authors || []).some(
-            (other: string) =>
-              normalize(author).includes(normalize(other)) ||
-              normalize(other).includes(normalize(author.split(",")[0])),
-          ),
-        ),
-    );
     if (matches.length > 1) status = "ambiguous";
     else if (matches.length === 1) status = "matched_ready";
     await db.query(

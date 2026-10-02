@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Database } from "../backend/db.js";
+import type { Database, Sql } from "../backend/db.js";
 import { HttpError } from "../backend/config.js";
 import { lock } from "./database.js";
 export async function reserveConnectorCall(
@@ -8,13 +8,17 @@ export async function reserveConnectorCall(
   runId: string,
   provider: string,
   bytes: number,
+  admit?: (tx: Sql) => Promise<void>,
 ) {
   const receipt = (
     await db.query("SELECT * FROM proof_connector_submissions WHERE id=$1", [
       runId,
     ])
   ).rows[0];
-  if (!receipt) return; // Website runs without a connector receipt retain the shared engine's native call budget.
+  if (!receipt) {
+    if (admit) await db.transaction(admit);
+    return;
+  }
   const price =
     provider === "jev"
       ? Number(process.env.PROOF_JEV_USD_PER_MILLION || 0.042)
@@ -91,6 +95,9 @@ export async function reserveConnectorCall(
       );
       return false;
     }
+    // Native admission and spending reservation commit together. A blocked
+    // native request must not consume a connector reservation.
+    if (admit) await admit(tx);
     for (const bucket of buckets)
       await tx.query(
         "INSERT INTO proof_connector_budgets(bucket,day,usd,calls) VALUES($1,CURRENT_DATE,$2,1) ON CONFLICT(bucket,day) DO UPDATE SET usd=proof_connector_budgets.usd+EXCLUDED.usd,calls=proof_connector_budgets.calls+1",

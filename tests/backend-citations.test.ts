@@ -140,3 +140,14 @@ test("vendored citation assets match their pinned SHA-256 hashes", () => {
     assert.equal(metadata.license, "CC-BY-SA-3.0");
   }
 });
+
+test("separate bibliography lines with non-inverted authors are not merged", async () => {
+  const { reconstructReferences } =
+    await import("../server/backend/references.js");
+  const entries = reconstructReferences(
+    'Huxley, Aldous. Brave New World. 1932.\nTest Author. "Synthetic source." 2026.',
+  );
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].parsed.title, "Brave New World");
+  assert.equal(entries[1].parsed.title, "Synthetic source.");
+});

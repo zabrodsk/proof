@@ -121,6 +121,7 @@ export function collectParagraphs(xml: string): string[] {
 export async function resolveDOI(
   input: string,
   refresh = false,
+  options: { metadataOnly?: boolean } = {},
 ): Promise<Source> {
   const doi = dois(input)[0];
   if (!doi)
@@ -190,6 +191,12 @@ export async function resolveDOI(
         ? " Crossref lists an update, correction, or related notice. Check the publisher record before relying on this article."
         : ""),
   };
+  if (options.metadataOnly)
+    return {
+      ...source,
+      id: randomUUID(),
+      retrievedAt: new Date().toISOString(),
+    };
   try {
     const result = JSON.parse(
       await request(

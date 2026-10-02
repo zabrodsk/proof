@@ -6,6 +6,7 @@ import { type Database, workspace, enqueue, event } from "./db.js";
 import type { BlobStore } from "./storage.js";
 import { createAsset, asset, deleteAsset } from "./library.js";
 import { createRun, ownedRun, applyFix } from "./service.js";
+import { carryForward, editRegion } from "./carry-forward.js";
 import { HttpError, limits, notFound } from "./config.js";
 import { formatReference } from "./citations.js";
 import { providerKey } from "./providers.js";
@@ -115,7 +116,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         expectedVersionId: z.string().uuid(),
       })
       .parse(req.body);
-    await db.transaction(async (tx) => {
+    const runId = await db.transaction(async (tx) => {
       const d = (
         await tx.query(
           "SELECT current_version_id FROM documents WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
@@ -125,6 +126,12 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       if (!d) throw notFound();
       if (d.current_version_id !== expectedVersionId)
         throw new HttpError(409, "The draft has changed.");
+      const previous = (
+        await tx.query(
+          "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",
+          [ws, expectedVersionId],
+        )
+      ).rows[0];
       await tx.query(
         "INSERT INTO document_versions(id,workspace_id,document_id,text) VALUES($1,$2,$3,$4)",
         [version, ws, id, text],
@@ -133,12 +140,23 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
         [ws, id, version],
       );
+      const carried = previous
+        ? await carryForward(
+            tx,
+            ws,
+            { versionId: expectedVersionId, text: previous.text },
+            { versionId: version, text },
+            editRegion(previous.text, text),
+            { kind: "edit" },
+          )
+        : undefined;
       await tx.query(
         "UPDATE runs SET invalidated=true WHERE workspace_id=$1 AND document_version_id=$2",
         [ws, expectedVersionId],
       );
+      return carried;
     });
-    res.status(201).json({ id: version });
+    res.status(201).json({ id: version, runId });
   });
   r.post("/uploads", async (req, res) => {
     const v = z
@@ -495,17 +513,20 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       )
     ).rows.flatMap((r) => r.data.evidence || []);
     res.json({
-      items: rows.map((r) => ({
-        ...r.data,
-        candidates: r.data.candidates.map((c: any) => ({
-          ...c,
-          status: assessed.some(
-            (e: any) => e.assetId === c.assetId && e.support !== "not_verified",
-          )
-            ? "checked_evidence"
-            : "promising",
+      items: rows
+        .filter((r) => r.data.kind !== "candidate_resolution")
+        .map((r) => ({
+          ...r.data,
+          candidates: r.data.candidates.map((c: any) => ({
+            ...c,
+            status: assessed.some(
+              (e: any) =>
+                e.assetId === c.assetId && e.support !== "not_verified",
+            )
+              ? "checked_evidence"
+              : "promising",
+          })),
         })),
-      })),
     });
   });
   r.get("/runs/:id/findings", async (req, res) => {

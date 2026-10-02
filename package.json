@@ -20,7 +20,8 @@
     "model:prepare": "tsx scripts/prepare-model.ts",
     "test:embeddings": "tsx scripts/embedding-smoke.ts",
     "test:integration": "node --import tsx --test tests/integration*.test.ts",
-    "test:integration:live": "tsx scripts/integration-live.ts"
+    "test:integration:live": "tsx scripts/integration-live.ts",
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",
@@ -60,6 +61,7 @@
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-pgvector": "^0.0.9",
     "@napi-rs/canvas": "^1.0.9",
-    "@types/pg": "^8.23.1"
+    "@types/pg": "^8.23.1",
+    "@playwright/test": "^1.63.0"
   }
 }

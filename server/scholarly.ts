@@ -9,23 +9,35 @@ import { remoteFile } from "./remote.js";
 import { dois } from "./parse.js";
 import { judgeClaim } from "./judge.js";
 import type { Claim, Finding, Source } from "../shared/types.js";
+import { HttpError } from "./backend/config.js";
+
+class SourceServiceUnavailable extends Error {}
 
 async function json(url: string) {
-  const r = await fetch(
-    url.includes("api.openalex.org") ? openAlexUrl(url) : url,
-    {
-      signal: AbortSignal.timeout(20000),
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Proof/0.3 scholarly-verification",
+  try {
+    const r = await fetch(
+      url.includes("api.openalex.org") ? openAlexUrl(url) : url,
+      {
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Proof/0.3 scholarly-verification",
+        },
       },
-    },
-  );
-  if (!r.ok)
-    throw new Error(
-      `Scholarly verification service returned HTTP ${r.status}. Try again later.`,
     );
-  return r.json();
+    if (!r.ok)
+      throw new SourceServiceUnavailable(
+        `Scholarly verification service returned HTTP ${r.status}. Try again later.`,
+      );
+    return await r.json();
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new SourceServiceUnavailable(
+      error instanceof Error
+        ? error.message
+        : "Source verification service is unavailable.",
+    );
+  }
 }
 export const normalizedTitle = (s: string) =>
   s
@@ -167,7 +179,11 @@ export async function resolveScholarly(
   const cached = verifiedCache.get(key);
   if (!refresh && cached && Date.now() - cached.at < 300000)
     return cached.source;
-  const source = { ...(await resolveDOI(doi, refresh)) };
+  // Strict verification retrieves and validates the full text itself. Avoid
+  // the compatibility resolver's duplicate Europe PMC search and XML download.
+  const source = {
+    ...(await resolveDOI(doi, refresh, { metadataOnly: true })),
+  };
   source.scholarly = {
     eligible: false,
     reason: "Not verified yet.",
@@ -203,6 +219,7 @@ export async function resolveScholarly(
     let fullText = "",
       fullTextUrl = "",
       format: "XML" | "PDF" = "XML";
+    let retrievalFailure: unknown;
     let fullXml: string | undefined;
     try {
       const found = await json(
@@ -219,7 +236,13 @@ export async function resolveScholarly(
         const xml = await remoteFile(fullTextUrl);
         fullXml = xml.buffer.toString("utf8");
       }
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof HttpError ||
+        providerContext.getStore()?.signal.aborted
+      )
+        throw error;
+      retrievalFailure = error;
       fullText = "";
     }
     if (fullXml)
@@ -266,11 +289,21 @@ export async function resolveScholarly(
           fullTextUrl = file.url;
           format = "PDF";
           break;
-        } catch {
+        } catch (error) {
+          if (
+            error instanceof HttpError ||
+            providerContext.getStore()?.signal.aborted
+          )
+            throw error;
+          retrievalFailure = error;
           /* No fallback to an abstract or guessed content. */
         }
       }
     }
+    if (!fullText && retrievalFailure)
+      throw new SourceServiceUnavailable(
+        "Full-text retrieval did not complete. Source availability can be retried.",
+      );
     if (!fullText)
       throw new Error(
         "A matching, readable full article could not be retrieved. Abstracts and previews do not qualify.",
@@ -288,6 +321,9 @@ export async function resolveScholarly(
     source.notice =
       "Journal review policy and full-text identity checked. Figures, equations and image-only content still need a human check. Peer review does not guarantee that the article’s conclusions are correct.";
   } catch (e) {
+    if (e instanceof HttpError || providerContext.getStore()?.signal.aborted)
+      throw e;
+    source.scholarly.retryable = e instanceof SourceServiceUnavailable;
     source.scholarly.reason =
       e instanceof Error ? e.message : "Source verification failed.";
     source.notice = source.scholarly.reason;
@@ -296,7 +332,8 @@ export async function resolveScholarly(
   }
   if (verifiedCache.size >= 60)
     verifiedCache.delete(verifiedCache.keys().next().value!);
-  verifiedCache.set(key, { at: Date.now(), source });
+  if (!source.scholarly.retryable)
+    verifiedCache.set(key, { at: Date.now(), source });
   return source;
 }
 export async function judgeScholarlyClaim(

@@ -32,13 +32,13 @@ export const checkModes = [
   {
     value: "fact_check",
     label: "Research",
-    description: "Compare claims with published academic research.",
+    description: "Check your sources first, then research evidence gaps.",
     icon: ShieldCheck,
   },
   {
     value: "discover",
     label: "Find sources",
-    description: "Find academic research you could cite for each claim.",
+    description: "Find relevant evidence for claims that need a source.",
     icon: Search,
   },
 ] as const;
@@ -68,6 +68,9 @@ export default function StudioDocument({
   setup,
   canCheck,
   sourceTitle,
+  sourcePagination,
+  researchResults = [],
+  onEditorReady,
   onSave,
   onAccept,
   onAcceptAll,
@@ -81,6 +84,8 @@ export default function StudioDocument({
     stage: string;
     error?: string;
     carried?: boolean;
+    coverage?: Record<string, unknown>;
+    usage?: { provider: string; status: string; requests: number }[];
   };
   stale: boolean;
   active: boolean;
@@ -90,6 +95,20 @@ export default function StudioDocument({
   setup: ReactNode;
   canCheck: boolean;
   sourceTitle: (assetId: string) => string | undefined;
+  sourcePagination?: (assetId: string) => string | undefined;
+  researchResults?: {
+    candidates: {
+      title: string;
+      url: string;
+      doi?: string;
+      access?: string;
+      eligibility: string;
+      reason?: string;
+      assetId?: string;
+    }[];
+    notices?: string[];
+  }[];
+  onEditorReady?: (ready: boolean) => void;
   onSave: (text: string) => Promise<void>;
   onAccept: (finding: BackendFinding) => Promise<void>;
   onAcceptAll: (findings: BackendFinding[]) => Promise<void>;
@@ -119,6 +138,9 @@ export default function StudioDocument({
 
   const dirty = draft !== saved.current;
   const readOnly = active || locked;
+  useEffect(() => {
+    onEditorReady?.(!dirty && saveState === "saved");
+  }, [dirty, saveState, onEditorReady]);
 
   async function save() {
     if (saving.current || latest.current === saved.current) return;
@@ -316,7 +338,9 @@ export default function StudioDocument({
             </button>
           ))}
         </div>
-        {!showSetup && <p className="ps-review-mode-note">{modeInfo.description}</p>}
+        {!showSetup && (
+          <p className="ps-review-mode-note">{modeInfo.description}</p>
+        )}
 
         {showSetup ? (
           <div className="ps-review-setup">
@@ -362,6 +386,108 @@ export default function StudioDocument({
                 </button>
               </div>
             )}
+            {typeof run.coverage?.completedClaims === "number" && (
+              <p className="ps-review-muted" role="status">
+                {run.coverage.completedClaims} of{" "}
+                {String(
+                  run.coverage.selectedClaims ?? run.coverage.totalClaims ?? 0,
+                )}{" "}
+                selected claims checked.
+                {Array.isArray(run.coverage.unprocessedSpans) &&
+                  run.coverage.unprocessedSpans.length > 0 &&
+                  ` ${run.coverage.unprocessedSpans.length} claims were left unchecked by the limit.`}
+              </p>
+            )}
+            {run.usage && run.usage.length > 0 && (
+              <details className="ps-research-details">
+                <summary>
+                  API usage ·{" "}
+                  {run.usage.reduce((n, item) => n + item.requests, 0)} requests
+                </summary>
+                <ul>
+                  {run.usage.map((item) => (
+                    <li key={`${item.provider}:${item.status}`}>
+                      {item.provider}: {item.requests} ·{" "}
+                      {item.status.replaceAll("_", " ")}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {Array.isArray(run.coverage?.sources) &&
+              run.coverage.sources.some(
+                (source) =>
+                  source.unreadablePages?.length || source.omittedPages?.length,
+              ) && (
+                <details className="ps-research-details" open>
+                  <summary>Source extraction gaps</summary>
+                  <ul>
+                    {run.coverage.sources
+                      .filter(
+                        (source) =>
+                          source.unreadablePages?.length ||
+                          source.omittedPages?.length,
+                      )
+                      .map((source) => (
+                        <li key={source.extractionId}>
+                          {sourceTitle(source.assetId) || "Selected source"}
+                          <p>
+                            {source.unreadablePages?.length > 0 &&
+                              `Unreadable physical pages: ${source.unreadablePages.join(", ")}. `}
+                            {source.omittedPages?.length > 0 &&
+                              `Omitted physical pages: ${source.omittedPages.join(", ")}.`}
+                          </p>
+                        </li>
+                      ))}
+                  </ul>
+                </details>
+              )}
+            {researchResults.some((item) => item.candidates.length > 0) && (
+              <details className="ps-research-details">
+                <summary>Retrieved sources and access gaps</summary>
+                <ul>
+                  {Array.from(
+                    new Map(
+                      researchResults
+                        .flatMap((item) => item.candidates)
+                        .map((candidate) => [
+                          candidate.doi || candidate.url,
+                          candidate,
+                        ]),
+                    ).values(),
+                  ).map((candidate) => (
+                    <li key={candidate.doi || candidate.url}>
+                      <a
+                        href={
+                          /^https:\/\//.test(candidate.url)
+                            ? candidate.url
+                            : undefined
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {candidate.title}
+                      </a>
+                      <p>
+                        {candidate.access?.replaceAll("_", " ") ||
+                          "No readable text"}{" "}
+                        · {candidate.eligibility}
+                        <br />
+                        {candidate.reason}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {Array.isArray(run.coverage?.skippedSpans) &&
+              run.coverage.skippedSpans.length > 0 && (
+                <p className="ps-review-muted" role="status">
+                  {run.coverage.skippedSpans.length} text segments skipped.
+                  Names, dates, headings, questions, preferences, and assignment
+                  instructions do not need an evidence check.
+                </p>
+              )}
             {stale && !active && (
               <div className="ps-review-stale" role="status">
                 <CircleAlert size={16} />
@@ -518,8 +644,13 @@ export default function StudioDocument({
                               <figcaption>
                                 {sourceTitle(passage.assetId) ||
                                   "Source passage"}
-                                {" · "}page{" "}
-                                {passage.pageLabel || passage.pageIndex}
+                                {" · "}
+                                {sourcePagination?.(passage.assetId) ===
+                                "unavailable"
+                                  ? "Retrieved text. Citation page unavailable"
+                                  : passage.labelStatus === "unknown"
+                                    ? `Physical page ${passage.pageIndex}. Printed page unconfirmed`
+                                    : `Page ${passage.pageLabel || passage.pageIndex}`}
                                 {" · "}
                                 {passage.support.replaceAll("_", " ")}
                               </figcaption>
@@ -545,7 +676,9 @@ export default function StudioDocument({
               <p className="ps-review-muted">
                 {run.carried && !stale
                   ? "You have handled every finding from this check. Run a new check to review the edited text."
-                  : "No findings were returned. This does not verify the text."}
+                  : run.coverage?.totalClaims === 0
+                    ? "No candidate claims found. Skipped text has not been fact-checked."
+                    : "No findings were returned. This does not verify the text."}
               </p>
             )}
             {findings.length > 0 && listed.length === 0 && (

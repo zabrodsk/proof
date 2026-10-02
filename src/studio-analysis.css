@@ -765,3 +765,44 @@
     flex-basis: calc(100% - 40px);
   }
 }
+
+.ps-claim-preview {
+  border-top: 1px solid var(--line, #d6dfd4);
+  padding-top: 16px;
+  max-height: 380px;
+  overflow: auto;
+}
+.ps-claim-preview summary,
+.ps-research-details summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.ps-claim-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.ps-claim-option input {
+  margin-top: 5px;
+  flex: none;
+}
+.ps-claim-option small {
+  display: block;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.ps-research-details {
+  margin: 14px 0;
+  font-size: 13px;
+}
+.ps-research-details ul {
+  padding-left: 18px;
+}
+.ps-research-details li {
+  margin: 12px 0;
+}
+.ps-research-details p {
+  margin: 5px 0;
+}

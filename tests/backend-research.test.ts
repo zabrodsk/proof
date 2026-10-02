@@ -232,7 +232,12 @@ test("research persists both search intentions and reuses a finished stage after
       result,
     );
     assert.equal(f.calls, count);
-    assert.equal(f.saved.size, 1);
+    assert.equal(
+      [...f.saved.values()].filter(
+        (state: any) => state.kind !== "candidate_resolution",
+      ).length,
+      1,
+    );
   } finally {
     fetch.mock.restore();
     if (previous === undefined) delete process.env.EXA_API_KEY;
@@ -360,5 +365,39 @@ test("cached text gets a new publication-status check without re-extraction", as
       if (previous === undefined) delete process.env.EXA_API_KEY;
       else process.env.EXA_API_KEY = previous;
     }
+  }
+});
+
+test("a permanently unresolved candidate is looked up once across different research queries", async () => {
+  const f = fixture("discover");
+  const old = process.env.EXA_API_KEY;
+  process.env.EXA_API_KEY = "fixture-not-real";
+  let identityRequests = 0;
+  const stub = mock.method(globalThis, "fetch", async (url: any) => {
+    if (String(url).includes("api.exa.ai"))
+      return Response.json({
+        results: [
+          {
+            title: "Unidentified paper",
+            url: "https://publisher.test/same-paper",
+          },
+        ],
+      });
+    identityRequests++;
+    return Response.json({ message: { items: [] } });
+  });
+  try {
+    for (const query of [
+      "Tutoring improves adult scores",
+      "Tutoring reduces adult stress",
+    ])
+      await f.run(() =>
+        research(f.db, blobs, "workspace", "run", query, "discover", 2),
+      );
+    assert.equal(identityRequests, 1);
+  } finally {
+    stub.mock.restore();
+    if (old === undefined) delete process.env.EXA_API_KEY;
+    else process.env.EXA_API_KEY = old;
   }
 });

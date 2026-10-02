@@ -31,7 +31,9 @@ export function findingTone(finding: BackendFinding) {
     return "unverified";
   if (
     finding.support === "supported" &&
-    (finding.basis === "supplied_text" || finding.eligibility === "eligible") &&
+    (finding.basis === "supplied_text" ||
+      finding.basis === "public_sources" ||
+      finding.eligibility === "eligible") &&
     (finding.citation === "correct" ||
       (finding.basis !== undefined && finding.citation === "not_checked"))
   )

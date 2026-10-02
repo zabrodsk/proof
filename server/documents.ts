@@ -1,6 +1,18 @@
 import mammoth from "mammoth";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PaperPage } from "../shared/classroom.js";
+// Multipart libraries decode legacy filename headers as Latin-1. Recover valid
+// UTF-8 without corrupting a filename that was already decoded correctly.
+export function uploadFilename(name: string): string {
+  if ([...name].some((c) => c.codePointAt(0)! > 255)) return name;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      Buffer.from(name, "latin1"),
+    );
+  } catch {
+    return name;
+  }
+}
 export async function readPdfPages(buffer: Buffer): Promise<PaperPage[]> {
   if (!buffer.subarray(0, 1024).toString().includes("%PDF-"))
     throw new Error("Upload the full article as a PDF.");

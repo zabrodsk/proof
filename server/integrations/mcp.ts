@@ -236,7 +236,8 @@ export function mcpRouter(
     } catch (error) {
       if (req.headers.authorization) {
         console.warn("Proof MCP authentication rejected", {
-          code: error instanceof IntegrationError ? error.code : "invalid_token",
+          code:
+            error instanceof IntegrationError ? error.code : "invalid_token",
           type: error instanceof Error ? error.name : "unknown",
         });
       }

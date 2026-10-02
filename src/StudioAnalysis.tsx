@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -12,6 +12,13 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import {
+  selectClaims,
+  claimKind,
+  evidenceRoute,
+  routeLabels,
+  claimContext,
+} from "../shared/claims";
 import { sourceCheckScope } from "./studio-document";
 import "./studio-analysis.css";
 import StudioDocument, { type CheckMode } from "./StudioDocument";
@@ -20,7 +27,7 @@ import { api, ApiError, type StudioWork } from "./studio-api";
 
 type Source = {
   id: string;
-  metadata: { title: string };
+  metadata: { title: string; pagination?: string; originalFormat?: string };
   status: string;
   access: string;
   eligibility: string;
@@ -35,6 +42,7 @@ type Run = {
   document_version_id: string;
   error?: string;
   input?: { mode?: CheckMode };
+  usage?: { provider: string; status: string; requests: number }[];
   coverage: Record<string, unknown>;
 };
 type Citation = {
@@ -76,6 +84,34 @@ export default function StudioAnalysis({
   const [importStatus, setImportStatus] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
   const [history, setHistory] = useState<Run[]>([]);
+  const [editorReady, setEditorReady] = useState(true);
+  const [excludedClaims, setExcludedClaims] = useState<Set<number>>(new Set());
+  const [includedSkipped, setIncludedSkipped] = useState<Set<number>>(
+    new Set(),
+  );
+  const [researchResults, setResearchResults] = useState<
+    {
+      candidates: {
+        title: string;
+        url: string;
+        doi?: string;
+        access?: string;
+        eligibility: string;
+        reason?: string;
+        assetId?: string;
+      }[];
+      notices?: string[];
+    }[]
+  >([]);
+  const preview = useMemo(() => selectClaims(work.content), [work.content]);
+  const approvedClaims = [
+    ...preview.candidates.filter((c) => !excludedClaims.has(c.start)),
+    ...preview.skipped.filter((c) => includedSkipped.has(c.start)),
+  ].sort((a, b) => a.start - b.start);
+  useEffect(() => {
+    setExcludedClaims(new Set());
+    setIncludedSkipped(new Set());
+  }, [work.content]);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const active = !!run && ["queued", "running"].includes(run.status);
@@ -158,6 +194,13 @@ export default function StudioAnalysis({
         if (disposed) return;
         setRun(next);
         setFindings(rows);
+        if (next.input?.mode !== "source_check") {
+          const research = await api<{ items: typeof researchResults }>(
+            `/api/v1/runs/${run.id}/research`,
+          );
+          if (!disposed) setResearchResults(research.items);
+        }
+        if (!["queued", "running"].includes(next.status)) return;
         timer = setTimeout(
           () => void refresh(),
           ["queued", "running"].includes(next.status) ? 2000 : 5000,
@@ -178,6 +221,7 @@ export default function StudioAnalysis({
       }
     };
     setFindings([]);
+    setResearchResults([]);
     void refresh();
     return () => {
       disposed = true;
@@ -335,6 +379,9 @@ export default function StudioAnalysis({
       !busy &&
       !active &&
       permission &&
+      editorReady &&
+      approvedClaims.length > 0 &&
+      approvedClaims.length <= 100 &&
       (mode !== "source_check" || bibliographyReady || !!selectedReady.length);
     const setup = !persistent ? (
       <p className="ps-setup-copy">
@@ -343,7 +390,7 @@ export default function StudioAnalysis({
       </p>
     ) : (
       <div className="ps-setup">
-        {mode === "source_check" ? (
+        {
           <>
             {sources.length > 0 && (
               <div className="ps-setup-head">
@@ -393,7 +440,9 @@ export default function StudioAnalysis({
             )}
             <label className={`ps-setup-upload ${busy ? "is-disabled" : ""}`}>
               <Upload size={16} />
-              <span>Upload sources<small>PDF, Word, text, or Markdown</small></span>
+              <span>
+                Upload sources<small>PDF, Word, text, or Markdown</small>
+              </span>
               {uploadInput}
             </label>
             <p className="ps-setup-row">
@@ -410,13 +459,93 @@ export default function StudioAnalysis({
               </button>
             </p>
           </>
-        ) : (
+        }
+        {mode !== "source_check" && (
           <p className="ps-setup-copy">
-            {mode === "fact_check"
-              ? "Proof searches open academic research, reads the passages it can access, and compares each claim with them. Titles and abstracts alone never count as support."
-              : "Proof searches open academic research for claims that need a source and shows the passages it found. You decide what to cite."}
+            Proof checks selected sources first, then researches gaps.
+            Scientific claims use academic papers. Public facts use supported
+            authoritative sources. Literary and personal claims need relevant
+            supplied text.
           </p>
         )}
+        <details className="ps-claim-preview" open>
+          <summary>Review claims · {approvedClaims.length} selected</summary>
+          <p className="ps-setup-copy">
+            Uncertain candidates are selected too. Remove anything you do not
+            want checked.
+          </p>
+          {preview.candidates.map((claim) => (
+            <label className="ps-claim-option" key={claim.start}>
+              <input
+                type="checkbox"
+                checked={!excludedClaims.has(claim.start)}
+                onChange={(event) =>
+                  setExcludedClaims((current) => {
+                    const next = new Set(current);
+                    if (event.target.checked) next.delete(claim.start);
+                    else next.add(claim.start);
+                    return next;
+                  })
+                }
+              />
+              <span>
+                {claim.text}
+                <small>
+                  {claimKind(
+                    claim.text,
+                    claimContext(work.content, claim.start, claim.end),
+                  )}{" "}
+                  ·{" "}
+                  {
+                    routeLabels[
+                      evidenceRoute(
+                        claim.text,
+                        claimContext(work.content, claim.start, claim.end),
+                      )
+                    ]
+                  }
+                </small>
+              </span>
+            </label>
+          ))}
+          {preview.skipped.length > 0 && (
+            <details>
+              <summary>
+                {preview.skipped.length} skipped segments. Include a missed
+                claim
+              </summary>
+              {preview.skipped.map((claim) => (
+                <label className="ps-claim-option" key={claim.start}>
+                  <input
+                    type="checkbox"
+                    checked={includedSkipped.has(claim.start)}
+                    onChange={(event) =>
+                      setIncludedSkipped((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(claim.start);
+                        else next.delete(claim.start);
+                        return next;
+                      })
+                    }
+                  />
+                  <span>
+                    {work.content.slice(claim.start, claim.end)}
+                    <small>{claim.reason}</small>
+                  </span>
+                </label>
+              ))}
+            </details>
+          )}
+          {approvedClaims.length > 100 && (
+            <p role="alert">
+              Select at most 100 claims for this check. Review the rest in
+              another check.
+            </p>
+          )}
+          {!editorReady && (
+            <p role="status">Save your changes before starting a check.</p>
+          )}
+        </details>
         <label className="ps-setup-consent">
           <input
             type="checkbox"
@@ -425,10 +554,7 @@ export default function StudioAnalysis({
           />
           <span>
             Allow AI providers to process my text
-            {mode === "source_check"
-              ? " and sources"
-              : " and search research"}
-            .
+            {mode === "source_check" ? " and sources" : " and search research"}.
           </span>
         </label>
         <button
@@ -447,14 +573,11 @@ export default function StudioAnalysis({
                   mode === "source_check" && bibliographyReady
                     ? referenceId
                     : undefined,
-                selectedSources:
-                  mode === "source_check"
-                    ? selectedReady.map((s) => ({
-                        assetId: s.id,
-                        extractionId: s.extraction_id!,
-                        pageRanges: [],
-                      }))
-                    : [],
+                selectedSources: selectedReady.map((s) => ({
+                  assetId: s.id,
+                  extractionId: s.extraction_id!,
+                  pageRanges: [],
+                })),
                 externalAccess:
                   mode === "source_check"
                     ? bibliographyReady && !selectedReady.length
@@ -462,9 +585,13 @@ export default function StudioAnalysis({
                       : "none"
                     : "research",
                 sourcePolicy:
-                  mode === "source_check" ? "user_supplied" : "academic",
+                  mode === "source_check" ? "user_supplied" : "matched",
                 allowProviderProcessing: permission,
                 budgetPreset: "standard",
+                claimSpans: approvedClaims.map(({ start, end }) => ({
+                  start,
+                  end,
+                })),
               };
               const response = await fetch("/api/v1/runs", {
                 method: "POST",
@@ -489,11 +616,16 @@ export default function StudioAnalysis({
           )}
           {mode === "discover" ? "Find sources" : "Check my text"}
         </button>
-        {permission && mode === "source_check" && !selectedReady.length && !bibliographyReady && (
-          <p className="ps-setup-hint">
-            {sources.length ? "Select a source or add references to continue." : "Upload a source or add references to continue."}
-          </p>
-        )}
+        {permission &&
+          mode === "source_check" &&
+          !selectedReady.length &&
+          !bibliographyReady && (
+            <p className="ps-setup-hint">
+              {sources.length
+                ? "Select a source or add references to continue."
+                : "Upload a source or add references to continue."}
+            </p>
+          )}
       </div>
     );
     return (
@@ -521,6 +653,11 @@ export default function StudioAnalysis({
             setRun(history.find((item) => runMode(item) === next));
           }}
           setup={setup}
+          onEditorReady={setEditorReady}
+          sourcePagination={(id) =>
+            sources.find((source) => source.id === id)?.metadata.pagination
+          }
+          researchResults={researchResults}
           sourceTitle={(id) =>
             sources.find((source) => source.id === id)?.metadata.title
           }

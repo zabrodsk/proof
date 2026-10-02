@@ -9,7 +9,8 @@ import type {
   Support,
 } from "../../shared/backend.js";
 import type { Source, Finding, Claim } from "../../shared/types.js";
-import { allSentences } from "../classroom.js";
+import { selectClaims, claimKind, claimContext } from "../claims.js";
+import { planResearch } from "./research-plan.js";
 import { citations, matchesCitation } from "../parse.js";
 import { judgeClaim } from "../judge.js";
 import { type Database, event } from "./db.js";
@@ -19,6 +20,7 @@ import { ownedRun } from "./service.js";
 import { providerContext } from "./providers.js";
 import type { BlobStore } from "./storage.js";
 import { research, resolveSelectedReferences } from "./research.js";
+import { HttpError } from "./config.js";
 
 export function combineSupport(values: Support[]): Support {
   const has = (v: Support) => values.includes(v);
@@ -44,26 +46,15 @@ export function supportOf(f: Finding): Support {
 export function claimCandidates(text: string, spans: RunInput["claimSpans"]) {
   const candidates = spans
     ? spans.map((s) => ({ ...s, text: text.slice(s.start, s.end) }))
-    : allSentences(text);
+    : selectClaims(text).candidates;
   return candidates.map((s) => {
-    const before = text.lastIndexOf("\n\n", s.start),
-      after = text.indexOf("\n\n", s.end);
+    const context = claimContext(text, s.start, s.end);
     return {
       text: s.text,
       start: s.start,
       end: s.end,
-      context: text
-        .slice(before < 0 ? 0 : before + 2, after < 0 ? text.length : after)
-        .slice(0, 6000),
-      kind: /["“][^"”]+["”]/.test(s.text)
-        ? "quotation"
-        : /\b(I think|I believe|in my opinion)\b/i.test(s.text)
-          ? "opinion"
-          : /\b(is|are|was|were|causes?|found|shows?|reports?|increases?|reduces?)\b/i.test(
-                s.text,
-              )
-            ? "factual"
-            : "ambiguous",
+      context,
+      kind: claimKind(s.text, context),
       compound: /\b(and|but|whereas|although)\b/i.test(s.text),
     };
   });
@@ -98,6 +89,99 @@ export type EngineDeps = {
   research: typeof research;
   resolveReferences: typeof resolveSelectedReferences;
 };
+
+async function assessPacket(
+  db: Database,
+  ws: string,
+  id: string,
+  run: any,
+  input: RunInput,
+  claim: Claim,
+  claimData: any,
+  source: Source,
+  packet: Passage[],
+  metadata: any,
+  eligibility: string,
+  provenanceFrozen: boolean,
+  academicRequired: boolean,
+  judge: EngineDeps["judge"],
+): Promise<Finding> {
+  const cacheKey = checksum(
+    JSON.stringify({
+      claim: claimData,
+      packet,
+      model: run.config.model,
+      prompt: run.config.prompt,
+      policy: run.config.policy,
+      source: metadata,
+    }),
+  );
+  let assessment: Finding | undefined = (
+    await db.query(
+      "SELECT data FROM assessments WHERE workspace_id=$1 AND run_id=$2 AND cache_key=$3",
+      [ws, id, cacheKey],
+    )
+  ).rows[0]?.data;
+  if (!assessment) {
+    if (
+      !provenanceFrozen ||
+      !input.allowProviderProcessing ||
+      (academicRequired && eligibility !== "eligible")
+    )
+      assessment = {
+        ...claim,
+        method: "unverified",
+        status: "uncertain",
+        explanation: !provenanceFrozen
+          ? "The original source metadata was not frozen for this older run. Start a new check."
+          : !input.allowProviderProcessing
+            ? "Provider processing is disabled."
+            : "Academic source eligibility is not confirmed.",
+      };
+    else
+      assessment = await judge(
+        claim,
+        source,
+        packet.map((p) => p.text),
+        { context: claimData.context },
+      );
+    assertEvidence(assessment, packet);
+    const quotes = [...claim.text.matchAll(/["“]([^"”]{20,})["”]/g)].map((m) =>
+      m[1].replace(/\s+/g, " "),
+    );
+    if (
+      assessment.status === "supported" &&
+      quotes.some(
+        (q) => !packet.some((p) => p.text.replace(/\s+/g, " ").includes(q)),
+      )
+    )
+      assessment = {
+        ...assessment,
+        status: "uncertain",
+        fix: undefined,
+        explanation:
+          "The quotation was not found verbatim in the assessed passages.",
+      };
+    await db.transaction(async (tx) => {
+      const current = await ownedRun(tx, ws, id, true);
+      if (current.cancel_requested) throw new Error("Run cancelled.");
+      await tx.query(
+        "INSERT INTO assessments(id,workspace_id,run_id,claim_id,cache_key,input_passage_ids,data) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,cache_key) DO NOTHING",
+        [
+          randomUUID(),
+          ws,
+          id,
+          claim.id,
+          cacheKey,
+          JSON.stringify(packet.map((p) => p.id)),
+          JSON.stringify(assessment),
+        ],
+      );
+    });
+  }
+  return assessment;
+}
+
 const defaults: EngineDeps = {
   judge: judgeClaim,
   research,
@@ -184,6 +268,28 @@ export async function processRun(
                     .slice(permitted.length)
                     .map(({ start, end }) => ({ start, end })),
                   completedClaims: 0,
+                  skippedSpans: selectClaims(document.text).skipped.filter(
+                    (s) =>
+                      !input.claimSpans?.some(
+                        (selected) =>
+                          selected.start <= s.start && selected.end >= s.end,
+                      ),
+                  ),
+                  excludedSpans: input.claimSpans
+                    ? selectClaims(document.text)
+                        .candidates.filter(
+                          (s) =>
+                            !input.claimSpans?.some(
+                              (selected) =>
+                                selected.start <= s.start &&
+                                selected.end >= s.end,
+                            ),
+                        )
+                        .map(({ start, end }) => ({ start, end }))
+                    : [],
+                  selectionPolicy: run.config.claimSelection,
+                  documentCandidates: selectClaims(document.text).candidates
+                    .length,
                 }),
               ],
             );
@@ -195,6 +301,10 @@ export async function processRun(
             )
           ).rows;
         }
+        const researchPlan = planResearch(
+          claims.map((c) => c.data),
+          input.sourcePolicy === "matched",
+        );
         const sourceSelections = [...input.selectedSources];
         const sourceSnapshots = { ...(run.config.sourceSnapshots || {}) };
         const rememberSnapshots = (snapshots: typeof sourceSnapshots) => {
@@ -253,18 +363,148 @@ export async function processRun(
           };
           let selections = [...sourceSelections];
           let researchCandidates: any[] = [];
+          let researchBudgetExhausted = false;
           const notices = [...referenceNotices];
-          if (input.mode !== "source_check" && input.allowProviderProcessing) {
-            const found = await deps.research(
-              db,
-              blobs,
-              ws,
-              id,
-              run.config.researchQuery || claim.text,
-              input.mode,
-              run.config.limits.candidates,
+          let suppliedSufficient = false;
+          const plan = researchPlan.get(claim.start);
+          const wholeAcademicText =
+            input.sourcePolicy === "academic" ||
+            (input.sourcePolicy === "matched" && plan?.route === "academic");
+          if (
+            input.mode !== "source_check" &&
+            input.allowProviderProcessing &&
+            sourceSelections.length
+          ) {
+            const supports: Support[] = [];
+            let failed = false;
+            for (const selection of sourceSelections) {
+              const live = await asset(db, ws, selection.assetId);
+              const frozen = sourceSnapshots[selection.assetId];
+              const current = frozen ? { ...live, ...frozen } : live;
+              const extraction = (
+                await db.query(
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2",
+                  [ws, selection.extractionId],
+                )
+              ).rows[0];
+              failed ||= extraction?.status !== "complete";
+              const retrieved = await retrieve(
+                db,
+                ws,
+                selection,
+                claim.text,
+                undefined,
+                wholeAcademicText ? Number.MAX_SAFE_INTEGER : 10,
+                {
+                  enabled: !!run.config.embeddingEnabled,
+                  revision: run.config.embeddingRevision,
+                  modelDirectory: run.config.embeddingModelDirectory,
+                },
+              );
+              const source: Source = {
+                id: selection.assetId,
+                title: current.metadata.title,
+                authors: current.metadata.authors || [],
+                year: current.metadata.year || "",
+                doi: current.metadata.doi,
+                access: current.access,
+                provider: "Persistent library",
+                retrievedAt: String(current.created_at),
+                passages: retrieved.passages.map((p) => p.text),
+                publicationWarning: current.metadata.publicationWarning,
+              };
+              for (const packet of packets(retrieved.passages)) {
+                const assessment = await assessPacket(
+                  db,
+                  ws,
+                  id,
+                  run,
+                  input,
+                  claim,
+                  claimRow.data,
+                  source,
+                  packet,
+                  current.metadata,
+                  current.eligibility,
+                  !!frozen,
+                  input.sourcePolicy === "academic",
+                  deps.judge,
+                );
+                supports.push(supportOf(assessment));
+                failed ||=
+                  assessment.method === "unverified" ||
+                  assessment.status === "uncertain" ||
+                  ["abstract", "metadata", "unavailable"].includes(
+                    current.access,
+                  ) ||
+                  !!current.metadata.publicationWarning;
+              }
+            }
+            suppliedSufficient =
+              !failed && combineSupport(supports) === "supported";
+            if (suppliedSufficient)
+              notices.push(
+                "The selected source passages cover this claim. No external search was needed.",
+              );
+          }
+          const externalPermitted = !["primary_text", "private"].includes(
+            plan?.route || "academic",
+          );
+          if (
+            !externalPermitted &&
+            input.mode !== "source_check" &&
+            !suppliedSufficient
+          )
+            notices.push(
+              plan?.route === "private"
+                ? "This personal statement needs your supplied evidence. It was not sent to public search."
+                : "This claim needs the original work or relevant supplied passages. Upload that text to check it.",
             );
-            selections = found.selections;
+          if (
+            input.mode !== "source_check" &&
+            input.allowProviderProcessing &&
+            !suppliedSufficient &&
+            externalPermitted
+          ) {
+            const found = await deps
+              .research(
+                db,
+                blobs,
+                ws,
+                id,
+                run.config.researchQuery || plan?.query || claim.text,
+                input.mode,
+                run.config.limits.candidates,
+                plan?.route === "authoritative" ? "authoritative" : "academic",
+              )
+              .catch((error: unknown) => {
+                if (
+                  !(error instanceof HttpError) ||
+                  error.status !== 429 ||
+                  error.message !== "Run provider-call budget exhausted."
+                )
+                  throw error;
+                researchBudgetExhausted = true;
+                return {
+                  selections: [],
+                  candidates: [],
+                  sourceSnapshots: {},
+                  notices: [
+                    "The research request limit was reached before this claim could be checked. Check a smaller section or select relevant materials.",
+                  ],
+                };
+              });
+            selections = [
+              ...sourceSelections,
+              ...found.selections.filter(
+                (s) =>
+                  !sourceSelections.some((old) => old.assetId === s.assetId),
+              ),
+            ];
+            if ((plan?.size || 0) > 1)
+              notices.push(
+                `Research was shared by ${plan!.size} related claims. This claim was assessed separately.`,
+              );
             researchCandidates = found.candidates;
             notices.push(...found.notices);
             rememberSnapshots(found.sourceSnapshots || {});
@@ -339,6 +579,7 @@ export async function processRun(
             citedLocation: Support[] = [],
             citedSource: Support[] = [];
           let semanticFailures = 0,
+            academicUncertainty = false,
             attempts = 0,
             retrievedPassages = 0,
             locatorKnown = true,
@@ -349,6 +590,17 @@ export async function processRun(
             sources.length > 0 &&
             sources.every((s) => s.asset.eligibility === "eligible");
           for (const item of sources) {
+            if (wholeAcademicText) {
+              const extraction = (
+                await db.query(
+                  "SELECT status FROM extractions WHERE workspace_id=$1 AND id=$2",
+                  [ws, item.selection.extractionId],
+                )
+              ).rows[0];
+              academicUncertainty ||=
+                extraction?.status !== "complete" ||
+                !["full_text", "uploaded"].includes(item.asset.access);
+            }
             const isCited = cited.some(
               (c) => c.selection.assetId === item.selection.assetId,
             );
@@ -384,7 +636,7 @@ export async function processRun(
               item.selection,
               claim.text,
               actualLocator,
-              10,
+              wholeAcademicText ? Number.MAX_SAFE_INTEGER : 10,
               run.config.embeddingEnabled === undefined
                 ? undefined
                 : {
@@ -411,7 +663,10 @@ export async function processRun(
               publicationWarning: item.asset.metadata.publicationWarning,
             };
             const role =
-              input.mode !== "source_check"
+              input.mode !== "source_check" &&
+              !sourceSelections.some(
+                (s) => s.assetId === item.selection.assetId,
+              )
                 ? "research"
                 : alternativeOnly
                   ? "alternative"
@@ -428,90 +683,35 @@ export async function processRun(
             );
             for (const packet of [...citedPackets, ...otherPackets]) {
               controller.signal.throwIfAborted();
-              const cacheKey = checksum(
-                JSON.stringify({
-                  claim: claimRow.data,
-                  packet,
-                  model: run.config.model,
-                  prompt: run.config.prompt,
-                  policy: run.config.policy,
-                  source: item.asset.metadata,
-                }),
+              const assessment = await assessPacket(
+                db,
+                ws,
+                id,
+                run,
+                input,
+                claim,
+                claimRow.data,
+                source,
+                packet,
+                item.asset.metadata,
+                item.asset.eligibility,
+                item.provenanceFrozen,
+                input.sourcePolicy === "academic" ||
+                  (input.sourcePolicy === "matched" &&
+                    !sourceSelections.some(
+                      (s) => s.assetId === item.selection.assetId,
+                    ) &&
+                    researchPlan.get(claim.start)?.route === "academic"),
+                deps.judge,
               );
-              let assessment: Finding | undefined = (
-                await db.query(
-                  "SELECT data FROM assessments WHERE workspace_id=$1 AND run_id=$2 AND cache_key=$3",
-                  [ws, id, cacheKey],
-                )
-              ).rows[0]?.data;
-              if (!assessment) {
-                if (
-                  !item.provenanceFrozen ||
-                  !input.allowProviderProcessing ||
-                  (input.sourcePolicy === "academic" &&
-                    item.asset.eligibility !== "eligible")
-                )
-                  assessment = {
-                    ...claim,
-                    method: "unverified",
-                    status: "uncertain",
-                    explanation: !item.provenanceFrozen
-                      ? "The original source metadata was not frozen for this older run. Start a new check."
-                      : !input.allowProviderProcessing
-                        ? "Provider processing is disabled."
-                        : "Academic source eligibility is not confirmed.",
-                  };
-                else
-                  assessment = await deps.judge(
-                    claim,
-                    source,
-                    packet.map((p) => p.text),
-                    { context: claimRow.data.context },
-                  );
-                assertEvidence(assessment, packet);
-                const quotes = [
-                  ...claim.text.matchAll(/["“]([^"”]{20,})["”]/g),
-                ].map((m) => m[1].replace(/\s+/g, " "));
-                if (
-                  assessment.status === "supported" &&
-                  quotes.some(
-                    (q) =>
-                      !packet.some((p) =>
-                        p.text.replace(/\s+/g, " ").includes(q),
-                      ),
-                  )
-                )
-                  assessment = {
-                    ...assessment,
-                    status: "uncertain",
-                    fix: undefined,
-                    explanation:
-                      "The quotation was not found verbatim in the assessed passages.",
-                  };
-                await db.transaction(async (tx) => {
-                  const current = await ownedRun(tx, ws, id, true);
-                  if (current.cancel_requested)
-                    throw new Error("Run cancelled.");
-                  await tx.query(
-                    "INSERT INTO assessments(id,workspace_id,run_id,claim_id,cache_key,input_passage_ids,data) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id,cache_key) DO NOTHING",
-                    [
-                      randomUUID(),
-                      ws,
-                      id,
-                      claim.id,
-                      cacheKey,
-                      JSON.stringify(packet.map((p) => p.id)),
-                      JSON.stringify(assessment),
-                    ],
-                  );
-                });
-              }
               assertEvidence(assessment, packet);
               attempts++;
               if (assessment.method === "unverified") semanticFailures++;
               if (assessment.method !== "unverified")
                 for (const p of packet) inspected.add(p.id);
               const support = supportOf(assessment);
+              academicUncertainty ||=
+                wholeAcademicText && assessment.status === "uncertain";
               if (!alternativeOnly) primaryAssessments.push(assessment.status);
               (alternativeOnly ? alternative : primary).push(support);
               if (isCited) citedSource.push(support);
@@ -585,11 +785,18 @@ export async function processRun(
               citation = "wrong_source";
           }
           let support = combineSupport(primary);
+          if (academicUncertainty && support === "supported")
+            support = "not_verified";
+          if (academicUncertainty)
+            notices.push(
+              "Academic content or extraction remained incomplete or uncertain. Complete support and automatic correction were withheld.",
+            );
           if (semanticFailures && support === "supported") support = "partial";
           if (ambiguous && support === "supported") support = "not_verified";
           const fix =
             ["contradicted", "overstated", "partial"].includes(support) &&
             semanticFailures === 0 &&
+            !academicUncertainty &&
             !ambiguous &&
             proposedFixes.length > 0 &&
             new Set(proposedFixes.map((f) => f.replacement)).size === 1
@@ -601,24 +808,32 @@ export async function processRun(
             support,
             citation,
             basis:
-              input.sourcePolicy === "user_supplied"
+              input.sourcePolicy === "user_supplied" ||
+              suppliedSufficient ||
+              !externalPermitted
                 ? "supplied_text"
-                : "academic_research",
+                : plan?.route === "authoritative"
+                  ? "public_sources"
+                  : "academic_research",
             ...(support === "not_verified"
               ? {
-                  evidenceGap: !retrievedPassages
-                    ? ("source_unavailable" as const)
-                    : input.sourcePolicy === "academic" &&
-                        !sources.some((s) => s.asset.eligibility === "eligible")
-                      ? ("source_requirements" as const)
-                      : !attempts || semanticFailures
-                        ? ("check_incomplete" as const)
-                        : primaryAssessments.length > 0 &&
-                            primaryAssessments.every(
-                              (s) => s === "not_addressed",
-                            )
-                          ? ("not_addressed" as const)
-                          : ("insufficient_evidence" as const),
+                  evidenceGap: researchBudgetExhausted
+                    ? ("check_incomplete" as const)
+                    : !retrievedPassages
+                      ? ("source_unavailable" as const)
+                      : input.sourcePolicy === "academic" &&
+                          !sources.some(
+                            (s) => s.asset.eligibility === "eligible",
+                          )
+                        ? ("source_requirements" as const)
+                        : !attempts || semanticFailures
+                          ? ("check_incomplete" as const)
+                          : primaryAssessments.length > 0 &&
+                              primaryAssessments.every(
+                                (s) => s === "not_addressed",
+                              )
+                            ? ("not_addressed" as const)
+                            : ("insufficient_evidence" as const),
                 }
               : {}),
             eligibility: allEligible
@@ -718,7 +933,6 @@ export async function processRun(
           ).rows[0].n;
           const isPartial =
             partial > 0 ||
-            !claims.length ||
             current.coverage.unprocessedSpans?.length > 0 ||
             sourceCoverage.some(
               (c) => c.unreadablePages?.length || c.omittedPages?.length,

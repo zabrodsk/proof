@@ -1,4 +1,8 @@
-import { providerContext } from "./backend/providers.js";
+import {
+  providerContext,
+  reserveProviderRequest,
+  recordProviderRequest,
+} from "./backend/providers.js";
 import https from "node:https";
 import { lookup } from "node:dns/promises";
 
@@ -17,7 +21,8 @@ export function publicIPv4(ip: string) {
     (a === 192 && b === 168) ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 198 && (b === 18 || b === 19)) ||
-    (a === 192 && b === 0) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 192 && b === 88 && c === 99) ||
     (a === 198 && b === 51 && c === 100) ||
     (a === 203 && b === 0 && c === 113)
   );
@@ -39,6 +44,7 @@ export async function remoteFile(
   if (!addresses.length || addresses.some((a) => !publicIPv4(a.address)))
     throw new Error("This address is not a public document server.");
   const address = addresses[0].address;
+  const ticket = await reserveProviderRequest(url, "document");
   const response = await new Promise<{
     buffer: Buffer;
     type: string;
@@ -105,6 +111,24 @@ export async function remoteFile(
     );
     req.on("close", () => clearTimeout(timer));
     req.on("error", reject);
+  }).catch(async (error) => {
+    await recordProviderRequest(
+      ticket,
+      providerContext.getStore()?.signal.aborted
+        ? "cancelled"
+        : "network_error",
+      { estimatedUsd: null, charge: "unknown" },
+    ).catch(() => {});
+    throw error;
+  });
+  await recordProviderRequest(
+    ticket,
+    response.location ? "redirect" : "complete",
+    { bytes: response.buffer.length, estimatedUsd: 0, charge: "none" },
+  ).catch(() => {
+    console.error(
+      "Document usage update failed; the reserved request retains unknown usage.",
+    );
   });
   if (response.location)
     return remoteFile(new URL(response.location, url).href, hops + 1);

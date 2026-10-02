@@ -192,14 +192,32 @@ test("provider failure leaves every sentence explicitly incomplete", async () =>
   });
   try {
     const r = await reviewClass(
-      "This is one claim. This is another claim.",
+      "Dušan Zábrodský\nIoanna Mavridou\n4G2 English\n14 January 2026\nThis is one claim. Is this another claim?",
       [],
       "draft",
     );
     assert.equal(r.coverage.total, 2);
+    assert.equal(r.coverage.skipped, 4);
     assert.equal(r.coverage.completed, 0);
+    assert.deepEqual(
+      r.sentences.map((s) => s.text),
+      ["This is one claim.", "Is this another claim?"],
+    );
     assert.ok(r.sentences.every((s) => !s.completed));
   } finally {
     stub.mock.restore();
   }
+});
+
+test("public document DNS admits globally routable 192.0 addresses while rejecting special-purpose blocks", () => {
+  assert.equal(publicIPv4("192.0.66.161"), true);
+  assert.equal(publicIPv4("169.154.128.121"), true);
+  for (const ip of [
+    "192.0.0.1",
+    "192.0.2.1",
+    "192.88.99.2",
+    "198.51.100.1",
+    "203.0.113.1",
+  ])
+    assert.equal(publicIPv4(ip), false);
 });

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { apiKey } from "./judge.js";
 import { resolveDOI, saveSource, splitPassages } from "./sources.js";
-import { parseDocument } from "./documents.js";
+import { parseDocument, uploadFilename } from "./documents.js";
 import { auditDocument } from "./audit.js";
 import { createWaitlistRouter } from "./waitlist.js";
 import { installAccess } from "./access.js";
@@ -136,9 +136,10 @@ app.post("/api/sources/resolve", async (req, res) => {
 });
 app.post("/api/documents/import", upload.single("file"), async (req, res) => {
   if (!req.file) throw new Error("Choose a document to import.");
+  const filename = uploadFilename(req.file.originalname);
   res.json({
-    text: await parseDocument(req.file.buffer, req.file.originalname),
-    title: req.file.originalname.replace(/\.[^.]+$/, ""),
+    text: await parseDocument(req.file.buffer, filename),
+    title: filename.replace(/\.[^.]+$/, ""),
   });
 });
 app.post("/api/sources/upload", upload.single("file"), async (req, res) => {
