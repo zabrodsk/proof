@@ -1,3 +1,4 @@
+import { selectClaims } from "./claims.js";
 import type { Claim, Source } from "../shared/types.js";
 import { mlaAuthorKey, mlaFromSource } from "../shared/mla.js";
 export const DOI_PATTERN = /10\.\d{4,9}\/[\w.();/:+-]+/gi;
@@ -50,44 +51,15 @@ export function extractClaims(
   strict = false,
   sources: Source[] = [],
 ): Claim[] {
-  const end = bodyEnd(text);
-  const body = end < 0 ? text : text.slice(0, end);
   const claims: Claim[] = [];
-  // Keep citation abbreviations and decimals from becoming sentence boundaries.
-  for (const line of body.matchAll(/[^\n]+/g)) {
-    const original = line[0];
-    const protectedText = original
-      .replace(/[.!?](?=["”]?\s*\([^()]+\))/g, "∯")
-      .replace(/(?:https?:\/\/|10\.\d{4,9}\/)[^\s)]+/g, (s) =>
-        s.replace(/\.(?!$)/g, "∯"),
-      )
-      .replace(/\bet al\./g, "et al∯")
-      .replace(
-        /\b(?:Dr|Mr|Mrs|Prof|vs|e\.g|i\.e)\./g,
-        (s) => s.slice(0, -1) + "∯",
-      )
-      .replace(/(\d)\.(?=\d)/g, "$1∯");
-    const chunks = protectedText.matchAll(/[^.!?]+(?:[.!?]+["”]?|$)/g);
-    for (const chunk of chunks) {
-      const leading = chunk[0].length - chunk[0].trimStart().length;
-      const start = line.index! + chunk.index! + leading;
-      const end = line.index! + chunk.index! + chunk[0].trimEnd().length;
-      const sentence = text.slice(start, end);
-      if (sentence.split(/\s+/).length < 5 || !sentence.trim()) continue;
-      const refs = citations(sentence, sources);
-      const factual =
-        /\b(is|are|was|were|cause[sd]?|improv\w+|reduc\w+|increas\w+|show\w+|found|find\w+|report\w+|affect\w+|associate\w+|lead\w+|result\w+|include\w+|prove\w+)\b/i.test(
-          sentence,
-        ) && !sentence.endsWith("?");
-      if (refs.length || (strict && factual))
-        claims.push({
-          id: `claim-${start}`,
-          text: sentence,
-          start,
-          end,
-          citations: refs,
-        });
-    }
+  for (const sentence of selectClaims(text).candidates) {
+    const refs = citations(sentence.text, sources);
+    if (refs.length || strict)
+      claims.push({
+        ...sentence,
+        id: `claim-${sentence.start}`,
+        citations: refs,
+      });
   }
   return claims;
 }

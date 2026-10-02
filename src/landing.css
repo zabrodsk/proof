@@ -5945,7 +5945,9 @@ body {
     text-align: left;
   }
 }
-.landing .lp-process-image { object-fit: contain; }
+.landing .lp-process-image {
+  object-fit: contain;
+}
 .landing .lp-compare-avatar > img {
   width: 42px;
   height: 42px;

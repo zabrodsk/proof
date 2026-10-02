@@ -34,7 +34,7 @@ export const runInput = z
       .enum(["none", "resolve_selected_references", "research"])
       .default("none"),
     sourcePolicy: z
-      .enum(["user_supplied", "academic"])
+      .enum(["user_supplied", "academic", "matched"])
       .default("user_supplied"),
     allowProviderProcessing: z.boolean().default(false),
     budgetPreset: z.enum(["small", "standard"]).default("standard"),
@@ -58,7 +58,8 @@ export const runInput = z
       });
     if (
       v.mode !== "source_check" &&
-      (v.externalAccess !== "research" || v.sourcePolicy !== "academic")
+      (v.externalAccess !== "research" ||
+        !["academic", "matched"].includes(v.sourcePolicy))
     )
       c.addIssue({
         code: "custom",
@@ -120,7 +121,7 @@ export interface BackendFinding {
   citation: Citation;
   eligibility: Eligibility;
   processing: Processing;
-  basis?: "supplied_text" | "academic_research";
+  basis?: "supplied_text" | "academic_research" | "public_sources";
   evidenceGap?:
     | "source_unavailable"
     | "check_incomplete"

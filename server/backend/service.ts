@@ -3,6 +3,7 @@ import { runInput, type RunInput } from "../../shared/backend.js";
 import { type Database, type Sql, enqueue, event } from "./db.js";
 import { asset, checksum, validateSelection } from "./library.js";
 import { HttpError, notFound, limits, versions } from "./config.js";
+import { carryForward } from "./carry-forward.js";
 export async function ownedRun(db: Sql, ws: string, id: string, lock = false) {
   const r = await db.query(
     `SELECT * FROM runs WHERE workspace_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
@@ -179,10 +180,22 @@ export async function applyFix(
       "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
       [ws, documentId, id],
     );
+    const runId = await carryForward(
+      tx,
+      ws,
+      { versionId, text: version.text },
+      { versionId: id, text },
+      {
+        start: fix.start,
+        end: fix.end,
+        delta: fix.replacement.length - (fix.end - fix.start),
+      },
+      { kind: "fix", findingId },
+    );
     await tx.query(
       "UPDATE runs SET invalidated=true WHERE workspace_id=$1 AND document_version_id=$2",
       [ws, versionId],
     );
-    return { id, text };
+    return { id, text, runId };
   });
 }

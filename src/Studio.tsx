@@ -159,12 +159,17 @@ export default function Studio({ session }: { session: Session }) {
             const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
             if (Array.isArray(saved))
               setWorks(
-                saved.filter(
-                  (item) =>
-                    typeof item?.id === "string" &&
-                    typeof item.title === "string" &&
-                    typeof item.content === "string",
-                ).map((item) => ({ ...item, title: readableDocumentTitle(item.title) })),
+                saved
+                  .filter(
+                    (item) =>
+                      typeof item?.id === "string" &&
+                      typeof item.title === "string" &&
+                      typeof item.content === "string",
+                  )
+                  .map((item) => ({
+                    ...item,
+                    title: readableDocumentTitle(item.title),
+                  })),
               );
           } catch {
             setError("Could not read this browser's saved drafts.");
@@ -1508,8 +1513,18 @@ function SubLink({
   return (
     <a
       href={href}
-      className={current === section || (section === "dashboard" && current === "analysis") ? "active" : ""}
-      aria-current={current === section || (section === "dashboard" && current === "analysis") ? "page" : undefined}
+      className={
+        current === section ||
+        (section === "dashboard" && current === "analysis")
+          ? "active"
+          : ""
+      }
+      aria-current={
+        current === section ||
+        (section === "dashboard" && current === "analysis")
+          ? "page"
+          : undefined
+      }
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;

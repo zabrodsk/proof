@@ -63,7 +63,12 @@ export type ClassReport = {
   papers: ClassPaper[];
   words: number;
   citationCount: number;
-  coverage: { total: number; completed: number; evidenceChecked: number };
+  coverage: {
+    total: number;
+    completed: number;
+    evidenceChecked: number;
+    skipped?: number;
+  };
 };
 export function classMla(paper: Pick<ClassPaper, "mla" | "url" | "accessed">) {
   let entry = formatMla(paper.mla).entry;

@@ -46,3 +46,53 @@ test("shared provider adapter reserves before dispatch and blocks a request that
     await f.close();
   }
 });
+
+test("native call-cap rejection does not consume a connector spending reservation", async () => {
+  const f = await fixture();
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return Response.json({ ok: true });
+  };
+  try {
+    const run = await f.store.createRun(alice, input({ budgetUsd: 0.1 }));
+    await providerContext.run(
+      {
+        db: f.db,
+        ws: run.workspace_id,
+        run: run.id,
+        signal: new AbortController().signal,
+        maxCalls: 0,
+        model: run.config.model,
+      },
+      async () =>
+        assert.rejects(
+          providerFetch("https://api.exa.ai/search"),
+          /provider-call budget exhausted/,
+        ),
+    );
+    assert.equal(calls, 0);
+    assert.equal(
+      (
+        await f.db.query(
+          "SELECT reserved_usd FROM proof_connector_submissions WHERE id=$1",
+          [run.id],
+        )
+      ).rows[0].reserved_usd,
+      0,
+    );
+    assert.equal(
+      (
+        await f.db.query(
+          "SELECT count(*)::int AS n FROM provider_calls WHERE run_id=$1",
+          [run.id],
+        )
+      ).rows[0].n,
+      0,
+    );
+  } finally {
+    globalThis.fetch = original;
+    await f.close();
+  }
+});

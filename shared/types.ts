@@ -22,6 +22,7 @@ export interface Source {
   journal?: string;
   issns?: string[];
   scholarly?: {
+    retryable?: boolean;
     eligible: boolean;
     reason: string;
     journalRecord?: string;
@@ -40,6 +41,7 @@ export interface Source {
   publicationType?: string;
   notice?: string;
   publicationWarning?: boolean;
+  evidencePolicy?: "authoritative";
   retrievedAt: string;
 }
 export interface Claim {

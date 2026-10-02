@@ -1,3 +1,5 @@
+import { documentSentences as allSentences, skipReason } from "./claims.js";
+export { documentSentences as allSentences } from "./claims.js";
 import type { Finding } from "../shared/types.js";
 import { Router } from "express";
 import multer from "multer";
@@ -78,35 +80,6 @@ const upload = multer({
     fieldSize: 10000,
   },
 });
-
-export function allSentences(text: string) {
-  const body = text.slice(0, bibliography(text).heading?.start ?? text.length);
-  const sentences: { id: string; text: string; start: number; end: number }[] =
-    [];
-  for (const line of body.matchAll(/[^\r\n]+/g)) {
-    const protectedText = line[0]
-      .replace(/[.!?](?=["”]?\s*\([^()]+\))/g, "∯")
-      .replace(/\([^()]*\)/g, (s) => s.replace(/[.!?]/g, "∯"))
-      .replace(
-        /\bet al\.|\b(?:Dr|Mr|Mrs|Prof|vs)\.|\b[A-Z]\.(?=\s*[A-Z])/g,
-        (s) => s.replace(/\./g, "∯"),
-      )
-      .replace(/(\d)\.(?=\d)/g, "$1∯");
-    for (const part of protectedText.matchAll(/[^.!?]+(?:[.!?]+["”]?|$)/g)) {
-      const start =
-        line.index! + part.index! + part[0].length - part[0].trimStart().length;
-      const end = line.index! + part.index! + part[0].trimEnd().length;
-      if (end > start)
-        sentences.push({
-          id: `sentence-${start}`,
-          text: text.slice(start, end),
-          start,
-          end,
-        });
-    }
-  }
-  return sentences;
-}
 
 export function citationRefs(text: string, papers: ClassPaper[]) {
   return [...text.matchAll(/\(([^()\n]+)\)/g)]
@@ -655,7 +628,12 @@ export async function reviewClass(
   assignment: "draft" | "bibliography",
   progress: (s: string) => void = () => {},
 ): Promise<ClassReport> {
-  const segments = allSentences(text);
+  const allSegments = allSentences(text);
+  const segments = allSegments.filter((s) => {
+    const reason = skipReason(s.text);
+    // Language review still covers questions and assignment instructions.
+    return reason !== "metadata" && reason !== "heading";
+  });
   if (segments.length > 1000 || text.length > 100000)
     throw new Error(
       "This review supports up to 1,000 sentences and 100,000 characters. Review a shorter section.",
@@ -822,6 +800,7 @@ export async function reviewClass(
     citationCount,
     coverage: {
       total: assignment === "draft" ? segments.length : 0,
+      skipped: allSegments.length - segments.length,
       completed: sentences.filter((s) => s.completed).length,
       evidenceChecked: sentences
         .flatMap((s) => s.citations)

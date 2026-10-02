@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { allSentences } from "./classroom.js";
+import { selectClaims } from "./claims.js";
 import { discoverSources } from "./discovery.js";
 import { resolveScholarly, judgeScholarlyClaim } from "./scholarly.js";
 import { articleMetaDoi } from "./article-input.js";
@@ -111,9 +111,11 @@ export async function loadEvidenceSource(input: SourceInput): Promise<Source> {
   return base;
 }
 export function evidenceSentences(text: string) {
-  const sentences = allSentences(text);
+  const sentences = selectClaims(text).candidates;
   if (!sentences.length)
-    throw new Error("Paste at least one sentence to check.");
+    throw new Error(
+      "No candidate claims found. Names, dates, headings, questions, and assignment instructions are skipped.",
+    );
   if (text.length > 100000 || sentences.length > 100)
     throw new Error(
       "Check up to 100 sentences at a time. Split your text into smaller sections. Nothing has been checked yet.",

@@ -6,6 +6,7 @@ import {
   findingTone,
   findingLabel,
   findingAssessment,
+  findingDetail,
   sourceCheckScope,
 } from "../src/studio-document";
 
@@ -82,5 +83,35 @@ test("unsupported claims explain a missing source and a contradiction differentl
   assert.match(
     findingAssessment({ ...f, support: "contradicted" }).meaning,
     /disagrees/,
+  );
+});
+
+test("review labels name the specific problem without overstating support", () => {
+  const f = finding("Claim.");
+  assert.equal(findingDetail(f), "Supported");
+  assert.equal(findingDetail({ ...f, support: "overstated" }), "Overstated");
+  assert.equal(
+    findingDetail({ ...f, citation: "wrong_source" }),
+    "Citation issue",
+  );
+  assert.equal(
+    findingDetail({ ...f, processing: "partial" }),
+    "Check incomplete",
+  );
+  assert.equal(
+    findingDetail({
+      ...f,
+      support: "not_verified",
+      evidenceGap: "not_addressed",
+    }),
+    "Not in your sources",
+  );
+  assert.equal(
+    findingDetail({
+      ...f,
+      support: "not_verified",
+      evidenceGap: "source_unavailable",
+    }),
+    "No readable source",
   );
 });

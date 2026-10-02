@@ -1180,6 +1180,12 @@ export default function Classroom() {
         )}
         {tab === "review" && (
           <>
+            {!!report?.coverage.skipped && (
+              <p className="class-note">
+                {report.coverage.skipped} names, dates, or headings skipped.
+                Skipped text has not been reviewed.
+              </p>
+            )}
             {report && report.coverage.completed < report.coverage.total && (
               <div className="class-error" role="alert">
                 {report.coverage.total - report.coverage.completed} sentences

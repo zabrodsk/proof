@@ -509,6 +509,168 @@ test("verified edits create a document version and stale findings cannot edit it
   );
 });
 
+test("applying one verified edit carries the other findings onto the new version", async () => {
+  const ws = await workspace(db, randomUUID()),
+    saved = await source(ws),
+    doc = await draft(
+      ws,
+      "The review included 300 studies. Participants numbered 14,170 in total. Effects were small.",
+    );
+  const run = await sourceRun(ws, doc.versionId, saved.selection);
+  await db.query("UPDATE runs SET status='complete' WHERE id=$1", [run.id]);
+  const span = (text: string) => {
+    const start = doc.text.indexOf(text);
+    return { text, start, end: start + text.length };
+  };
+  const seed = async (
+    ordinal: number,
+    claimText: string,
+    fix?: { original: string; replacement: string },
+  ) => {
+    const claimId = randomUUID(),
+      findingId = randomUUID(),
+      claim = span(claimText);
+    await db.query(
+      "INSERT INTO claims(id,workspace_id,run_id,ordinal,data) VALUES($1,$2,$3,$4,$5)",
+      [claimId, ws, run.id, ordinal, JSON.stringify(claim)],
+    );
+    const fixSpan = fix && span(fix.original);
+    await db.query(
+      "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,$5,$6)",
+      [
+        findingId,
+        ws,
+        run.id,
+        claimId,
+        ordinal,
+        JSON.stringify({
+          id: findingId,
+          claim: { ...claim, kind: "numeric", context: claimText },
+          support: "overstated",
+          evidence: [],
+          explanation: [],
+          checkedPassageIds: [],
+          ...(fix && fixSpan
+            ? {
+                fix: {
+                  start: fixSpan.start,
+                  end: fixSpan.end,
+                  original: fix.original,
+                  replacement: fix.replacement,
+                  documentVersionId: doc.versionId,
+                  kind: "number",
+                },
+              }
+            : {}),
+        }),
+      ],
+    );
+    return findingId;
+  };
+  const first = await seed(0, "The review included 300 studies.", {
+    original: "300",
+    replacement: "218",
+  });
+  await seed(1, "Participants numbered 14,170 in total.", {
+    original: "14,170",
+    replacement: "14,171",
+  });
+  await seed(2, "Effects were small.");
+
+  const edited = await applyFix(db, ws, doc.id, doc.versionId, first);
+  assert.equal((await ownedRun(db, ws, run.id)).invalidated, true);
+  assert.ok(edited.runId);
+  const derived = await ownedRun(db, ws, edited.runId!);
+  assert.equal(derived.document_version_id, edited.id);
+  assert.equal(derived.invalidated, false);
+  const carried = (
+    await db.query(
+      "SELECT data FROM findings WHERE run_id=$1 ORDER BY ordinal",
+      [derived.id],
+    )
+  ).rows.map((row) => row.data);
+  assert.deepEqual(
+    carried.map((finding) => finding.claim.text),
+    ["Participants numbered 14,170 in total.", "Effects were small."],
+  );
+  for (const finding of carried)
+    assert.equal(
+      edited.text.slice(finding.claim.start, finding.claim.end),
+      finding.claim.text,
+    );
+  const next = carried[0];
+  assert.equal(next.fix.documentVersionId, edited.id);
+  const again = await applyFix(db, ws, doc.id, edited.id, next.id);
+  assert.equal(
+    again.text,
+    "The review included 218 studies. Participants numbered 14,171 in total. Effects were small.",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM findings WHERE run_id=$1",
+        [run.id],
+      )
+    ).rows[0].n,
+    3,
+  );
+});
+
+test("accepting the last suggestion keeps a finished report for the new version", async () => {
+  const ws = await workspace(db, randomUUID()),
+    saved = await source(ws),
+    doc = await draft(ws, "The review included 300 studies.");
+  const run = await sourceRun(ws, doc.versionId, saved.selection);
+  await db.query("UPDATE runs SET status='complete' WHERE id=$1", [run.id]);
+  const claimId = randomUUID(),
+    findingId = randomUUID(),
+    claim = { text: doc.text, start: 0, end: doc.text.length };
+  await db.query(
+    "INSERT INTO claims(id,workspace_id,run_id,ordinal,data) VALUES($1,$2,$3,0,$4)",
+    [claimId, ws, run.id, JSON.stringify(claim)],
+  );
+  await db.query(
+    "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,0,$5)",
+    [
+      findingId,
+      ws,
+      run.id,
+      claimId,
+      JSON.stringify({
+        id: findingId,
+        claim: { ...claim, kind: "numeric", context: doc.text },
+        support: "overstated",
+        evidence: [],
+        explanation: [],
+        checkedPassageIds: [],
+        fix: {
+          start: doc.text.indexOf("300"),
+          end: doc.text.indexOf("300") + 3,
+          original: "300",
+          replacement: "218",
+          documentVersionId: doc.versionId,
+          kind: "number",
+        },
+      }),
+    ],
+  );
+  const edited = await applyFix(db, ws, doc.id, doc.versionId, findingId);
+  assert.ok(edited.runId);
+  const derived = await ownedRun(db, ws, edited.runId!);
+  assert.equal(derived.document_version_id, edited.id);
+  assert.equal(derived.status, "complete");
+  assert.equal(derived.coverage.retiredFindings, 1);
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM findings WHERE run_id=$1",
+        [derived.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
 test("deletion removes searchable passages and source-containing reports, then queues blob cleanup", async () => {
   const ws = await workspace(db, randomUUID()),
     saved = await source(ws),
@@ -799,6 +961,34 @@ test("one-click corrections for materials must quote an inspected passage", asyn
       );
     }
   }
+});
+
+test("exhausted research budget produces an explained partial result", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const { HttpError } = await import("../server/backend/config.js");
+  const ws = await workspace(db, randomUUID());
+  const doc = await draft(ws);
+  const run = await engineRun(ws, doc.versionId, [], {
+    mode: "fact_check",
+    externalAccess: "research",
+    sourcePolicy: "academic",
+    claimSpans: [{ start: 0, end: doc.text.length }],
+  });
+  await processRun(db, memoryBlobs().blobs, ws, run.id, {
+    judge: async () => {
+      throw Error("No passage was available");
+    },
+    research: async () => {
+      throw new HttpError(429, "Run provider-call budget exhausted.");
+    },
+    resolveReferences: noResolution,
+  });
+  assert.equal((await ownedRun(db, ws, run.id)).status, "partial");
+  const result = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+  ).rows[0].data;
+  assert.equal(result.evidenceGap, "check_incomplete");
+  assert.equal(result.support, "not_verified");
 });
 
 test("a successfully retrieved reference is no longer counted as unresolved", async () => {
