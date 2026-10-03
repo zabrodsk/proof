@@ -203,7 +203,11 @@ export async function citationPlan(
       { row: any; extraction: any; metadata: ReferenceMetadata }
     >();
     const allEvidence = findings.flatMap((f) => f.evidence || []);
-    const selections = [...(run.input.selectedSources || []), ...allEvidence];
+    const selections = [
+      ...(run.input.selectedSources || []),
+      ...(run.config.resolvedSources || []),
+      ...allEvidence,
+    ];
     for (const evidence of selections) {
       if (sources.has(evidence.assetId)) continue;
       const row = (
@@ -237,7 +241,22 @@ export async function citationPlan(
       id,
       metadata: s.metadata,
     }));
-    const occurrences = parseCitationOccurrences(version.text, references);
+    const frozenReferences = (run.config.references || []) as any[];
+    const importedReferences = frozenReferences.map((ref) => ({
+      id: ref.asset_id || ref.resolvedAssetId || ref.id,
+      metadata: {
+        ...ref.parsed,
+        authors: ref.parsed?.authorDetails || ref.parsed?.authors || [],
+      },
+    }));
+    // Matching a supplied bibliography never implies that its full text exists.
+    const auditReferences = [
+      ...references.filter(
+        (r) => !importedReferences.some((i) => i.id === r.id),
+      ),
+      ...importedReferences,
+    ];
+    const occurrences = parseCitationOccurrences(version.text, auditReferences);
     const sentences = documentSentences(version.text);
     const needsAttribution = (occurrence: (typeof occurrences)[number]) => {
       const claim = findings.find(
@@ -290,12 +309,40 @@ export async function citationPlan(
         occurrences: occurrences.length,
         distinctCitedWorks: new Set(
           [...cited].map(
-            (id) => citationWorkIdentity(sources.get(id)!.metadata) || id,
+            (id) =>
+              citationWorkIdentity(
+                auditReferences.find((r) => r.id === id)?.metadata || {},
+              ) || id,
           ),
         ).size,
-        bibliographyEntries: bib.entries.length,
+        bibliographyEntries: bib.entries.length || frozenReferences.length,
       },
     };
+    for (const ref of frozenReferences) {
+      if (
+        (!ref.asset_id && !ref.resolvedAssetId) ||
+        !["full_text", "uploaded"].includes(
+          ref.access ||
+            sources.get(ref.asset_id || ref.resolvedAssetId)?.row.access ||
+            "unavailable",
+        )
+      )
+        plan.audit.bibliographyIssues.push({
+          kind: "source_access",
+          text: ref.parsed?.title || ref.original,
+          detail:
+            ref.resolutionNotice ||
+            "This reference identifies a work, but its full text was not available for evidence checking. Allow retrieval of cited works or upload the article.",
+          referenceIds: [ref.id],
+        });
+      for (const warning of ref.identityWarnings || [])
+        plan.audit.bibliographyIssues.push({
+          kind: "identity",
+          text: ref.parsed?.title || ref.original,
+          detail: warning,
+          referenceIds: [ref.id],
+        });
+    }
     for (const occurrence of occurrences.filter((o) => !needsAttribution(o)))
       plan.audit.bibliographyIssues.push({
         kind: "unnecessary_citation",

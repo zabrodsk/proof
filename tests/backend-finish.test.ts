@@ -283,7 +283,7 @@ test("automatic review checks the essay body, records skipped header spans, and 
   assert.equal(run.coverage.totalClaims, 2);
   assert.equal(run.coverage.completedClaims, 2);
   assert.equal(run.coverage.skippedSpans.length, 4);
-  assert.equal(run.config.claimSelection, "proof-claims-3");
+  assert.equal(run.config.claimSelection, "proof-claims-4");
   const findings = (
     await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
   ).rows;
@@ -1204,4 +1204,239 @@ test("an existing common-knowledge citation without supplied text cannot trigger
   assert.equal(findings[0].processing, "complete");
   assert.equal(findings[0].evidenceGap, undefined);
   assert.equal(findings[0].fix, undefined);
+});
+
+test("an uploaded Works Cited list matches citations without becoming evidence or spending judgment calls", async () => {
+  const { citationPlan } = await import("../server/backend/citation-plans.js");
+  const bibliography = `Works Cited\n\nBrown, Maria, and Fabio Green. “The Act of 2017: A Study?” Space Policy, vol. 47, Feb. 2019, pp. 1–6.\n\nJones, Jason. “A Treaty Turns 50.” ABA\nJournal, Apr. 2017, p. 1.\n\nLee, Yong Bum. “Public Space, Private Patents.” Harvard Journal of Law & Technology, vol. 33, no. 1, Fall 2019.\n\nSmith, Alexander P. “Updating the Liability Regime\nin Outer Space.” William & Mary Law Review, 2020.`;
+  const text =
+    "A second space race involves private firms (Smith 15). The firms supply the station (Smith 18). The U.S. therefore supports scientific development (Lee 8). The U.S. It also adjusts regulation (Brown and Green 8). The bill increases agency budgets (Jones 14).";
+  const f = await fixture(text, [bibliography], true);
+  assert.equal(f.run.config.references.length, 4);
+  assert.deepEqual(f.run.input.selectedSources, []);
+  assert.deepEqual(f.run.config.bibliographyAssets, [f.assetId]);
+  await processRun(
+    db,
+    f.blobs,
+    f.ws,
+    f.run.id,
+    deps(async () => {
+      throw Error("A bibliography must not be sent for evidence judgment.");
+    }),
+  );
+  const findings = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
+  ).rows.map((r) => r.data);
+  assert.ok(findings.length >= 5);
+  assert.ok(
+    findings.every(
+      (f) =>
+        f.support === "not_verified" &&
+        f.evidenceGap === "source_unavailable" &&
+        !f.fix,
+    ),
+  );
+  assert.ok(findings.every((f) => !f.evidence.length));
+  const plan = await citationPlan(db, f.ws, f.run.id);
+  assert.equal(plan.audit?.counts.occurrences, 5);
+  assert.equal(plan.audit?.counts.distinctCitedWorks, 4);
+  assert.equal(plan.audit?.counts.bibliographyEntries, 4);
+  assert.ok(plan.audit?.occurrences.every((o) => o.status === "matched"));
+  assert.equal(plan.operations.length, 0);
+  assert.equal(plan.previewText, text);
+  assert.equal((await ownedRun(db, f.ws, f.run.id)).status, "partial");
+  assert.equal(
+    (await ownedRun(db, f.ws, f.run.id)).coverage.unresolvedReferences.length,
+    4,
+  );
+});
+
+test("abstract-only selected sources never produce full support or judgment calls", async () => {
+  const f = await fixture("The treatment reduced symptoms (Brown 1).", [
+    "The treatment reduced symptoms in the studied group.",
+  ]);
+  const config = structuredClone(f.run.config);
+  config.sourceSnapshots[f.assetId].access = "abstract";
+  await db.query("UPDATE runs SET config=$2 WHERE id=$1", [
+    f.run.id,
+    JSON.stringify(config),
+  ]);
+  await processRun(
+    db,
+    f.blobs,
+    f.ws,
+    f.run.id,
+    deps(async () => {
+      throw Error("Abstracts are not full-text evidence.");
+    }),
+  );
+  const finding = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
+  ).rows[0].data;
+  assert.equal(finding.support, "not_verified");
+  assert.equal(finding.fix, undefined);
+  assert.ok(
+    finding.explanation.some((x: string) => x.includes("only an abstract")),
+  );
+});
+
+test("selected-reference snapshots are reused without searches and author mismatches stay visible", async () => {
+  const { resolveSelectedReferences } =
+    await import("../server/backend/research.js");
+  const { checksum } = await import("../server/backend/library.js");
+  const f = await fixture(
+    "The treatment reduced symptoms (Brown 1).",
+    [
+      "Works Cited\nBrown, Maria. “Private Space Operations.” Example Journal, 2020.",
+    ],
+    true,
+  );
+  const ref = f.run.config.references[0];
+  const body = Buffer.from(
+    "Private Space Operations.\nThe treatment reduced symptoms in the studied group.",
+  );
+  const metadata = {
+    title: ref.parsed.title,
+    authors: ["Maria Green"],
+    authorDetails: [{ given: "Maria", family: "Green" }],
+    year: "2020",
+    url: "https://example.edu/source.pdf",
+    referenceFingerprint: checksum(JSON.stringify(ref.parsed)),
+    textFingerprint: checksum(body),
+    assetKind: "retrieved_text_snapshot",
+  };
+  const cached = await createAsset(
+    db,
+    f.ws,
+    metadata,
+    "cached.txt",
+    "text/plain",
+    body.length,
+  );
+  await f.blobs.put(cached.key, body, "text/plain");
+  const extractionId = await ingestAsset(db, f.blobs, f.ws, cached.id);
+  await db.query("UPDATE source_assets SET access='full_text' WHERE id=$1", [
+    cached.id,
+  ]);
+  await db.query(
+    "UPDATE source_pages SET label='1',label_status='confirmed' WHERE extraction_id=$1",
+    [extractionId],
+  );
+  await db.query(
+    "UPDATE runs SET input=jsonb_set(input,'{externalAccess}','\"resolve_selected_references\"') WHERE id=$1",
+    [f.run.id],
+  );
+  let judgments = 0;
+  await processRun(db, f.blobs, f.ws, f.run.id, {
+    research: noResearch,
+    resolveReferences: resolveSelectedReferences,
+    judge: async (claim, source, passages) => {
+      judgments++;
+      assert.deepEqual(source.authors, ["Maria Green"]);
+      return {
+        ...claim,
+        status: "supported",
+        method: "Jev",
+        evidence: passages![0],
+        checkedPassages: passages,
+        explanation: "Controlled full-text evidence.",
+      };
+    },
+  });
+  const run = await ownedRun(db, f.ws, f.run.id);
+  assert.equal(run.config.references[0].resolvedAssetId, cached.id);
+  assert.ok(
+    run.config.references[0].identityWarnings.some((w: string) =>
+      w.includes("Green"),
+    ),
+  );
+  assert.ok(judgments > 0);
+  const finding = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
+  ).rows[0].data;
+  assert.equal(finding.support, "supported");
+  assert.equal(finding.citation, "wrong_source");
+  assert.ok(finding.explanation.some((w: string) => w.includes("Green")));
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM provider_calls WHERE run_id=$1",
+        [f.run.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("cited-first checks skip alternative judgments only after inspected support", async () => {
+  for (const citedSupports of [true, false]) {
+    const f = await fixture("The treatment reduced symptoms (Brown 1).", [
+      "The treatment reduced symptoms in the studied group.",
+    ]);
+    const body = Buffer.from(
+      "The treatment reduced symptoms in the studied group.",
+    );
+    const metadata = { title: "Other work", authors: ["Green"], year: "2024" };
+    const alternative = await createAsset(
+      db,
+      f.ws,
+      metadata,
+      "other.txt",
+      "text/plain",
+      body.length,
+    );
+    await f.blobs.put(alternative.key, body, "text/plain");
+    const extractionId = await ingestAsset(db, f.blobs, f.ws, alternative.id);
+    const input = {
+      ...f.run.input,
+      selectedSources: [
+        { assetId: alternative.id, extractionId, pageRanges: [] },
+        ...f.run.input.selectedSources,
+      ],
+    };
+    const config = structuredClone(f.run.config);
+    const row = (
+      await db.query("SELECT * FROM source_assets WHERE id=$1", [
+        alternative.id,
+      ])
+    ).rows[0];
+    config.sourceSnapshots[alternative.id] = {
+      metadata: row.metadata,
+      eligibility: row.eligibility,
+      access: row.access,
+      created_at: row.created_at,
+    };
+    await db.query("UPDATE runs SET input=$2,config=$3 WHERE id=$1", [
+      f.run.id,
+      JSON.stringify(input),
+      JSON.stringify(config),
+    ]);
+    const judged: string[] = [];
+    await processRun(
+      db,
+      f.blobs,
+      f.ws,
+      f.run.id,
+      deps(async (claim, source, passages) => {
+        judged.push(source.id);
+        const supports = source.id !== f.assetId || citedSupports;
+        return {
+          ...claim,
+          status: supports ? "supported" : "not_addressed",
+          method: "Jev",
+          evidence: supports ? passages![0] : undefined,
+          checkedPassages: passages,
+          explanation: "Controlled source assessment.",
+        };
+      }),
+    );
+    assert.deepEqual(
+      judged,
+      citedSupports ? [f.assetId] : [f.assetId, alternative.id],
+    );
+    const finding = (
+      await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
+    ).rows[0].data;
+    assert.equal(finding.citation, citedSupports ? "correct" : "wrong_source");
+  }
 });

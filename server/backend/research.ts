@@ -1,3 +1,4 @@
+import { retrieveNamedReference } from "./reference-retrieval.js";
 import { randomUUID } from "node:crypto";
 import type { Eligibility, Selection } from "../../shared/backend.js";
 import type { Source } from "../../shared/types.js";
@@ -69,6 +70,8 @@ export interface ResearchCandidate {
   searchIntents: string[];
   resolved?: boolean;
   sourceSnapshot?: FrozenSource;
+  referenceMetadata?: FrozenReference["parsed"];
+  identityWarnings?: string[];
 }
 export interface FrozenSource {
   metadata: Record<string, any>;
@@ -96,14 +99,22 @@ interface ResearchState extends ResearchResult {
 }
 export interface FrozenReference {
   id: string;
-  parsed?: { doi?: string; title?: string };
+  parsed?: {
+    doi?: string;
+    title?: string;
+    authors?: string[];
+    authorDetails?: any[];
+    year?: string;
+    containerTitle?: string;
+    url?: string;
+  };
   candidates?: { doi?: string; title?: string }[];
   confirmedCandidate?: { doi?: string; title?: string };
   status?: string;
   asset_id?: string | null;
   assetId?: string | null;
 }
-const researchVersion = `research-2:${versions.policy}:${versions.parser}`;
+const researchVersion = `research-3:${versions.policy}:${versions.parser}`;
 
 export function neutralResearchQuery(query: string) {
   // Strip a request to confirm a conclusion, but retain every word of the claim,
@@ -323,7 +334,7 @@ async function existingSnapshot(
     `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
     LEFT JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$3 AND e.status IN ('complete','partial')
     WHERE a.workspace_id=$1 AND lower(a.metadata->>'doi')=$2 AND a.deleted_at IS NULL
-    AND a.metadata->>'assetKind'='retrieved_text_snapshot'
+    AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
     AND ($4::boolean=false OR a.eligibility='eligible')
     AND ($5::text IS NULL OR a.metadata->>'textFingerprint'=$5) ORDER BY a.created_at DESC LIMIT 1`,
     [ws, doi, versions.parser, academic, textFingerprint || null],
@@ -408,6 +419,8 @@ async function sourceSnapshot(
   runId: string,
   source: Source,
   academic: boolean,
+  original?: { buffer: Buffer; type: string },
+  referenceFingerprint?: string,
 ): Promise<{ selection: Selection; snapshot: FrozenSource } | undefined> {
   if (
     !source.passages.length ||
@@ -418,7 +431,8 @@ async function sourceSnapshot(
   if (academic && !source.scholarly?.eligible) return;
   const doi = dois(source.doi || "")[0];
   if (!doi && !source.evidencePolicy) return;
-  const body = Buffer.from(source.passages.join("\n\n"), "utf8");
+  const body =
+    original?.buffer || Buffer.from(source.passages.join("\n\n"), "utf8");
   const textFingerprint = checksum(
     JSON.stringify({
       content: checksum(body),
@@ -451,17 +465,18 @@ async function sourceSnapshot(
     provider: source.provider,
     retrievedAt: source.retrievedAt,
     retrievedByRunId: runId,
-    assetKind: "retrieved_text_snapshot",
-    originalFormat: source.scholarly?.format,
+    assetKind: original ? "retrieved_original_pdf" : "retrieved_text_snapshot",
+    originalFormat: original ? "PDF" : source.scholarly?.format,
     fullTextUrl: source.scholarly?.fullTextUrl,
-    pagination: "unavailable",
+    pagination: original ? "original_pdf" : "unavailable",
     textFingerprint,
+    referenceFingerprint,
     contentFingerprint: checksum(body),
     extractionCompleteness:
       source.access === "full_text" ? "complete" : "abstract_only",
     notice: source.notice,
   };
-  // The saved original is a retrieved text snapshot, never a fabricated original PDF.
+  // Preserve original PDFs and their printed page labels. Text-only retrievals stay text snapshots.
   const saved = await db.transaction(async (tx) => {
     await active(tx, ws, runId, true);
     // Serialize identity reuse within this workspace, including concurrent claims.
@@ -472,7 +487,7 @@ async function sourceSnapshot(
           await tx.query(
             `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
         LEFT JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$4 AND e.status IN ('complete','partial')
-        WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.metadata->>'assetKind'='retrieved_text_snapshot'
+        WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
         AND a.metadata->>'url'=$2 AND a.metadata->>'textFingerprint'=$3 ORDER BY a.created_at DESC LIMIT 1`,
             [ws, source.url, textFingerprint, versions.parser],
           )
@@ -491,11 +506,15 @@ async function sourceSnapshot(
       tx,
       ws,
       metadata,
-      "retrieved-source.txt",
-      "text/plain",
+      original ? "retrieved-source.pdf" : "retrieved-source.txt",
+      original ? "application/pdf" : "text/plain",
       body.length,
     );
-    await blobs.put(created.key, body, "text/plain");
+    await blobs.put(
+      created.key,
+      body,
+      original ? "application/pdf" : "text/plain",
+    );
     await tx.query(
       "UPDATE source_assets SET access=$3,eligibility=$4 WHERE workspace_id=$1 AND id=$2",
       [ws, created.id, source.access, eligibility(source)],
@@ -668,15 +687,98 @@ async function resolvedCandidate(
     const prior = await loadState(db, ws, runId, resolutionKey);
     if (prior?.complete && prior.kind === "candidate_resolution") return prior;
     const copy = structuredClone(candidate);
-    const selection = await resolveCandidate(
-      db,
-      blobs,
-      ws,
-      runId,
-      copy,
-      academic,
-      identify,
-    );
+    let selection: Selection | undefined;
+    if (copy.referenceMetadata && !copy.doi && !academic) {
+      const referenceFingerprint = checksum(
+        JSON.stringify(copy.referenceMetadata),
+      );
+      const previous = (
+        await db.query(
+          `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
+        JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$3 AND e.status='complete'
+        WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.status='ready' AND a.access='full_text'
+          AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
+          AND a.metadata->>'referenceFingerprint'=$2 AND a.metadata->>'textFingerprint' IS NOT NULL
+          AND a.created_at > now() - interval '24 hours' ORDER BY a.created_at DESC LIMIT 1`,
+          [ws, referenceFingerprint, versions.parser],
+        )
+      ).rows[0];
+      if (previous) {
+        selection = {
+          assetId: previous.id,
+          extractionId: previous.extraction_id,
+          pageRanges: [],
+        };
+        Object.assign(copy, {
+          ...selection,
+          url: previous.metadata.url,
+          access: previous.access,
+          sourceSnapshot: {
+            metadata: previous.metadata,
+            eligibility: previous.eligibility,
+            access: previous.access,
+          },
+          resolved: true,
+          reason:
+            "A recent exact-reference source snapshot was reused within this workspace.",
+        });
+      } else {
+        const retrieved = await retrieveNamedReference(copy.referenceMetadata);
+        const saved = await sourceSnapshot(
+          db,
+          blobs,
+          ws,
+          runId,
+          retrieved.source,
+          false,
+          retrieved.file,
+          referenceFingerprint,
+        );
+        selection = saved?.selection;
+        Object.assign(copy, {
+          url: retrieved.source.url,
+          access: retrieved.source.access,
+          ...(selection || {}),
+          sourceSnapshot: saved?.snapshot,
+          resolved: true,
+          reason: retrieved.source.notice,
+          identityWarnings: retrieved.identityWarnings,
+        });
+      }
+    } else
+      selection = await resolveCandidate(
+        db,
+        blobs,
+        ws,
+        runId,
+        copy,
+        academic,
+        identify,
+      );
+    if (copy.referenceMetadata && copy.sourceSnapshot) {
+      const original = copy.referenceMetadata;
+      const actual = copy.sourceSnapshot.metadata as any;
+      const warnings = [...(copy.identityWarnings || [])];
+      if (
+        original.title &&
+        actual.title &&
+        normalizedTitle(original.title) !== normalizedTitle(actual.title)
+      )
+        warnings.push(
+          "The selected DOI identifies a different title than the uploaded reference. Review the reference metadata.",
+        );
+      const expectedFamily = original.authorDetails?.[0]?.family;
+      const actualFamily = actual.authorDetails?.[0]?.family;
+      if (
+        expectedFamily &&
+        actualFamily &&
+        normalizedTitle(expectedFamily) !== normalizedTitle(actualFamily)
+      )
+        warnings.push(
+          `The uploaded reference names ${expectedFamily}; the original source names ${actualFamily}. Review the author spelling.`,
+        );
+      copy.identityWarnings = [...new Set(warnings)];
+    }
     const resolution: ResearchState = {
       version: researchVersion,
       kind: "candidate_resolution",
@@ -1080,7 +1182,10 @@ export async function resolveSelectedReferences(
           selected?.doi ||
           "",
       )[0];
-      if (!doi || (entry.status === "ambiguous" && !entry.confirmedCandidate)) {
+      if (
+        (entry.status === "ambiguous" && !entry.confirmedCandidate) ||
+        (!doi && !entry.parsed?.title)
+      ) {
         state.notices.push(
           `Reference ${entry.id} needs an unambiguous DOI or a selected upload.`,
         );
@@ -1093,9 +1198,13 @@ export async function resolveSelectedReferences(
         continue;
       }
       state.candidates.push({
-        title: selected?.title || entry.parsed?.title || doi,
+        title: selected?.title || entry.parsed?.title || doi!,
         doi,
-        url: `https://doi.org/${doi}`,
+        referenceMetadata: entry.parsed,
+        url: doi
+          ? `https://doi.org/${doi}`
+          : entry.parsed?.url ||
+            `https://example.invalid/unresolved-reference/${entry.id}`,
         referenceEntryId: entry.id,
         status: "promising",
         eligibility: "unknown",

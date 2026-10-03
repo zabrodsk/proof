@@ -89,7 +89,7 @@ test("unsupported claims explain a missing source and a contradiction differentl
       support: "not_verified",
       evidenceGap: "source_unavailable",
     }).meaning,
-    /could not read/,
+    /not available/,
   );
   assert.match(
     findingAssessment({ ...f, support: "contradicted" }).meaning,
@@ -137,7 +137,7 @@ test("review labels name the specific problem without overstating support", () =
       support: "not_verified",
       evidenceGap: "not_addressed",
     }),
-    "Not in your sources",
+    "Not addressed in checked passages",
   );
   assert.equal(
     findingDetail({
@@ -145,6 +145,6 @@ test("review labels name the specific problem without overstating support", () =
       support: "not_verified",
       evidenceGap: "source_unavailable",
     }),
-    "No readable source",
+    "Source text unavailable",
   );
 });

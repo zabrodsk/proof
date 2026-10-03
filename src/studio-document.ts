@@ -59,6 +59,7 @@ export function citationExempt(f: BackendFinding, mode?: RunInput["mode"]) {
 export function findingDetail(f: BackendFinding, mode?: RunInput["mode"]) {
   if (citationExempt(f, mode)) return "No citation needed";
   if (findingTone(f) === "supported") return "Supported";
+  if (f.evidenceGap === "source_unavailable") return "Source text unavailable";
   if (f.processing !== "complete" || f.evidenceGap === "check_incomplete")
     return "Check incomplete";
   if (f.support === "contradicted") return "Contradicted";
@@ -72,9 +73,10 @@ export function findingDetail(f: BackendFinding, mode?: RunInput["mode"]) {
     if (f.citation === "ambiguous") return "Citation unclear";
     return "Citation needs review";
   }
-  if (f.evidenceGap === "not_addressed") return "Not in your sources";
+  if (f.evidenceGap === "not_addressed")
+    return "Not addressed in checked passages";
   if (f.evidenceGap === "source_requirements") return "Source not eligible";
-  if (f.evidenceGap === "source_unavailable") return "No readable source";
+
   return "Needs evidence";
 }
 
@@ -109,26 +111,34 @@ export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
         "The evidence supports only part of the claim or gives conflicting results.",
       next: "Split the claim and explain the limits of the evidence.",
     };
+  if (f.evidenceGap === "source_unavailable")
+    return {
+      meaning:
+        "The cited work's full text was not available to check. This does not mean the claim is unsupported.",
+      next: "Use New check to retrieve the works listed in your bibliography, or upload the original articles.",
+    };
   if (f.processing !== "complete" || f.evidenceGap === "check_incomplete")
     return {
       meaning: "The check did not finish. Support has not been established.",
       next: "Run the check again. This result is not a factual verdict.",
     };
-  if (f.evidenceGap === "source_unavailable" || !f.evidence.length)
-    return {
-      meaning: "Proof could not read a relevant source passage.",
-      next: "Upload the full text or a relevant handout, select it, and check again.",
-    };
   if (f.evidenceGap === "not_addressed")
     return {
-      meaning: "The selected material does not discuss this claim.",
-      next: "Select material that covers the claim, or remove it.",
+      meaning:
+        "The passages Proof checked do not address this claim. Other sections may contain relevant evidence.",
+      next: "Inspect the checked passages or supply the relevant section.",
     };
   if (f.evidenceGap === "source_requirements")
     return {
       meaning:
         "The source does not meet the requirements for this research check.",
       next: "For notes and testing materials, use Check citations.",
+    };
+  if (!f.evidence.length && f.support !== "supported")
+    return {
+      meaning:
+        "Proof read source passages, but could not establish support for this claim.",
+      next: "Review the checking details and add a passage that directly addresses the claim.",
     };
   if (f.support === "supported")
     return {

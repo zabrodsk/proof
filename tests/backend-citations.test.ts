@@ -289,3 +289,29 @@ test("separate bibliography lines with non-inverted authors are not merged", asy
   assert.equal(entries[0].parsed.title, "Brave New World");
   assert.equal(entries[1].parsed.title, "Synthetic source.");
 });
+
+test("Word bibliography wraps preserve four works, full author initials and publication year", async () => {
+  const { bibliographyIntake } =
+    await import("../server/backend/references.js");
+  const text = `Works Cited\n\nHao, Liu, and Fabio Tronchetti. “The Act of 2017: A Study?” Space Policy, vol. 47, Feb. 2019, pp. 1–6. doi:10.1016/j.spacepol.2018.02.004.\n\nKrause, Jason. “A Treaty Turns 50.” ABA\nJournal, Apr. 2017, p. 1.\n\nLee, Yong Bum. “Public Space, Private Patents.” Harvard Journal of Law & Technology, vol. 33, no. 1, Fall 2019.\n\nReinhart, Alexander P. “Updating the Liability Regime\nin Outer Space.” William & Mary Law Review, 2020.`;
+  const entries = bibliographyIntake(text)!;
+  assert.equal(entries.length, 4);
+  assert.equal(entries[0].parsed.year, "2019");
+  assert.deepEqual(entries[0].parsed.authorDetails, [
+    { family: "Hao", given: "Liu" },
+    { given: "Fabio", family: "Tronchetti" },
+  ]);
+  assert.deepEqual(entries[3].parsed.authorDetails, [
+    { family: "Reinhart", given: "Alexander P." },
+  ]);
+  assert.equal(
+    entries[3].parsed.title,
+    "Updating the Liability Regime in Outer Space.",
+  );
+  assert.equal(
+    bibliographyIntake(
+      "An essay discusses law.\nWorks Cited\nLee, Yong Bum. Book. 2019.",
+    ),
+    undefined,
+  );
+});

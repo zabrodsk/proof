@@ -9,9 +9,9 @@ export const limits = {
 };
 export const versions = {
   parser: "proof-pages-2",
-  claimSelection: "proof-claims-3",
+  claimSelection: "proof-claims-4",
   prompt: "proof-assessment-2",
-  policy: "proof-policy-2",
+  policy: "proof-policy-3",
   embedding: "Xenova/bge-small-en-v1.5",
 };
 export class HttpError extends Error {
