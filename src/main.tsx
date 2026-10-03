@@ -9,6 +9,8 @@ import "@fontsource/newsreader/400.css";
 import "@fontsource/newsreader/500.css";
 import "@fontsource/newsreader/400-italic.css";
 import Landing from "./Landing";
+import { startAnalytics } from "./analytics";
+void startAnalytics();
 const Workspace = lazy(() => import("./Workspace"));
 const Classroom = lazy(() => import("./Classroom"));
 const IntegrationWorkspace = lazy(() => import("./IntegrationWorkspace"));

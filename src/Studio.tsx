@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { BackendFinding } from "../shared/backend";
 import { findingTone, findingLabel } from "./studio-document";
+import { track } from "./analytics";
 import {
   ArrowLeft,
   ArrowRight,
@@ -472,6 +473,7 @@ export default function Studio({ session }: { session: Session }) {
         // Icon preferences are optional. Document saving has already succeeded.
       }
       setWorks((current) => [work, ...current]);
+      track("document_created", { word_count: work.words });
       setModal(null);
       openWork(work.id);
     });

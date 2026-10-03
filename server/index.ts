@@ -25,6 +25,7 @@ import { compatibilityRouter } from "./backend/compatibility.js";
 import { backendRouter } from "./backend/router.js";
 import { startWorker } from "./backend/queue.js";
 import { publicPages } from "./public-pages.js";
+import { analyticsRouter } from "./analytics.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
 if (hosted) app.set("trust proxy", 1);
@@ -62,6 +63,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "18mb" }));
+app.use(analyticsRouter());
 let integrations: IntegrationService | undefined;
 let oauth: OAuthVerifier | undefined;
 let localWorker: Awaited<ReturnType<typeof startWorker>> | undefined;
