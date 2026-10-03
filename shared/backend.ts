@@ -29,6 +29,7 @@ export const runInput = z
       ])
       .default("cited_first_then_selected_library"),
     selectedSources: z.array(selectionSchema).max(100).default([]),
+    excludedSourceIds: z.array(z.string().uuid()).max(100).optional(),
     referenceImportVersionId: z.string().uuid().optional(),
     externalAccess: z
       .enum(["none", "resolve_selected_references", "research"])
@@ -57,6 +58,21 @@ export const runInput = z
       .optional(),
   })
   .superRefine((v, c) => {
+    if (
+      v.selectedSources.some((source) =>
+        v.excludedSourceIds?.includes(source.assetId),
+      )
+    )
+      c.addIssue({
+        code: "custom",
+        message: "An excluded source cannot also be selected.",
+      });
+    const suppliedGeneration =
+      v.mode === "discover" &&
+      v.citationOutput === "generate" &&
+      v.externalAccess === "none" &&
+      v.sourcePolicy === "user_supplied" &&
+      v.selectedSources.length > 0;
     if (v.mode === "source_check" && v.externalAccess === "research")
       c.addIssue({
         code: "custom",
@@ -64,6 +80,7 @@ export const runInput = z
       });
     if (
       v.mode !== "source_check" &&
+      !suppliedGeneration &&
       (v.externalAccess !== "research" ||
         !["academic", "matched", "public"].includes(v.sourcePolicy))
     )

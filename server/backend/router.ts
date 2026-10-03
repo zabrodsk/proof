@@ -11,6 +11,7 @@ import { carryForward, editRegion } from "./carry-forward.js";
 import { HttpError, limits, notFound } from "./config.js";
 import { formatReference } from "./citations.js";
 import { providerKey } from "./providers.js";
+import { queueDocumentSources } from "./document-sources.js";
 import {
   citationPlan,
   applyCitationPlan,
@@ -109,35 +110,61 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     res.json({ item: result.rows[0] || null });
   });
   r.post("/documents", async (req, res) => {
-    const { title, text } = z
+    const { title, text, localDraftId, retrieveSources } = z
       .object({
         title: z.string().min(1).max(300),
         text: z.string().min(1).max(limits.draftCharacters),
+        localDraftId: z.string().uuid().optional(),
+        retrieveSources: z.boolean().default(false),
       })
       .parse(req.body);
+    if (
+      localDraftId &&
+      (process.env.PROOF_HOSTED === "true" ||
+        process.env.NODE_ENV === "production")
+    )
+      throw new HttpError(
+        400,
+        "Browser draft migration is only available in local development.",
+      );
     const ws = res.locals.workspace,
-      id = randomUUID(),
+      id = localDraftId || randomUUID(),
       version = randomUUID();
-    await db.transaction(async (tx) => {
-      await tx.query(
-        "INSERT INTO documents(id,workspace_id,title,current_version_id) VALUES($1,$2,$3,$4)",
+    const documentVersionId = await db.transaction(async (tx) => {
+      const inserted = await tx.query(
+        "INSERT INTO documents(id,workspace_id,title,current_version_id) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING RETURNING id",
         [id, ws, title, version],
       );
+      if (!inserted.rows.length) {
+        const existing = (
+          await tx.query(
+            "SELECT current_version_id FROM documents WHERE workspace_id=$1 AND id=$2",
+            [ws, id],
+          )
+        ).rows[0];
+        if (!existing)
+          throw new HttpError(409, "The browser draft ID is already in use.");
+        return existing.current_version_id;
+      }
       await tx.query(
         "INSERT INTO document_versions(id,workspace_id,document_id,text) VALUES($1,$2,$3,$4)",
         [version, ws, id, text],
       );
+      await queueDocumentSources(tx, ws, id, text, retrieveSources);
+      return version;
     });
-    res.status(201).json({ id, documentVersionId: version });
+    res.status(201).json({ id, documentVersionId });
   });
   r.post("/documents/:id/versions", async (req, res) => {
     const ws = res.locals.workspace,
       id = uuid(req.params.id),
       version = randomUUID();
-    const { text, expectedVersionId } = z
+    const { text, expectedVersionId, importSources, retrieveSources } = z
       .object({
         text: z.string().min(1).max(limits.draftCharacters),
         expectedVersionId: z.string().uuid(),
+        importSources: z.boolean().default(false),
+        retrieveSources: z.boolean().default(false),
       })
       .parse(req.body);
     const runId = await db.transaction(async (tx) => {
@@ -164,6 +191,8 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
         [ws, id, version],
       );
+      if (importSources)
+        await queueDocumentSources(tx, ws, id, text, retrieveSources);
       const carried = previous
         ? await carryForward(
             tx,

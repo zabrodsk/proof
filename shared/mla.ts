@@ -140,7 +140,9 @@ export function mlaWarnings(source: MlaSource) {
 }
 export function bibliography(text: string) {
   const heading =
-    /^([ \t]*)(works cited|references|bibliography)[ \t]*$/im.exec(text);
+    /^([ \t]*)(?:#{1,6}[ \t]+)?(?:\*\*|__)?(works cited|references|bibliography)(?:\*\*|__)?[ \t]*$/im.exec(
+      text,
+    );
   if (!heading)
     return {
       heading: undefined,

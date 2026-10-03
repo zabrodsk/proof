@@ -81,6 +81,35 @@ export interface StudioWork {
   documentVersionId?: string;
   icon?: WorkIconName;
 }
+
+export async function migrateLocalDrafts(
+  store: Pick<Storage, "getItem" | "setItem">,
+  key: string,
+) {
+  const drafts = JSON.parse(store.getItem(key) || "[]");
+  if (!Array.isArray(drafts)) return;
+  for (const draft of drafts) {
+    if (
+      typeof draft?.id !== "string" ||
+      typeof draft.title !== "string" ||
+      typeof draft.content !== "string" ||
+      draft.documentVersionId
+    )
+      continue;
+    const saved = await api<{ documentVersionId: string }>(
+      "/api/v1/documents",
+      {
+        localDraftId: draft.id,
+        title: draft.title,
+        text: draft.content || " ",
+      },
+    );
+    draft.documentVersionId = saved.documentVersionId;
+    // Retain the original browser text as a backup; mark only confirmed saves.
+    store.setItem(key, JSON.stringify(drafts));
+  }
+}
+
 export function serverWork(row: {
   id: string;
   title: string;

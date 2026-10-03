@@ -1,3 +1,4 @@
+import { openClaims, openReview, showSources } from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { documentCorpus } from "../tests/fixtures/document-corpus.js";
 
@@ -14,14 +15,15 @@ for (const sample of documentCorpus) {
     const doc = await response.json();
     const expectedCount = sample.claimCount;
     await page.goto(`/app/works/${doc.id}`);
-    const preview = page.locator(".ps-claim-preview");
-    await expect(preview.locator("summary").first()).toContainText(
+    await openClaims(page);
+    const preview = page.locator(".ps-claims-page");
+    await expect(preview.locator(".ps-claims-heading")).toContainText(
       `${expectedCount} selected`,
     );
-    const search = page.getByRole("searchbox", { name: "Find a statement" });
+    const search = page.getByRole("searchbox", { name: "Find a claim" });
     await search.fill("The trial included");
-    await expect(preview).toContainText(
-      "Searching does not change your selection.",
+    await expect(preview.locator(".ps-claims-heading")).toContainText(
+      `${expectedCount} selected`,
     );
     await expect(
       preview
@@ -29,9 +31,12 @@ for (const sample of documentCorpus) {
         .filter({ hasText: "The trial included" }),
     ).toHaveCount((sample.text.match(/The trial included/g) || []).length);
     await search.clear();
-    await page
-      .getByRole("checkbox", { name: "Citable source Ready", exact: true })
-      .check();
+    await openReview(page);
+    await showSources(page);
+    await showSources(page);
+    await expect(
+      page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+    ).toBeVisible();
     await page
       .getByRole("checkbox", { name: "Allow AI providers", exact: false })
       .check();
@@ -151,9 +156,11 @@ test("partial citation approval keeps the remaining gap after reopening", async 
     .getByRole("group", { name: "Check type" })
     .getByRole("button", { name: "Generate citations", exact: true })
     .click();
-  await page
-    .getByRole("checkbox", { name: "Citable source Ready", exact: true })
-    .check();
+  await showSources(page);
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+  ).toBeVisible();
   await page
     .getByRole("checkbox", { name: "Allow AI providers", exact: false })
     .check();

@@ -4,6 +4,7 @@ import { asset, ingestAsset } from "./library.js";
 import { importReferences } from "./references.js";
 import { HttpError, notFound } from "./config.js";
 import { remoteFile } from "../remote.js";
+import { importDocumentSources } from "./imported-sources.js";
 
 async function imported(db: Database, ws: string, id: string) {
   const row = (
@@ -49,6 +50,15 @@ export async function processImport(
       [ws, id, text],
     );
     await importReferences(db, ws, id, text, input.externalAccess === true);
+    if (input.automatic && input.documentId)
+      await importDocumentSources(
+        db,
+        blobs,
+        ws,
+        id,
+        input.documentId,
+        input.externalAccess === true,
+      );
     const coverage = extractionId
       ? (
           await db.query(

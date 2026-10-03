@@ -142,10 +142,12 @@ cp .env.example .env
 Set `TYPESAFE_API_KEY` in your local `.env` for Jev judgments. Configure optional provider keys for the workflows you want to use. Then start the app with explicit environment loading:
 
 ```sh
-node --env-file=.env --import tsx server/index.ts
+node --env-file=.env --import tsx server/dev.ts
 ```
 
-Open [localhost:4317/app](http://127.0.0.1:4317/app). Without PostgreSQL, local Studio uses account-scoped browser drafts. Persistent analysis needs the database and worker below.
+Open [localhost:4317/app](http://127.0.0.1:4317/app). `npm run dev` (or `server/dev.ts` with explicit environment loading) starts a persistent embedded PostgreSQL database and the real job worker when `DATABASE_URL` is unset. Local data stays in `.data/database` and source files in `.data/library`. Existing browser drafts migrate into that workspace when it opens; the browser keeps their original text as a backup. No additional database installation is required. Set `PROOF_LOCAL_BACKEND=false` to use browser-only drafts instead.
+
+When `DATABASE_URL` is configured, the app uses that PostgreSQL service and needs the separate worker below. The embedded workspace is restricted to local development.
 
 <details>
 <summary><strong>Run the API, worker, and database with Docker</strong></summary>

@@ -914,6 +914,52 @@ const noResolution = async () => ({
   notices: [] as string[],
 });
 
+test("citation generation from supplied sources never researches unresolved claims", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const saved = await source(ws, "The class had 24 students.");
+  const doc = await draft(ws, "The class had 42 students.");
+  const input = {
+    mode: "discover",
+    citationOutput: "generate",
+    externalAccess: "none",
+    sourcePolicy: "user_supplied",
+    checkScope: "selected_library",
+    claimSpans: [{ start: 0, end: doc.text.length }],
+  };
+  assert.equal(
+    runInput.safeParse({ documentVersionId: doc.versionId, ...input }).success,
+    false,
+  );
+  const run = await engineRun(ws, doc.versionId, [saved.selection], input);
+  let searches = 0;
+  await processRun(db, saved.blobs, ws, run.id, {
+    judge: async (claim, _item, passages) => ({
+      ...claim,
+      method: "Jev",
+      status: "not_addressed",
+      evidence: passages![0],
+      checkedPassages: passages,
+      explanation: "The selected source does not support this claim.",
+    }),
+    research: async () => {
+      searches++;
+      return noResearch();
+    },
+    resolveReferences: noResolution,
+  });
+  assert.equal(searches, 0);
+  const result = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+  ).rows[0].data;
+  assert.equal(result.support, "not_verified");
+  assert.equal(
+    (await db.query("SELECT stage FROM runs WHERE id=$1", [run.id])).rows[0]
+      .stage,
+    "done",
+  );
+});
+
 test("testing materials retain text support without academic eligibility and distinguish irrelevant passages", async () => {
   const { processRun } = await import("../server/backend/engine.js");
   const ws = await workspace(db, randomUUID());

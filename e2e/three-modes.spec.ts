@@ -1,4 +1,10 @@
 import {
+  openClaims,
+  openReview,
+  showSources,
+  showMoreOptions,
+} from "./work-pages";
+import {
   test,
   expect,
   type APIRequestContext,
@@ -103,13 +109,14 @@ test("mode setup preserves the draft and never starts research before claim appr
   });
   await page.goto(`/app/works/${document.id}`);
   await choose(page, "Generate citations");
+  await showMoreOptions(page);
   await expect(
     page.getByRole("combobox", { name: "Citation profile", exact: true }),
   ).toHaveValue("mla9");
   await choose(page, "Fact-check");
   await page
     .getByRole("group", { name: "Search scope" })
-    .getByRole("radio", { name: "Academic only", exact: true })
+    .getByRole("radio", { name: "Academic sources", exact: true })
     .check();
   await expect(
     page.getByRole("textbox", { name: "Document text" }),
@@ -119,13 +126,15 @@ test("mode setup preserves the draft and never starts research before claim appr
     (await (await request.get(`/api/v1/documents/${document.id}/runs`)).json())
       .items,
   ).toHaveLength(0);
-  const preview = page.locator(".ps-claim-preview");
+  await openClaims(page);
+  const preview = page.locator(".ps-claims-page");
   await expect(
     preview.getByRole("checkbox", { name: "Paris is", exact: false }),
   ).toBeChecked();
   await preview
     .getByRole("checkbox", { name: "The moon is", exact: false })
     .uncheck();
+  await openReview(page);
   await permit(page);
   await page.locator(".ps-setup-start").click();
   await expect(
@@ -373,9 +382,12 @@ test("the generated document is reviewed, saved, reopened and downloaded through
   const document = await draft(request, text);
   await page.goto(`/app/works/${document.id}`);
   await choose(page, "Generate citations");
-  await page
-    .getByRole("checkbox", { name: "Citable source Ready", exact: true })
-    .check();
+  await openReview(page);
+  await showSources(page);
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+  ).toBeVisible();
   await permit(page);
   await page.locator(".ps-setup-start").click();
   const proposals = page.getByRole("region", { name: "Citation proposals" });
@@ -422,6 +434,7 @@ test("the generated document is reviewed, saved, reopened and downloaded through
   });
   if (browserName === "chromium") {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("button", { name: "More document options" }).click();
     await page
       .getByRole("button", { name: "Copy document", exact: true })
       .click();
@@ -523,9 +536,10 @@ test("Accept all sends one atomic request and saves every approved correction to
       edits.push(new URL(outbound.url()).pathname);
   });
   await page.goto(`/app/works/${document.id}`);
-  await page
-    .getByRole("checkbox", { name: "Synthetic source Ready", exact: true })
-    .check();
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Synthetic source" }),
+  ).toBeVisible();
   await permit(page);
   await page.locator(".ps-setup-start").click();
   const accept = page.getByRole("button", {
@@ -557,15 +571,19 @@ test("a bibliography-only classroom audit runs without inventing claims and keep
   const text = `Jane Smith.\n\nWorks Cited\n\n${entry}\n\n${entry}`;
   const document = await draft(request, text);
   await page.goto(`/app/works/${document.id}`);
+  await showMoreOptions(page);
   await page
     .getByRole("combobox", { name: "Citation profile", exact: true })
     .selectOption("classroom");
   await page
     .getByRole("combobox", { name: "Assignment checks", exact: true })
     .selectOption("bibliography");
-  await page
-    .getByRole("checkbox", { name: "Citable source Ready", exact: true })
-    .check();
+  await openReview(page);
+  await showSources(page);
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+  ).toBeVisible();
   await permit(page);
   await expect(page.locator(".ps-setup-start")).toBeEnabled();
   await page.locator(".ps-setup-start").click();
@@ -722,6 +740,7 @@ test("audience common-knowledge choice persists and cannot exempt quotes or stud
   const document = await draft(request, text);
   await page.goto(`/app/works/${document.id}`);
   await choose(page, "Generate citations");
+  await openClaims(page);
   const berlin = page.getByRole("combobox", {
     name: "Citation requirement for Berlin is the capital of Germany.",
     exact: true,
@@ -745,9 +764,12 @@ test("audience common-knowledge choice persists and cannot exempt quotes or stud
       }),
     ).toHaveAttribute("disabled", "");
   }
-  await page
-    .getByRole("checkbox", { name: "Citable source Ready", exact: true })
-    .check();
+  await openReview(page);
+  await showSources(page);
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+  ).toBeVisible();
   await permit(page);
   await page.locator(".ps-setup-start").click();
   const proposals = page.getByRole("region", {
@@ -775,9 +797,11 @@ test("audience common-knowledge choice persists and cannot exempt quotes or stud
     page.getByRole("region", { name: "Citation proposals", exact: true }),
   ).toContainText("No citation needed · 1");
   await page.getByRole("button", { name: "New check", exact: true }).click();
+  await openClaims(page);
   await expect(berlin).toHaveValue("common_knowledge");
   await expect(trial).toHaveValue("required");
   await expect(quotation).toHaveValue("required");
+  await openReview(page);
   await expect(
     page.getByRole("textbox", { name: "Document text", exact: true }),
   ).toHaveValue(text);

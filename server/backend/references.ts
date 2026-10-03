@@ -3,6 +3,7 @@ import { dois } from "../parse.js";
 import type { Database, Sql } from "./db.js";
 import { limits, notFound } from "./config.js";
 import { providerFetch } from "./providers.js";
+import { sourceLinks } from "../../shared/document-sources.js";
 export const normalize = (s: string) =>
   s
     .normalize("NFD")
@@ -12,11 +13,17 @@ export const normalize = (s: string) =>
 export function reconstructReferences(text: string) {
   const entries: string[] = [];
   let current = "";
+  let separated = false;
   for (const line of text.split(/[\n\f]/)) {
     const clean = line.trim();
-    if (!clean || /^(works cited|references|bibliography|\d+)$/i.test(clean))
+    if (!clean) {
+      separated = true;
       continue;
+    }
+    if (/^(works cited|references|bibliography|\d+)$/i.test(clean)) continue;
     const start =
+      (/^https?:\/\//i.test(clean) && /^https?:\/\//i.test(current.trim())) ||
+      /^(?:\[\d+\]|\d+\.)\s+/.test(clean) ||
       /^(?:[A-ZÀ-Ž][\p{L}'’-]+,\s+[^\d]|[—-]{3}\.)/u.test(clean) ||
       /^[\p{Lu}][^.]{2,100}\.\s+["“][^"”]+["”]/u.test(clean) ||
       /^[\p{Lu}][^.]{2,100}\.\s+.{3,}\.\s+(?:.*\b)?(?:1[5-9]|20)\d{2}\b/u.test(
@@ -27,10 +34,16 @@ export function reconstructReferences(text: string) {
       /^[^,]+,\s*(?:vol\.|no\.|pp?\.|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d)/i.test(
         clean,
       );
-    if (start && current && !insideQuotedTitle && !publicationContinuation) {
+    if (
+      (start || separated) &&
+      current &&
+      !insideQuotedTitle &&
+      !publicationContinuation
+    ) {
       entries.push(current);
       current = "";
     }
+    separated = false;
     current += (current ? "\n" : "") + line;
   }
   if (current) entries.push(current);
@@ -40,7 +53,10 @@ export function reconstructReferences(text: string) {
   }));
 }
 export function parseReference(original: string) {
-  const text = original.replace(/\s+/g, " ").trim();
+  const text = original
+    .replace(/^\s*(?:\[\d+\]|\d+\.)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const quote = /["“]([^"”]+)["”]/.exec(text);
   // A period in an author's initial is not the end of the author field.
   const author = quote
@@ -49,7 +65,10 @@ export function parseReference(original: string) {
         .replace(/(?<!\b[A-Z])\.\s*$/u, "")
         .trim()
     : text.split(".")[0]?.trim() || "";
-  const title = quote?.[1] || text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
+  const title =
+    quote?.[1] ||
+    text.match(/\((?:1[5-9]|20)\d{2}[a-z]?\)\.\s+(.+?)\.\s/)?.[1] ||
+    text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
   const authors = author
     ? author.split(/,?\s+and\s+/).map((s) => s.trim().replace(/,$/, ""))
     : [];
@@ -67,9 +86,11 @@ export function parseReference(original: string) {
   const tail = quote
     ? text.slice(quote.index + quote[0].length).replace(/^\.?\s*/, "")
     : "";
-  const url = text
-    .match(/(?:https?:\/\/|(?:[\w-]+\.)+(?:com|org|edu)\/)[^\s]+/)?.[0]
-    ?.replace(/[.,;]+$/, "");
+  const url =
+    sourceLinks(text)[0] ||
+    text
+      .match(/(?:https?:\/\/|(?:[\w-]+\.)+(?:com|org|edu)\/)[^\s]+/)?.[0]
+      ?.replace(/[.,;]+$/, "");
   return {
     title,
     authors,

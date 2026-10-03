@@ -283,7 +283,7 @@ test("automatic review checks the essay body, records skipped header spans, and 
   assert.equal(run.coverage.totalClaims, 2);
   assert.equal(run.coverage.completedClaims, 2);
   assert.equal(run.coverage.skippedSpans.length, 4);
-  assert.equal(run.config.claimSelection, "proof-claims-4");
+  assert.equal(run.config.claimSelection, "proof-claims-5");
   const findings = (
     await db.query("SELECT data FROM findings WHERE run_id=$1", [f.run.id])
   ).rows;
@@ -885,8 +885,12 @@ test("every assessment adapter needs an exact evidence passage before suppressin
 
 for (const mode of ["source_check", "discover"] as const)
   test(`${mode} citation workflow keeps uncited common knowledge without assessing accuracy or making provider calls`, async () => {
-    const text = "Paris is the capital of France.";
-    const f = await fixture(text, [text], true);
+    const text = "A triangle has three sides.";
+    const f = await fixture(
+      text,
+      ["A triangle has three sides. A square has four sides."],
+      true,
+    );
     const run =
       mode === "source_check"
         ? f.run
@@ -989,8 +993,12 @@ test("common-knowledge exemptions do not override an explicit bibliography resol
 });
 for (const mode of ["fact_check", "discover"] as const)
   test(`${mode} general research still checks the accuracy of selected common facts`, async () => {
-    const text = "Paris is the capital of France.";
-    const f = await fixture(text, [text], true);
+    const text = "A triangle has three sides.";
+    const f = await fixture(
+      text,
+      ["A triangle has three sides. A square has four sides."],
+      true,
+    );
     const run = await createRun(
       db,
       f.ws,

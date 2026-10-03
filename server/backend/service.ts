@@ -72,6 +72,7 @@ export async function createRun(
         )
       ).rows;
       for (const ref of references.filter((r) => r.asset_id)) {
+        if (input.excludedSourceIds?.includes(ref.asset_id)) continue;
         if (input.selectedSources.some((s) => s.assetId === ref.asset_id))
           continue;
         const ext = await tx.query(

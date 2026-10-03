@@ -1,3 +1,4 @@
+import { openClaims, openReview, showSources } from "./work-pages";
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 async function draft(request: APIRequestContext, text: string) {
@@ -13,9 +14,11 @@ async function consent(page: any) {
     .check();
 }
 async function selectSource(page: any) {
-  await page
-    .getByRole("checkbox", { name: "Synthetic source Ready", exact: true })
-    .check();
+  await showSources(page);
+  await showSources(page);
+  await expect(
+    page.locator(".ps-setup-source").filter({ hasText: "Synthetic source" }),
+  ).toBeVisible();
 }
 test("claim preview controls the actual checked spans and skips a punctuated name", async ({
   page,
@@ -25,13 +28,15 @@ test("claim preview controls the actual checked spans and skips a punctuated nam
     "Jane Smith.\nI prefer this ending.\nThe trial included 218 adults.\nParis is the capital of France.";
   const doc = await draft(request, text);
   await page.goto(`/app/works/${doc.id}`);
-  const preview = page.locator(".ps-claim-preview");
+  await openClaims(page);
+  const preview = page.locator(".ps-claims-page");
   await expect(
     preview.getByRole("checkbox", { name: "The trial included", exact: false }),
   ).toBeChecked();
   await preview
     .getByRole("checkbox", { name: "Paris is", exact: false })
     .uncheck();
+  await openReview(page);
   await selectSource(page);
   await consent(page);
   await page.locator(".ps-setup-start").click();

@@ -122,3 +122,61 @@ test("apostrophes inside quotations preserve later sentence attribution", () => 
     );
   }
 });
+
+test("stable general facts recognize paraphrases, definitions and familiar quantities", () => {
+  for (const text of [
+    "The capital of France is Paris.",
+    "Paris is France's capital city.",
+    "A week consists of seven days.",
+    "There are 12 months in a year.",
+    "A triangle has three sides.",
+    "Humans are mammals.",
+    "The Earth revolves around the Sun.",
+    "World War II came to an end in 1945.",
+  ])
+    assert.equal(citationRequirement(text), "common_knowledge", text);
+});
+
+test("broad trends, causal promises and vague quantifiers cannot be exempted as general facts", () => {
+  for (const text of [
+    "Artificial intelligence is becoming increasingly common in education.",
+    "Unrestricted AI use directly improves academic performance.",
+    "Students who use ChatGPT regularly will inevitably lose critical-thinking ability.",
+    "Most students learn better with AI.",
+    "Exercise prevents depression.",
+    "Social media leads to anxiety.",
+    "The study found that people can become overly trusting of automated recommendations.",
+    "Studies of automation have found that people can become overly trusting of automated recommendations.",
+    "The report on Paris says that it is the capital of France.",
+    "According to the report, Paris is the capital of France.",
+  ])
+    assert.equal(
+      citationRequirement(text, "", "common_knowledge"),
+      "required",
+      text,
+    );
+});
+
+test("a reference to earlier research inherits its evidence requirement", () => {
+  const text = "This benefit applies across subjects.";
+  const context =
+    "The study compared grades across schools. This benefit applies across subjects.";
+  assert.equal(
+    citationRequirement(text, context, "common_knowledge"),
+    "required",
+  );
+  assert.equal(
+    citationRequirement("The Earth is a planet.", context),
+    "common_knowledge",
+  );
+});
+
+test("extra assertions and near matches never inherit a general-fact exemption", () => {
+  for (const text of [
+    "The capital of France is Paris, which is the safest city in Europe.",
+    "A triangle has three sides and always improves spatial reasoning.",
+    "A week consists of eight days.",
+    "Humans are mammals because a survey found this in 2024.",
+  ])
+    assert.equal(citationRequirement(text), "required", text);
+});

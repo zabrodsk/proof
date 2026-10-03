@@ -399,7 +399,10 @@ export async function processRun(
             blobs,
             ws,
             id,
-            run.config.references || [],
+            (run.config.references || []).filter(
+              (reference: any) =>
+                !input.excludedSourceIds?.includes(reference.asset_id),
+            ),
             run.config.limits.candidates,
           );
           for (const s of resolved.selections)
@@ -657,6 +660,7 @@ export async function processRun(
             );
           if (
             input.mode !== "source_check" &&
+            input.externalAccess === "research" &&
             input.allowProviderProcessing &&
             !suppliedSufficient &&
             externalPermitted &&

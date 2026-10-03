@@ -23,6 +23,7 @@ import { integrationApi, integrationErrors } from "./integrations/http.js";
 import { storage } from "./backend/storage.js";
 import { compatibilityRouter } from "./backend/compatibility.js";
 import { backendRouter } from "./backend/router.js";
+import { startWorker } from "./backend/queue.js";
 import { publicPages } from "./public-pages.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
@@ -63,11 +64,21 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "18mb" }));
 let integrations: IntegrationService | undefined;
 let oauth: OAuthVerifier | undefined;
+let localWorker: Awaited<ReturnType<typeof startWorker>> | undefined;
+const embedded =
+  !process.env.DATABASE_URL && process.env.PROOF_LOCAL_BACKEND === "true";
+if (embedded && (hosted || process.env.NODE_ENV === "production"))
+  throw new Error(
+    "The embedded workspace is only available in local development.",
+  );
 if (
   process.env.DATABASE_URL ||
+  embedded ||
   process.env.PROOF_INTEGRATIONS_ENABLED === "true"
 ) {
-  const db = database();
+  const db = embedded
+    ? await (await import("./backend/local.js")).localDatabase()
+    : database();
   await migrate(db);
   integrations = new IntegrationService(
     new IntegrationStore(db, storage()),
@@ -76,6 +87,12 @@ if (
       "",
     ),
   );
+  if (embedded) {
+    localWorker = await startWorker(db, integrations.store.blobs, {
+      backend: "pglite",
+    });
+    console.log("Proof local workspace and durable worker are ready.");
+  }
   if (
     process.env.PROOF_INTEGRATIONS_ENABLED === "true" &&
     process.env.PROOF_MCP_ENABLED === "true"
@@ -275,7 +292,7 @@ app.use(
     });
   },
 );
-app.listen(
+const server = app.listen(
   port,
   process.env.PROOF_BIND_HOST || (hosted ? "0.0.0.0" : "127.0.0.1"),
   (error?: Error) => {
@@ -287,3 +304,21 @@ app.listen(
     console.log(`Proof is ready at http://127.0.0.1:${port}`);
   },
 );
+if (localWorker && integrations) {
+  let stopping = false;
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.once(signal, async () => {
+      if (stopping) return;
+      stopping = true;
+      server.close();
+      server.closeAllConnections();
+      try {
+        await localWorker!.stop();
+        await integrations!.store.db.close();
+        process.exit(0);
+      } catch {
+        console.error("Local workspace shutdown failed.");
+        process.exit(1);
+      }
+    });
+}

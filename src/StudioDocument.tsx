@@ -20,6 +20,7 @@ import {
 } from "./studio-document";
 import { citationLabel, runStageLabel } from "./studio-status";
 import "./studio-review.css";
+import { createPortal } from "react-dom";
 
 export type CheckMode = RunInput["mode"];
 
@@ -28,21 +29,20 @@ export const checkModes = [
     value: "source_check",
     label: "Check citations",
     description:
-      "Check evidence, in-text citations, and references against your sources.",
+      "Check whether your cited sources support your claims and whether your citations match.",
     icon: BookOpen,
   },
   {
     value: "discover",
     label: "Generate citations",
     description:
-      "Find evidence and review citations before adding them to your draft.",
+      "Find sources for claims that need citations. Review suggestions before adding them.",
     icon: Search,
   },
   {
     value: "fact_check",
     label: "Fact-check",
-    description:
-      "Check your selected claims using the search scope you choose.",
+    description: "Check your claims against web or academic sources.",
     icon: ShieldCheck,
   },
 ] as const;
@@ -78,11 +78,14 @@ export default function StudioDocument({
   citationReview,
   citationFocus,
   documentActions,
+  documentOptionsTarget,
   onEditorReady,
   onSave,
   onAccept,
   onAcceptAll,
   onCancel,
+  hidden = false,
+  claimFocus,
 }: {
   content: string;
   findings: BackendFinding[];
@@ -120,11 +123,14 @@ export default function StudioDocument({
   citationReview?: ReactNode;
   citationFocus?: { start: number; end: number; token: number };
   documentActions?: ReactNode;
+  documentOptionsTarget: HTMLElement | null;
   onEditorReady?: (ready: boolean) => void;
   onSave: (text: string) => Promise<void>;
   onAccept: (finding: BackendFinding) => Promise<void>;
   onAcceptAll: (findings: BackendFinding[]) => Promise<void>;
   onCancel: () => void;
+  hidden?: boolean;
+  claimFocus?: { start: number; end: number; token: number };
 }) {
   const [draft, setDraft] = useState(content);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -165,6 +171,23 @@ export default function StudioDocument({
       behavior: reducedMotion() ? "instant" : "smooth",
     });
   }, [citationFocus, stale]);
+
+  useEffect(() => {
+    if (
+      hidden ||
+      !claimFocus ||
+      !input.current ||
+      claimFocus.start < 0 ||
+      claimFocus.end > latest.current.length
+    )
+      return;
+    input.current.focus({ preventScroll: true });
+    input.current.setSelectionRange(claimFocus.start, claimFocus.end);
+    input.current.scrollIntoView({
+      block: "center",
+      behavior: reducedMotion() ? "instant" : "smooth",
+    });
+  }, [claimFocus, hidden]);
 
   const dirty = draft !== saved.current;
   const readOnly = active || locked;
@@ -298,7 +321,7 @@ export default function StudioDocument({
   const showSetup = !run || setupOpen;
 
   return (
-    <div className="ps-workspace">
+    <div className="ps-workspace" hidden={hidden}>
       <section className="ps-draft" aria-label="Your text">
         <div className="ps-draft-bar">
           <span
@@ -361,7 +384,8 @@ export default function StudioDocument({
             />
           </div>
         </div>
-        {documentActions}
+        {documentOptionsTarget &&
+          createPortal(documentActions, documentOptionsTarget)}
       </section>
 
       <aside className="ps-review" aria-label="Proposed changes">
@@ -387,6 +411,9 @@ export default function StudioDocument({
 
         {showSetup ? (
           <div className="ps-review-setup">
+            <p className="ps-setup-copy ps-setup-description">
+              {modeInfo.description}
+            </p>
             {setup}
             {run && (
               <button

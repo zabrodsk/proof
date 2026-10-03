@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BookOpen,
   Check,
+  ChevronDown,
   CircleAlert,
   CircleHelp,
   Clipboard,
@@ -13,25 +14,18 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import {
-  selectClaims,
-  claimKind,
-  evidenceRoute,
-  routeLabels,
-  claimContext,
-  citationRequirementForSpan,
-  commonKnowledgeReason,
-} from "../shared/claims";
+import { selectClaims } from "../shared/claims";
 import {
   approvedClaimSpans,
+  claimReviewRows,
   currentCitationOverrides,
-  setCitationOverride,
   type CitationOverrides,
   type CitationRequirement,
 } from "./studio-claims";
 import { documentDownloadName, sourceCheckScope } from "./studio-document";
 import "./studio-analysis.css";
 import StudioDocument, { type CheckMode } from "./StudioDocument";
+import StudioClaims from "./StudioClaims";
 import type { BackendFinding, RunInput } from "../shared/backend";
 import type { CitationPlan } from "../shared/citation-plan";
 import StudioCitationPlan from "./StudioCitationPlan";
@@ -42,7 +36,13 @@ type Source = {
   contentKind?: "bibliography" | "source";
   referenceCount?: number;
   id: string;
-  metadata: { title: string; pagination?: string; originalFormat?: string };
+  metadata: {
+    title: string;
+    pagination?: string;
+    originalFormat?: string;
+    importedDocumentIds?: string[];
+    importNotice?: string;
+  };
   status: string;
   access: string;
   eligibility: string;
@@ -83,21 +83,54 @@ const importPending = (status: string) =>
 
 export default function StudioAnalysis({
   work,
+  sourceSelectionKey,
   section,
   onUpdated,
   onSave,
   onOpenSources,
+  onOpenReview,
+  onOpenClaims,
+  documentOptionsTarget,
 }: {
   work: StudioWork;
+  sourceSelectionKey: string;
   section: string;
   onUpdated: () => Promise<void>;
   onSave: (text: string) => Promise<{ runId?: string } | undefined>;
   onOpenSources: () => void;
+  onOpenReview: () => void;
+  onOpenClaims: () => void;
+  documentOptionsTarget: HTMLElement | null;
 }) {
   const [sourceSearch, setSourceSearch] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [excludedSourceIds, setExcludedSourceIds] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(sourceSelectionKey) || "[]",
+      );
+      return Array.isArray(saved)
+        ? saved.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const selected = sources
+    .filter((source) => !excludedSourceIds.includes(source.id))
+    .map((source) => source.id);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        sourceSelectionKey,
+        JSON.stringify(excludedSourceIds),
+      );
+    } catch {
+      // Source choices still work for this session if browser storage is unavailable.
+    }
+  }, [sourceSelectionKey, excludedSourceIds]);
   const [mode, setMode] = useState<CheckMode>("source_check");
   const [citationProfile, setCitationProfile] = useState<"mla9" | "classroom">(
     "mla9",
@@ -128,6 +161,11 @@ export default function StudioAnalysis({
   const [citations, setCitations] = useState<Citation[]>([]);
   const [history, setHistory] = useState<Run[]>([]);
   const [editorReady, setEditorReady] = useState(true);
+  const [claimFocus, setClaimFocus] = useState<{
+    start: number;
+    end: number;
+    token: number;
+  }>();
   const [excludedClaims, setExcludedClaims] = useState<Set<number>>(new Set());
   const [includedSkipped, setIncludedSkipped] = useState<Set<number>>(
     new Set(),
@@ -160,77 +198,12 @@ export default function StudioAnalysis({
     ...preview.skipped.filter((c) => includedSkipped.has(c.start)),
   ].sort((a, b) => a.start - b.start);
   useEffect(() => {
+    setClaimFocus(undefined);
     setClaimSearch("");
     setExcludedClaims(new Set());
     setIncludedSkipped(new Set());
     setCitationOverrides({ content: work.content, choices: new Map() });
   }, [work.content]);
-  const visibleClaims = preview.candidates.filter((c) =>
-    c.text.toLowerCase().includes(claimSearch.trim().toLowerCase()),
-  );
-  const citationExemptCount = approvedClaims.filter(
-    (c) =>
-      citationRequirementForSpan(
-        work.content,
-        c.start,
-        c.end,
-        currentOverrides.get(c.start),
-      ) === "common_knowledge",
-  ).length;
-  function citationChoice(claim: { start: number; end: number }) {
-    const text = work.content.slice(claim.start, claim.end);
-    const requirement = citationRequirementForSpan(
-      work.content,
-      claim.start,
-      claim.end,
-      currentOverrides.get(claim.start),
-    );
-    const protectedClaim =
-      citationRequirementForSpan(
-        work.content,
-        claim.start,
-        claim.end,
-        "common_knowledge",
-      ) === "required";
-    return (
-      <label className="ps-claim-citation-choice">
-        <span>Citation requirement</span>
-        <select
-          aria-label={`Citation requirement for ${text}`}
-          value={requirement}
-          disabled={!!busy || active}
-          onChange={(event) =>
-            setCitationOverrides((current) =>
-              setCitationOverride(
-                current,
-                work.content,
-                claim.start,
-                event.target.value as CitationRequirement,
-              ),
-            )
-          }
-        >
-          <option value="required">Citation needed</option>
-          <option value="common_knowledge" disabled={protectedClaim}>
-            Common knowledge, no citation
-          </option>
-        </select>
-        {requirement === "common_knowledge" && (
-          <small>
-            Common knowledge · No citation needed.{" "}
-            {commonKnowledgeReason(text) ||
-              "You marked this as common knowledge."}
-          </small>
-        )}
-        {protectedClaim && (
-          <small>
-            Quotations, evidence-based interpretations and study-specific claims
-            need a citation.
-          </small>
-        )}
-      </label>
-    );
-  }
   const modeRef = useRef(mode);
   const initializedRun = useRef(false);
   const mutationKeys = useRef(new Map<string, string>());
@@ -289,12 +262,6 @@ export default function StudioAnalysis({
                 item.document_version_id === work.documentVersionId,
             ) || runs.items[0];
           if (recent) {
-            setSelected([
-              ...new Set([
-                ...(recent.input?.selectedSources || []).map((s) => s.assetId),
-                ...(recent.config?.bibliographyAssets || []),
-              ]),
-            ]);
             setResolveReferences(
               recent.input?.externalAccess !== "none" ||
                 !recent.config?.bibliographyAssets,
@@ -314,6 +281,28 @@ export default function StudioAnalysis({
                 : "",
             );
             if (recent.document_version_id === work.documentVersionId) {
+              if (recent.input?.claimSpans) {
+                const selectedSpans = recent.input.claimSpans;
+                const wasSelected = (claim: { start: number; end: number }) =>
+                  selectedSpans.some(
+                    (span) =>
+                      span.start === claim.start && span.end === claim.end,
+                  );
+                setExcludedClaims(
+                  new Set(
+                    preview.candidates
+                      .filter((claim) => !wasSelected(claim))
+                      .map((claim) => claim.start),
+                  ),
+                );
+                setIncludedSkipped(
+                  new Set(
+                    preview.skipped
+                      .filter(wasSelected)
+                      .map((claim) => claim.start),
+                  ),
+                );
+              }
               const choices = new Map<number, CitationRequirement>();
               for (const span of recent.input?.claimSpans || []) {
                 if (span.citationRequirement !== undefined)
@@ -433,13 +422,18 @@ export default function StudioAnalysis({
     if (!work.documentVersionId) return;
     let disposed = false;
     void api<{
-      item?: { id: string; status: string; input: { text?: string } };
+      item?: {
+        id: string;
+        status: string;
+        input: { text?: string; externalAccess?: boolean };
+      };
     }>(`/api/v1/documents/${work.id}/bibliography`)
       .then((result) => {
         if (disposed || !result.item) return;
         setBibliography(result.item.input.text || "");
         setReferenceId(result.item.id);
         setImportStatus(result.item.status);
+        setResolveReferences(result.item.input.externalAccess === true);
       })
       .catch((e) => {
         if (!disposed) setError(e.message);
@@ -447,7 +441,7 @@ export default function StudioAnalysis({
     return () => {
       disposed = true;
     };
-  }, [work.id]);
+  }, [work.id, work.documentVersionId]);
   useEffect(() => {
     if (!referenceId) return;
     let disposed = false;
@@ -591,7 +585,7 @@ export default function StudioAnalysis({
       });
       if (!response.ok) throw Error("Source upload failed. Please retry.");
       await api(`/api/v1/uploads/${intent.id}/complete`, {});
-      setSelected((ids) => [...new Set([...ids, intent.id])]);
+      setExcludedSourceIds((ids) => ids.filter((id) => id !== intent.id));
       await loadSources();
     }).catch(() => {});
   }
@@ -649,15 +643,133 @@ export default function StudioAnalysis({
       !citationPlan ||
       citationPlan.status !== "applied" ||
       citationPlan.resultVersionId === work.documentVersionId;
-    const canStart =
-      persistent &&
-      !busy &&
-      !active &&
-      permission &&
-      editorReady &&
-      (mode === "source_check" || approvedClaims.length > 0) &&
-      approvedClaims.length <= 100 &&
-      (mode !== "source_check" || bibliographyReady || !!selectedReady.length);
+    const blockedReason = !persistent
+      ? "The workspace service is unavailable. Your text is saved in this browser."
+      : busy
+        ? `${busy}…`
+        : active
+          ? "A check is already running."
+          : !editorReady
+            ? "Save your changes before starting a check."
+            : selectedReady.length > 100
+              ? "Use at most 100 sources. Open Edit used sources to reduce the selection."
+              : approvedClaims.length > 100
+                ? "Select at most 100 claims. Review the rest in another check."
+                : mode !== "source_check" && !approvedClaims.length
+                  ? "Select at least one claim on the Claims page."
+                  : mode === "source_check" &&
+                      !bibliographyReady &&
+                      !selectedReady.length
+                    ? sources.some((source) => !ready.includes(source))
+                      ? "Sources are still processing or unavailable. Select a ready source or add references."
+                      : "Upload and select a source, or add references to continue."
+                    : !permission
+                      ? "Allow AI processing to start this check."
+                      : undefined;
+    const canStart = !blockedReason;
+    const sourceInputs = (
+      <>
+        <div className="ps-setup-head">
+          <button
+            className="ps-setup-toggle"
+            type="button"
+            aria-expanded={sourcesExpanded}
+            aria-controls="ps-setup-sources"
+            onClick={() => setSourcesExpanded((expanded) => !expanded)}
+          >
+            <strong>Your sources</strong>
+            <span>{selectedReady.length} in use</span>
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={sourcesExpanded ? "is-expanded" : ""}
+            />
+          </button>
+          <button className="ps-review-link" onClick={onOpenSources}>
+            Edit used sources
+          </button>
+        </div>
+        <div id="ps-setup-sources" hidden={!sourcesExpanded}>
+          {selected.length ? (
+            <ul className="ps-setup-sources">
+              {sources
+                .filter((source) => selected.includes(source.id))
+                .map((source) => {
+                  const usable = ready.some((s) => s.id === source.id);
+                  return (
+                    <li
+                      key={`${source.id}:${source.extraction_id || "pending"}`}
+                      className={`ps-setup-source ${usable ? "" : "is-waiting"}`}
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                      <span>
+                        <strong>{source.metadata.title}</strong>
+                        <small>
+                          {source.contentKind === "bibliography"
+                            ? `${source.referenceCount} references found. Proof will match the cited works; this list is not evidence.`
+                            : usable
+                              ? source.extraction_status === "partial"
+                                ? "Some pages could not be read"
+                                : source.access === "abstract"
+                                  ? "Abstract only"
+                                  : "Ready"
+                              : source.status === "unavailable"
+                                ? "Source text unavailable — add the source file"
+                                : "Reading the text…"}
+                        </small>
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : (
+            <p className="ps-setup-copy">
+              No sources in use. Add or include a source on the Sources page.
+            </p>
+          )}
+        </div>
+        <label className={`ps-setup-upload ${busy ? "is-disabled" : ""}`}>
+          <Upload size={16} />
+          <span>
+            Upload sources<small>PDF, Word, text, or Markdown</small>
+          </span>
+          {uploadInput}
+        </label>
+        <details className="ps-setup-options">
+          <summary>Bibliography (optional)</summary>
+          <p className="ps-setup-copy">
+            References identify cited works. Source text lets Proof check the
+            evidence behind your claims.
+          </p>
+          <p className="ps-setup-row">
+            <BookOpen size={15} />
+            <span>
+              {bibliographyReady
+                ? `Bibliography included · ${citations.length} ${citations.length === 1 ? "reference" : "references"}`
+                : importing
+                  ? "Formatting your bibliography…"
+                  : "Bibliography"}
+            </span>
+            <button className="ps-review-link" onClick={onOpenSources}>
+              {bibliographyReady ? "Manage" : "Add references"}
+            </button>
+          </p>
+        </details>
+        {mode === "source_check" && hasBibliography && (
+          <label className="ps-setup-consent">
+            <input
+              type="checkbox"
+              checked={resolveReferences}
+              onChange={(event) => setResolveReferences(event.target.checked)}
+            />
+            <span>
+              Allow Proof to retrieve the works in this bibliography. It will
+              not search for unrelated sources.
+            </span>
+          </label>
+        )}
+      </>
+    );
     const setup = !persistent ? (
       <p className="ps-setup-copy">
         This text is saved in this browser. Checks need the workspace service,
@@ -665,56 +777,14 @@ export default function StudioAnalysis({
       </p>
     ) : (
       <div className="ps-setup">
-        <label className="ps-setup-profile">
-          <span>Citation profile</span>
-          <select
-            aria-label="Citation profile"
-            value={citationProfile}
-            disabled={!!busy || active}
-            onChange={(event) =>
-              setCitationProfile(event.target.value as "mla9" | "classroom")
-            }
-          >
-            <option value="mla9">Standard MLA 9</option>
-            <option value="classroom" disabled={mode !== "source_check"}>
-              Classroom audit
-            </option>
-          </select>
-        </label>
-        {citationProfile === "classroom" && (
-          <>
-            <label className="ps-setup-profile">
-              <span>Assignment checks</span>
-              <select
-                aria-label="Assignment checks"
-                value={assignmentProfile}
-                disabled={!!busy || active}
-                onChange={(event) =>
-                  setAssignmentProfile(
-                    event.target.value as "" | "draft" | "bibliography",
-                  )
-                }
-              >
-                <option value="">Formatting only</option>
-                <option value="draft">600-word draft</option>
-                <option value="bibliography">Four-source bibliography</option>
-              </select>
-            </label>
-            <p className="ps-setup-copy">
-              Check the class citation rules against your own draft. Assignment
-              history and requirements for writing in the class document still
-              need your review.
-            </p>
-          </>
-        )}
         {mode !== "source_check" && (
           <fieldset className="ps-setup-scope" disabled={!!busy || active}>
             <legend>Search scope</legend>
             <div>
               {(
                 [
-                  ["public", "All sources"],
-                  ["academic", "Academic only"],
+                  ["public", "Web and academic sources"],
+                  ["academic", "Academic sources"],
                 ] as const
               ).map(([value, label]) => (
                 <label key={value}>
@@ -744,228 +814,82 @@ export default function StudioAnalysis({
             </p>
           </fieldset>
         )}
-        {
-          <>
-            {sources.length > 0 && (
-              <div className="ps-setup-head">
-                <strong>Your sources</strong>
-                <span>{selectedReady.length} selected</span>
-              </div>
-            )}
-            {sources.length ? (
-              <div className="ps-setup-sources">
-                {sources.map((source) => {
-                  const usable = ready.some((s) => s.id === source.id);
-                  return (
-                    <label
-                      key={`${source.id}:${source.extraction_id || "pending"}`}
-                      className={`ps-setup-source ${usable ? "" : "is-waiting"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(source.id)}
-                        disabled={!usable}
-                        onChange={(event) =>
-                          setSelected((current) =>
-                            event.target.checked
-                              ? [...current, source.id]
-                              : current.filter((id) => id !== source.id),
-                          )
-                        }
-                      />
-                      <span>
-                        <strong>{source.metadata.title}</strong>
-                        <small>
-                          {source.contentKind === "bibliography"
-                            ? `${source.referenceCount} references found. Proof will match the cited works; this list is not evidence.`
-                            : usable
-                              ? source.extraction_status === "partial"
-                                ? "Some pages could not be read"
-                                : "Ready"
-                              : "Reading the text…"}
-                        </small>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="ps-setup-copy">
-                {mode === "source_check"
-                  ? "Add the sources cited in your draft."
-                  : "You can add sources you already have before searching."}
-              </p>
-            )}
-            <label className={`ps-setup-upload ${busy ? "is-disabled" : ""}`}>
-              <Upload size={16} />
-              <span>
-                Upload sources<small>PDF, Word, text, or Markdown</small>
-              </span>
-              {uploadInput}
-            </label>
-            <p className="ps-setup-row">
-              <BookOpen size={15} />
-              <span>
-                {bibliographyReady
-                  ? `Bibliography included · ${citations.length} ${citations.length === 1 ? "reference" : "references"}`
-                  : importing
-                    ? "Formatting your bibliography…"
-                    : "Bibliography"}
-              </span>
-              <button className="ps-review-link" onClick={onOpenSources}>
-                {bibliographyReady ? "Manage" : "Add references"}
-              </button>
-            </p>
-          </>
-        }
-        {mode !== "source_check" && (
-          <p className="ps-setup-copy">
-            Proof checks selected sources first, then researches evidence gaps.
-            Literary and personal claims need relevant supplied text.
-            {mode === "discover" &&
-              " Review each proposed citation before adding it. Claims without verified support stay uncited."}
-          </p>
-        )}
-        {mode === "source_check" && hasBibliography && (
-          <label className="ps-setup-consent">
-            <input
-              type="checkbox"
-              checked={resolveReferences}
-              onChange={(event) => setResolveReferences(event.target.checked)}
-            />
-            <span>
-              Allow Proof to retrieve the works in this bibliography. It will
-              not search for unrelated sources.
-            </span>
-          </label>
-        )}
-        <details className="ps-claim-preview" open>
-          <summary>Review claims · {approvedClaims.length} selected</summary>
-          <p className="ps-setup-copy">
-            Select the statements you want checked. Uncertain statements are
-            included. Names, headings and instructions appear under skipped
-            text. Common knowledge needs no citation; Fact-check still checks
-            its accuracy.
-          </p>
-          {mode === "source_check" && approvedClaims.length === 0 && (
+        {mode === "source_check" ? (
+          <div className="ps-setup-inputs">
             <p className="ps-setup-copy">
-              No claims selected. Your citations and bibliography will still be
-              audited.
+              Upload source documents so Proof can compare them with your draft.
             </p>
-          )}
-          <div className="ps-claim-tools">
-            <p className="ps-claim-counts" role="status">
-              {approvedClaims.length - citationExemptCount} need citations ·{" "}
-              {citationExemptCount} common knowledge
-            </p>
-            {preview.candidates.length > 4 && (
-              <label className="ps-claim-search">
-                <span>Find a statement</span>
-                <input
-                  type="search"
-                  aria-label="Find a statement"
-                  value={claimSearch}
-                  onChange={(event) => setClaimSearch(event.target.value)}
-                  placeholder="Search your claims"
-                />
-              </label>
-            )}
-            {claimSearch && (
-              <p className="ps-setup-copy">
-                Showing {visibleClaims.length} of {preview.candidates.length}{" "}
-                statements. Searching does not change your selection.
-              </p>
-            )}
+            {sourceInputs}
           </div>
-          {visibleClaims.map((claim) => (
-            <div className="ps-claim-preview-row" key={claim.start}>
-              <label className="ps-claim-option" key={claim.start}>
-                <input
-                  type="checkbox"
-                  checked={!excludedClaims.has(claim.start)}
+        ) : (
+          <details className="ps-setup-options">
+            <summary>My sources and bibliography (optional)</summary>
+            <p className="ps-setup-copy">
+              Proof checks selected sources first, then researches evidence
+              gaps. Literary and personal claims need relevant supplied text.
+            </p>
+            {sourceInputs}
+          </details>
+        )}
+        <details className="ps-setup-options">
+          <summary>More options</summary>
+          <label className="ps-setup-profile">
+            <span>Citation profile</span>
+            <select
+              aria-label="Citation profile"
+              value={citationProfile}
+              disabled={!!busy || active}
+              onChange={(event) =>
+                setCitationProfile(event.target.value as "mla9" | "classroom")
+              }
+            >
+              <option value="mla9">Standard MLA 9</option>
+              <option value="classroom" disabled={mode !== "source_check"}>
+                Classroom audit
+              </option>
+            </select>
+          </label>
+          {citationProfile === "classroom" && (
+            <>
+              <label className="ps-setup-profile">
+                <span>Assignment checks</span>
+                <select
+                  aria-label="Assignment checks"
+                  value={assignmentProfile}
                   disabled={!!busy || active}
                   onChange={(event) =>
-                    setExcludedClaims((current) => {
-                      const next = new Set(current);
-                      if (event.target.checked) next.delete(claim.start);
-                      else next.add(claim.start);
-                      return next;
-                    })
+                    setAssignmentProfile(
+                      event.target.value as "" | "draft" | "bibliography",
+                    )
                   }
-                />
-                <span>
-                  {claim.text}
-                  <small>
-                    {
-                      {
-                        factual: "Factual statement",
-                        interpretive: "Interpretation",
-                        quotation: "Quotation",
-                        personal: "Personal statement",
-                        uncertain: "Check this statement",
-                      }[
-                        claimKind(
-                          claim.text,
-                          claimContext(work.content, claim.start, claim.end),
-                        )
-                      ]
-                    }{" "}
-                    ·{" "}
-                    {
-                      routeLabels[
-                        evidenceRoute(
-                          claim.text,
-                          claimContext(work.content, claim.start, claim.end),
-                        )
-                      ]
-                    }
-                  </small>
-                </span>
+                >
+                  <option value="">Formatting only</option>
+                  <option value="draft">600-word draft</option>
+                  <option value="bibliography">Four-source bibliography</option>
+                </select>
               </label>
-              {citationChoice(claim)}
-            </div>
-          ))}
-          {preview.skipped.length > 0 && (
-            <details>
-              <summary>
-                {preview.skipped.length} skipped segments. Include a missed
-                claim
-              </summary>
-              {preview.skipped.map((claim) => (
-                <div className="ps-claim-preview-row" key={claim.start}>
-                  <label className="ps-claim-option" key={claim.start}>
-                    <input
-                      type="checkbox"
-                      checked={includedSkipped.has(claim.start)}
-                      onChange={(event) =>
-                        setIncludedSkipped((current) => {
-                          const next = new Set(current);
-                          if (event.target.checked) next.add(claim.start);
-                          else next.delete(claim.start);
-                          return next;
-                        })
-                      }
-                    />
-                    <span>
-                      {work.content.slice(claim.start, claim.end)}
-                      <small>{claim.reason}</small>
-                    </span>
-                  </label>
-                  {includedSkipped.has(claim.start) && citationChoice(claim)}
-                </div>
-              ))}
-            </details>
-          )}
-          {approvedClaims.length > 100 && (
-            <p role="alert">
-              Select at most 100 claims for this check. Review the rest in
-              another check.
-            </p>
-          )}
-          {!editorReady && (
-            <p role="status">Save your changes before starting a check.</p>
+              <p className="ps-setup-copy">
+                Check the class citation rules against your own draft.
+                Assignment history and requirements for writing in the class
+                document still need your review.
+              </p>
+            </>
           )}
         </details>
+        <div className="ps-setup-claims">
+          <span>
+            {approvedClaims.length}{" "}
+            {approvedClaims.length === 1 ? "claim" : "claims"} selected
+          </span>
+          <button className="ps-review-link" onClick={onOpenClaims}>
+            Review claims
+          </button>
+        </div>
+        {mode === "source_check" && approvedClaims.length === 0 && (
+          <p className="ps-setup-copy">
+            Your citations and bibliography will still be audited.
+          </p>
+        )}
         <label className="ps-setup-consent">
           <input
             type="checkbox"
@@ -980,6 +904,7 @@ export default function StudioAnalysis({
         <button
           className="ps-primary ps-setup-start"
           disabled={!canStart}
+          aria-describedby={blockedReason ? "studio-start-reason" : undefined}
           onClick={() =>
             void action("Starting check", async () => {
               const body: RunInput = {
@@ -992,6 +917,9 @@ export default function StudioAnalysis({
                 referenceImportVersionId: bibliographyReady
                   ? referenceId
                   : undefined,
+                excludedSourceIds: sources
+                  .filter((source) => excludedSourceIds.includes(source.id))
+                  .map((source) => source.id),
                 selectedSources: selectedReady.map((s) => ({
                   assetId: s.id,
                   extractionId: s.extraction_id!,
@@ -1046,25 +974,90 @@ export default function StudioAnalysis({
           {mode === "source_check"
             ? "Check citations"
             : mode === "discover"
-              ? "Find evidence and propose citations"
-              : "Fact-check selected claims"}
+              ? "Generate citations"
+              : "Fact-check claims"}
         </button>
-        {permission &&
-          mode === "source_check" &&
-          !selectedReady.length &&
-          !bibliographyReady && (
-            <p className="ps-setup-hint">
-              {sources.length
-                ? "Select a source or add references to continue."
-                : "Upload a source or add references to continue."}
-            </p>
-          )}
+        {blockedReason && (
+          <p id="studio-start-reason" className="ps-setup-hint" role="status">
+            {blockedReason}
+          </p>
+        )}
       </div>
     );
     return (
       <div className="ps-live ps-live-workspace">
         {errorNotice}
+        {section === "claims" && (
+          <StudioClaims
+            rows={claimReviewRows(
+              work.content,
+              preview,
+              findings,
+              stale,
+              currentOverrides,
+            )}
+            selectedCount={approvedClaims.length}
+            mode={mode}
+            active={active}
+            stale={stale}
+            search={claimSearch}
+            onSearch={setClaimSearch}
+            controls={(claim) => {
+              return (
+                <>
+                  <label className="ps-claim-option">
+                    <input
+                      type="checkbox"
+                      checked={
+                        preview.skipped.some(
+                          (item) => item.start === claim.start,
+                        )
+                          ? includedSkipped.has(claim.start)
+                          : !excludedClaims.has(claim.start)
+                      }
+                      disabled={!!busy || active}
+                      onChange={(event) => {
+                        const skipped = preview.skipped.some(
+                          (item) => item.start === claim.start,
+                        );
+                        if (skipped)
+                          setIncludedSkipped((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(claim.start);
+                            else next.delete(claim.start);
+                            return next;
+                          });
+                        else
+                          setExcludedClaims((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.delete(claim.start);
+                            else next.add(claim.start);
+                            return next;
+                          });
+                      }}
+                    />
+                    <span>{claim.text}</span>
+                  </label>
+                </>
+              );
+            }}
+            onLocate={(claim) => {
+              setClaimFocus({
+                start: claim.start,
+                end: claim.end,
+                token: Date.now(),
+              });
+              onOpenReview();
+            }}
+            locateDisabled={!editorReady}
+            sourceTitle={(id) =>
+              sources.find((source) => source.id === id)?.metadata.title
+            }
+          />
+        )}
         <StudioDocument
+          hidden={section === "claims"}
+          claimFocus={claimFocus}
           content={work.content}
           findings={findings}
           run={
@@ -1148,10 +1141,12 @@ export default function StudioAnalysis({
             ) : undefined
           }
           citationFocus={citationFocus}
+          documentOptionsTarget={documentOptionsTarget}
           documentActions={
             <div
               className="ps-document-output"
               aria-label="Saved document output"
+              onClick={(event) => event.stopPropagation()}
             >
               <div>
                 <strong>Saved document</strong>
@@ -1311,8 +1306,8 @@ export default function StudioAnalysis({
             <span className="ps-analysis-count">{sources.length}</span>
           </div>
           <p className="ps-analysis-intro">
-            Sources you upload here can be used when you check citations or
-            research evidence.
+            All sources are included by default. Uncheck a source to leave it
+            out of checks for this work.
           </p>
           <label className={`ps-analysis-upload ${busy ? "is-disabled" : ""}`}>
             <Upload size={22} />
@@ -1360,12 +1355,12 @@ export default function StudioAnalysis({
                 <input
                   type="checkbox"
                   checked={selected.includes(source.id)}
-                  disabled={!ready.some((s) => s.id === source.id)}
+                  disabled={!!busy}
                   onChange={(event) =>
-                    setSelected((current) =>
+                    setExcludedSourceIds((current) =>
                       event.target.checked
-                        ? [...current, source.id]
-                        : current.filter((id) => id !== source.id),
+                        ? current.filter((id) => id !== source.id)
+                        : [...new Set([...current, source.id])],
                     )
                   }
                 />
@@ -1389,6 +1384,12 @@ export default function StudioAnalysis({
                     {source.access.replaceAll("_", " ")} · Eligibility{" "}
                     {source.eligibility}
                   </small>
+                  {source.metadata.importedDocumentIds?.includes(work.id) && (
+                    <small>Detected in your document</small>
+                  )}
+                  {source.metadata.importNotice && (
+                    <small>{source.metadata.importNotice}</small>
+                  )}
                   {source.extraction_status === "partial" && (
                     <small>
                       Some pages could not be read. Analysis covers extracted
@@ -1455,7 +1456,7 @@ export default function StudioAnalysis({
           {importStatus && (
             <p className="ps-analysis-import-status" role="status">
               {importing
-                ? "Your references are being processed."
+                ? "Your references are being processed. Available source text is retrieved for automatic imports."
                 : importStatus === "complete"
                   ? `${citations.length} formatted ${citations.length === 1 ? "reference" : "references"}`
                   : `Import ${importStatus.replaceAll("_", " ")}`}
@@ -1467,44 +1468,54 @@ export default function StudioAnalysis({
                 <h3>Formatted references</h3>
                 <span>MLA 9</span>
               </div>
-              {citations.map((c, index) => (
-                <article className="ps-source ps-analysis-citation" key={c.id}>
-                  <span className="ps-source-icon">
-                    <FileText size={20} />
-                  </span>
-                  <div>
-                    <p className="ps-analysis-reference-text">{c.text}</p>
-                    {[
-                      ...c.warnings,
-                      ...c.missingMetadata.map((m) => `Missing: ${m}`),
-                    ].map((warning, i) => (
-                      <p className="ps-analysis-warning" key={i}>
-                        <CircleAlert size={14} />
-                        {warning}
-                      </p>
-                    ))}
-                    <button
-                      className="ps-outline"
-                      onClick={() =>
-                        void action("Copying citation...", async () => {
-                          await navigator.clipboard.writeText(c.text);
-                          setCopiedId(c.id);
-                        }).catch(() => {})
-                      }
-                    >
-                      {copiedId === c.id ? (
-                        <Check size={15} />
-                      ) : (
-                        <Clipboard size={15} />
-                      )}
-                      {copiedId === c.id ? "Copied" : "Copy citation"}
-                    </button>
-                  </div>
-                  <span className="ps-source-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                </article>
-              ))}
+              <div
+                className="ps-analysis-citation-scroll"
+                role="region"
+                aria-label="Formatted citations"
+                tabIndex={0}
+              >
+                {citations.map((c, index) => (
+                  <article
+                    className="ps-source ps-analysis-citation"
+                    key={c.id}
+                  >
+                    <span className="ps-source-icon">
+                      <FileText size={20} />
+                    </span>
+                    <div>
+                      <p className="ps-analysis-reference-text">{c.text}</p>
+                      {[
+                        ...c.warnings,
+                        ...c.missingMetadata.map((m) => `Missing: ${m}`),
+                      ].map((warning, i) => (
+                        <p className="ps-analysis-warning" key={i}>
+                          <CircleAlert size={14} />
+                          {warning}
+                        </p>
+                      ))}
+                      <button
+                        className="ps-outline"
+                        onClick={() =>
+                          void action("Copying citation...", async () => {
+                            await navigator.clipboard.writeText(c.text);
+                            setCopiedId(c.id);
+                          }).catch(() => {})
+                        }
+                      >
+                        {copiedId === c.id ? (
+                          <Check size={15} />
+                        ) : (
+                          <Clipboard size={15} />
+                        )}
+                        {copiedId === c.id ? "Copied" : "Copy citation"}
+                      </button>
+                    </div>
+                    <span className="ps-source-number">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                  </article>
+                ))}
+              </div>
             </div>
           )}
         </section>

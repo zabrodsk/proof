@@ -184,9 +184,11 @@ try {
     const stored = await json(`/api/v1/passages/${e.id}`);
     assert.equal(stored.text, e.text);
   }
+  await page.locator(".ps-result-details > summary").click();
   await page
     .getByText("1 of 1 selected claims checked.", { exact: false })
     .waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "Open claims", exact: true }).click();
   await page.locator(".ps-change-head").click();
   await page.screenshot({
     path: "output/proof-audit/live-correction-evidence.png",
@@ -200,11 +202,19 @@ try {
       0,
     );
     await page
+      .getByRole("navigation", { name: "Document pages" })
+      .getByRole("link", { name: "Review", exact: true })
+      .click();
+    await page
       .getByRole("textbox", { name: "Document text" })
       .fill(draftText.replace("120", "218"));
     await page.getByRole("textbox", { name: "Document text" }).blur();
     await page.getByText("Saved", { exact: true }).waitFor();
   }
+  await page
+    .getByRole("navigation", { name: "Document pages" })
+    .getByRole("link", { name: "Review", exact: true })
+    .click();
   await wait(
     async () =>
       page.getByRole("textbox", { name: "Document text" }).inputValue(),
@@ -272,6 +282,7 @@ try {
     .getByRole("group", { name: "Check type" })
     .getByRole("button", { name: "Fact-check", exact: true })
     .click();
+  await page.getByRole("button", { name: "Open claims", exact: true }).click();
   await page
     .getByText("Retrieved sources and access gaps", { exact: true })
     .waitFor({ timeout: 30000 });

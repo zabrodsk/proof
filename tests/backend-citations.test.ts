@@ -314,4 +314,10 @@ test("Word bibliography wraps preserve four works, full author initials and publ
     ),
     undefined,
   );
+  const paragraphWrapped = bibliographyIntake(
+    text.replace("ABA\nJournal", "ABA\n\nJournal"),
+  )!;
+  assert.equal(paragraphWrapped.length, 4);
+  assert.equal(paragraphWrapped[1].parsed.year, "2017");
+  assert.equal(paragraphWrapped[1].parsed.containerTitle, "ABA Journal");
 });
