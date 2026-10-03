@@ -1,3 +1,4 @@
+import { uploadedBibliography } from "./references.js";
 import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
 import { runInput, type RunRequest } from "../../shared/backend.js";
@@ -86,6 +87,31 @@ export async function createRun(
       }
     }
     await validateSelection(tx, ws, input.selectedSources);
+    const bibliographyAssets: string[] = [];
+    for (const selection of [...input.selectedSources]) {
+      const source = await asset(tx, ws, selection.assetId, true);
+      if (source.access !== "uploaded") continue;
+      const entries = await uploadedBibliography(
+        tx,
+        ws,
+        selection.extractionId,
+      );
+      if (!entries) continue;
+      bibliographyAssets.push(selection.assetId);
+      for (const [ordinal, entry] of entries.entries())
+        if (!references.some((r) => r.original === entry.original))
+          references.push({
+            id: randomUUID(),
+            ordinal,
+            ...entry,
+            status: "unidentified",
+            asset_id: null,
+            originAssetId: selection.assetId,
+          });
+    }
+    input.selectedSources = input.selectedSources.filter(
+      (s) => !bibliographyAssets.includes(s.assetId),
+    );
     const sourceSnapshots: Record<string, unknown> = {};
     for (const selection of input.selectedSources) {
       const source = await asset(tx, ws, selection.assetId, true);
@@ -106,6 +132,7 @@ export async function createRun(
       researchQuery: trusted.researchQuery,
       limits: limits[input.budgetPreset],
       references,
+      bibliographyAssets,
       sourceSnapshots,
     };
     const id = randomUUID();

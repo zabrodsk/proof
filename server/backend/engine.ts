@@ -153,6 +153,17 @@ async function assessPacket(
   ).rows[0]?.data;
   if (!assessment) {
     if (
+      provenanceFrozen &&
+      ["abstract", "metadata", "unavailable"].includes(source.access)
+    )
+      assessment = {
+        ...claim,
+        method: "unverified",
+        status: "uncertain",
+        explanation:
+          "The work was identified, but only an abstract, preview, or metadata is available. Full-text evidence was not checked.",
+      };
+    else if (
       !provenanceFrozen ||
       !input.allowProviderProcessing ||
       (academicRequired && eligibility !== "eligible")
@@ -365,6 +376,14 @@ export async function processRun(
             sourceSnapshots[assetId] ??= snapshot;
         };
         const referenceNotices: string[] = [];
+        if (run.config.bibliographyAssets?.length)
+          referenceNotices.push(
+            `Recognized ${run.config.references.length} references in the uploaded bibliography. The reference list itself was excluded from evidence.`,
+          );
+        if (run.config.references?.length && input.externalAccess === "none")
+          referenceNotices.push(
+            "External retrieval of the cited works is disabled. Select Retrieve cited works in New check, or upload the full articles. A bibliography is not full-text evidence.",
+          );
         const resolvedReferenceIds = new Set<string>(
           (run.config.references || [])
             .filter((r: any) => r.status === "matched_ready" && r.asset_id)
@@ -387,6 +406,27 @@ export async function processRun(
             if (!sourceSelections.some((p) => p.assetId === s.assetId))
               sourceSelections.push(s);
           referenceNotices.push(...resolved.notices);
+          for (const candidate of resolved.candidates) {
+            const ref = (run.config.references || []).find(
+              (r: any) => r.id === candidate.referenceEntryId,
+            );
+            if (ref)
+              Object.assign(ref, {
+                resolvedAssetId: candidate.assetId,
+                resolutionNotice: candidate.reason,
+                access: candidate.access,
+                identityWarnings: candidate.identityWarnings,
+              });
+          }
+          await db.query(
+            "UPDATE runs SET config=jsonb_set(jsonb_set(config,'{references}',$3::jsonb),'{resolvedSources}',$4::jsonb) WHERE workspace_id=$1 AND id=$2",
+            [
+              ws,
+              id,
+              JSON.stringify(run.config.references || []),
+              JSON.stringify(sourceSelections),
+            ],
+          );
           rememberSnapshots(resolved.sourceSnapshots || {});
           for (const candidate of resolved.candidates)
             if (
@@ -719,17 +759,36 @@ export async function processRun(
             );
           });
           const cited = sources.filter((s) =>
-            claim.citations.some((c) =>
-              matchesCitation(c, {
-                ...s.asset.metadata,
-                authors: s.asset.metadata.authors || [],
-                doi: s.asset.metadata.doi,
-              } as Source),
+            claim.citations.some(
+              (c) =>
+                matchesCitation(c, {
+                  ...s.asset.metadata,
+                  authors: s.asset.metadata.authors || [],
+                  doi: s.asset.metadata.doi,
+                } as Source) ||
+                (run.config.references || []).some(
+                  (r: any) =>
+                    r.resolvedAssetId === s.selection.assetId &&
+                    matchesCitation(c, {
+                      ...r.parsed,
+                      authors: r.parsed?.authors || [],
+                    } as Source),
+                ),
             ),
           );
           const ambiguous =
             (cited.length > 1 && claim.citations.length === 1) ||
             claim.citations.length > 1;
+          const unmatchedCitedWork =
+            claim.citations.length > 0 && !cited.length;
+          const intendedSources = cited.length ? cited : sources;
+          const sourceTextUnavailable =
+            intendedSources.length > 0 &&
+            intendedSources.every(
+              (s) =>
+                s.provenanceFrozen &&
+                !["uploaded", "full_text"].includes(s.asset.access),
+            );
           let citation: Citation =
             input.mode !== "source_check" ||
             input.checkScope === "selected_library"
@@ -739,6 +798,11 @@ export async function processRun(
                 : cited.length === 0 || ambiguous
                   ? "ambiguous"
                   : "not_checked";
+          const citedIdentityMismatch = (run.config.references || []).some(
+            (r: any) =>
+              r.identityWarnings?.length &&
+              cited.some((s) => s.selection.assetId === r.resolvedAssetId),
+          );
           const evidence: EvidenceLink[] = [];
           const inspected = new Set<string>();
           const primary: Support[] = [],
@@ -756,7 +820,40 @@ export async function processRun(
           const allEligible =
             sources.length > 0 &&
             sources.every((s) => s.asset.eligibility === "eligible");
-          for (const item of sources) {
+          const orderedSources =
+            input.mode === "source_check" &&
+            input.checkScope !== "selected_library"
+              ? [...sources].sort(
+                  (a, b) =>
+                    Number(
+                      cited.some(
+                        (c) => c.selection.assetId === b.selection.assetId,
+                      ),
+                    ) -
+                    Number(
+                      cited.some(
+                        (c) => c.selection.assetId === a.selection.assetId,
+                      ),
+                    ),
+                )
+              : sources;
+          for (const item of orderedSources) {
+            const isCited = cited.some(
+              (c) => c.selection.assetId === item.selection.assetId,
+            );
+            const alternativeOnly =
+              input.mode === "source_check" &&
+              input.checkScope !== "selected_library" &&
+              claim.citations.length > 0 &&
+              !isCited;
+            if (
+              alternativeOnly &&
+              combineSupport(primary) === "supported" &&
+              semanticFailures === 0 &&
+              !academicUncertainty &&
+              !ambiguous
+            )
+              continue;
             if (inspectWholeText) {
               const extraction = (
                 await db.query(
@@ -768,25 +865,39 @@ export async function processRun(
                 extraction?.status !== "complete" ||
                 !["full_text", "uploaded"].includes(item.asset.access);
             }
-            const isCited = cited.some(
-              (c) => c.selection.assetId === item.selection.assetId,
+            const identityMismatch = (run.config.references || []).some(
+              (r: any) =>
+                r.resolvedAssetId === item.selection.assetId &&
+                r.identityWarnings?.length,
             );
-            const alternativeOnly =
-              input.mode === "source_check" &&
-              input.checkScope !== "selected_library" &&
-              claim.citations.length > 0 &&
-              !isCited;
+            if (identityMismatch)
+              notices.push(
+                ...(run.config.references || [])
+                  .filter(
+                    (r: any) => r.resolvedAssetId === item.selection.assetId,
+                  )
+                  .flatMap((r: any) => r.identityWarnings || []),
+              );
             if (
               input.checkScope === "cited_only" &&
               input.mode === "source_check" &&
               !isCited
             )
               continue;
-            const citationText = claim.citations.find((c) =>
-              matchesCitation(c, {
-                ...item.asset.metadata,
-                authors: item.asset.metadata.authors || [],
-              } as Source),
+            const citationText = claim.citations.find(
+              (c) =>
+                matchesCitation(c, {
+                  ...item.asset.metadata,
+                  authors: item.asset.metadata.authors || [],
+                } as Source) ||
+                (run.config.references || []).some(
+                  (r: any) =>
+                    r.resolvedAssetId === item.selection.assetId &&
+                    matchesCitation(c, {
+                      ...r.parsed,
+                      authors: r.parsed?.authors || [],
+                    } as Source),
+                ),
             );
             const locatorMatch = citationText?.match(
               /(?:,?\s+(?:p\.?\s*)?)(\d{1,4})(?:[–-](\d{1,4}))?\s*$/,
@@ -968,6 +1079,8 @@ export async function processRun(
             )
               citation = "wrong_source";
           }
+          if (citedIdentityMismatch && claim.citations.length)
+            citation = "wrong_source";
           if (commonKnowledge) {
             if (claim.citations.length && citation !== "not_checked")
               notices.push(
@@ -1012,7 +1125,9 @@ export async function processRun(
               ? {
                   evidenceGap: researchBudgetExhausted
                     ? ("check_incomplete" as const)
-                    : !retrievedPassages
+                    : unmatchedCitedWork ||
+                        sourceTextUnavailable ||
+                        !retrievedPassages
                       ? ("source_unavailable" as const)
                       : wholeAcademicText &&
                           !sources.some(
@@ -1034,8 +1149,15 @@ export async function processRun(
               : sources.some((s) => s.asset.eligibility === "ineligible")
                 ? "ineligible"
                 : "unknown",
-            processing:
-              attempts > 0 && semanticFailures === 0 ? "complete" : "partial",
+            processing: researchBudgetExhausted
+              ? "partial"
+              : !retrievedPassages ||
+                  unmatchedCitedWork ||
+                  sourceTextUnavailable
+                ? "complete"
+                : attempts > 0 && semanticFailures === 0
+                  ? "complete"
+                  : "partial",
             evidence,
             explanation: [...new Set(notices)],
             checkedPassageIds: [...inspected],

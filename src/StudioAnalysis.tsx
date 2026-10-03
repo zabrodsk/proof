@@ -39,6 +39,8 @@ import StudioCitationAudit from "./StudioCitationAudit";
 import { api, ApiError, type StudioWork } from "./studio-api";
 
 type Source = {
+  contentKind?: "bibliography" | "source";
+  referenceCount?: number;
   id: string;
   metadata: { title: string; pagination?: string; originalFormat?: string };
   status: string;
@@ -61,7 +63,10 @@ type Run = {
     citationOutput?: "audit" | "generate";
     assignmentProfile?: "draft" | "bibliography";
     claimSpans?: RunInput["claimSpans"];
+    selectedSources?: RunInput["selectedSources"];
+    externalAccess?: RunInput["externalAccess"];
   };
+  config?: { bibliographyAssets?: string[] };
   usage?: { provider: string; status: string; requests: number }[];
   coverage: Record<string, unknown>;
 };
@@ -104,7 +109,7 @@ export default function StudioAnalysis({
   const [discoveryScope, setDiscoveryScope] = useState<"public" | "academic">(
     "academic",
   );
-  const [resolveReferences, setResolveReferences] = useState(false);
+  const [resolveReferences, setResolveReferences] = useState(true);
   const [permission, setPermission] = useState(false);
   const [run, setRun] = useState<Run>();
   const [citationPlan, setCitationPlan] = useState<CitationPlan>();
@@ -284,6 +289,16 @@ export default function StudioAnalysis({
                 item.document_version_id === work.documentVersionId,
             ) || runs.items[0];
           if (recent) {
+            setSelected([
+              ...new Set([
+                ...(recent.input?.selectedSources || []).map((s) => s.assetId),
+                ...(recent.config?.bibliographyAssets || []),
+              ]),
+            ]);
+            setResolveReferences(
+              recent.input?.externalAccess !== "none" ||
+                !recent.config?.bibliographyAssets,
+            );
             const recentMode = runMode(recent);
             modeRef.current = recentMode;
             setMode(recentMode);
@@ -592,6 +607,12 @@ export default function StudioAnalysis({
     source.metadata.title.toLowerCase().includes(sourceSearch.toLowerCase()),
   );
   const importing = importPending(importStatus);
+  const selectedBibliographies = selectedReady.filter(
+    (s) => s.contentKind === "bibliography",
+  );
+  const hasBibliography =
+    selectedBibliographies.length > 0 ||
+    (!!referenceId && importStatus === "complete");
   const bibliographyReady = !!referenceId && importStatus === "complete";
   const uploadInput = (
     <input
@@ -755,11 +776,13 @@ export default function StudioAnalysis({
                       <span>
                         <strong>{source.metadata.title}</strong>
                         <small>
-                          {usable
-                            ? source.extraction_status === "partial"
-                              ? "Some pages could not be read"
-                              : "Ready"
-                            : "Reading the text…"}
+                          {source.contentKind === "bibliography"
+                            ? `${source.referenceCount} references found. Proof will match the cited works; this list is not evidence.`
+                            : usable
+                              ? source.extraction_status === "partial"
+                                ? "Some pages could not be read"
+                                : "Ready"
+                              : "Reading the text…"}
                         </small>
                       </span>
                     </label>
@@ -803,7 +826,7 @@ export default function StudioAnalysis({
               " Review each proposed citation before adding it. Claims without verified support stay uncited."}
           </p>
         )}
-        {mode === "source_check" && bibliographyReady && (
+        {mode === "source_check" && hasBibliography && (
           <label className="ps-setup-consent">
             <input
               type="checkbox"
@@ -976,7 +999,7 @@ export default function StudioAnalysis({
                 })),
                 externalAccess:
                   mode === "source_check"
-                    ? bibliographyReady && resolveReferences
+                    ? hasBibliography && resolveReferences
                       ? "resolve_selected_references"
                       : "none"
                     : "research",
@@ -1320,9 +1343,7 @@ export default function StudioAnalysis({
             <div className="ps-analysis-empty">
               <BookOpen size={26} />
               <strong>No sources yet</strong>
-              <p>
-                Upload a paper or book excerpt to check your text against it.
-              </p>
+              <p>Upload a paper, book excerpt, or Works Cited document.</p>
             </div>
           )}
           {!!sources.length && !visibleSources.length && (
@@ -1354,13 +1375,15 @@ export default function StudioAnalysis({
                 <span className="ps-analysis-source-copy">
                   <strong>{source.metadata.title}</strong>
                   <small className="ps-analysis-source-state">
-                    {source.extraction_status === "complete" &&
-                    source.status === "ready"
-                      ? "Text extracted"
-                      : source.extraction_status === "partial" &&
+                    {source.contentKind === "bibliography"
+                      ? `Bibliography · ${source.referenceCount} references`
+                      : source.extraction_status === "complete" &&
                           source.status === "ready"
-                        ? "Partial text"
-                        : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
+                        ? "Text extracted"
+                        : source.extraction_status === "partial" &&
+                            source.status === "ready"
+                          ? "Partial text"
+                          : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
                   </small>
                   <small>
                     {source.access.replaceAll("_", " ")} · Eligibility{" "}

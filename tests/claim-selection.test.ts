@@ -233,3 +233,21 @@ test("claim candidates retain common facts while freezing citation requirements 
       text,
     );
 });
+
+test("space essay acronyms keep complete assertions and retain actual sentence boundaries", () => {
+  const text =
+    "The U.S. therefore increases its capacity to advance science. The bill helps the private sector in the U.S. and promotes companies. It changes regulation in the U.S. It also protects firms. Alexander P. Reinert wrote the article.";
+  const expected = [
+    "The U.S. therefore increases its capacity to advance science.",
+    "The bill helps the private sector in the U.S. and promotes companies.",
+    "It changes regulation in the U.S.",
+    "It also protects firms.",
+    "Alexander P. Reinert wrote the article.",
+  ];
+  assert.deepEqual(
+    documentSentences(text).map((s) => s.text),
+    expected,
+  );
+  for (const s of documentSentences(text))
+    assert.equal(text.slice(s.start, s.end), s.text);
+});

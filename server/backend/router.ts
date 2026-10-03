@@ -4,6 +4,7 @@ import { z } from "zod";
 import { runInput, sourceMetadata } from "../../shared/backend.js";
 import { type Database, workspace, enqueue, event } from "./db.js";
 import type { BlobStore } from "./storage.js";
+import { uploadedBibliography } from "./references.js";
 import { createAsset, asset, deleteAsset } from "./library.js";
 import { createRun, ownedRun, applyFix } from "./service.js";
 import { carryForward, editRegion } from "./carry-forward.js";
@@ -278,7 +279,24 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         page(req.query.offset, 0, 1_000_000),
       ],
     );
-    res.json({ items: rows.rows });
+    const items = await Promise.all(
+      rows.rows.map(async (source) => {
+        const entries =
+          source.access === "uploaded" && source.extraction_id
+            ? await uploadedBibliography(
+                db,
+                res.locals.workspace,
+                source.extraction_id,
+              )
+            : undefined;
+        return {
+          ...source,
+          contentKind: entries ? "bibliography" : "source",
+          referenceCount: entries?.length,
+        };
+      }),
+    );
+    res.json({ items });
   });
   r.get("/sources/:id/usage", async (req, res) => {
     const ws = res.locals.workspace,

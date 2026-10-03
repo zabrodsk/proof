@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dois } from "../parse.js";
-import type { Database } from "./db.js";
+import type { Database, Sql } from "./db.js";
 import { limits, notFound } from "./config.js";
 import { providerFetch } from "./providers.js";
 export const normalize = (s: string) =>
@@ -22,7 +22,12 @@ export function reconstructReferences(text: string) {
       /^[\p{Lu}][^.]{2,100}\.\s+.{3,}\.\s+(?:.*\b)?(?:1[5-9]|20)\d{2}\b/u.test(
         clean,
       );
-    if (start && current) {
+    const insideQuotedTitle = (current.match(/["“”]/g)?.length || 0) % 2 === 1;
+    const publicationContinuation =
+      /^[^,]+,\s*(?:vol\.|no\.|pp?\.|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d)/i.test(
+        clean,
+      );
+    if (start && current && !insideQuotedTitle && !publicationContinuation) {
       entries.push(current);
       current = "";
     }
@@ -35,22 +40,87 @@ export function reconstructReferences(text: string) {
   }));
 }
 export function parseReference(original: string) {
-  const text = original.replace(/\s+/g, " ");
-  const quoted = text.match(/["“]([^"”]+)["”]/)?.[1];
-  const author = text.split(".")[0]?.trim() || "";
-  const title = quoted || text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
+  const text = original.replace(/\s+/g, " ").trim();
+  const quote = /["“]([^"”]+)["”]/.exec(text);
+  // A period in an author's initial is not the end of the author field.
+  const author = quote
+    ? text
+        .slice(0, quote.index)
+        .replace(/(?<!\b[A-Z])\.\s*$/u, "")
+        .trim()
+    : text.split(".")[0]?.trim() || "";
+  const title = quote?.[1] || text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
+  const authors = author
+    ? author.split(/,?\s+and\s+/).map((s) => s.trim().replace(/,$/, ""))
+    : [];
+  const authorDetails = authors.map((name, index) => {
+    if (name.includes(",")) {
+      const [family, ...given] = name.split(",");
+      return { family: family.trim(), given: given.join(",").trim() };
+    }
+    // MLA's subsequent author is in given-family order. Preserve ambiguous
+    // multiword family names as literals instead of inventing a boundary.
+    const pair =
+      index > 0 && /^(\p{Lu}[\p{L}'’-]+)\s+(\p{Lu}[\p{L}'’-]+)$/u.exec(name);
+    return pair ? { given: pair[1], family: pair[2] } : { literal: name };
+  });
+  const tail = quote
+    ? text.slice(quote.index + quote[0].length).replace(/^\.?\s*/, "")
+    : "";
+  const url = text
+    .match(/(?:https?:\/\/|(?:[\w-]+\.)+(?:com|org|edu)\/)[^\s]+/)?.[0]
+    ?.replace(/[.,;]+$/, "");
   return {
     title,
-    authors: author ? [author] : [],
-    year: text.match(/\b(?:1[5-9]|20)\d{2}\b/)?.[0],
+    authors,
+    authorDetails,
+    year: (quote ? tail : text).match(/\b(?:1[5-9]|20)\d{2}\b/)?.[0],
     doi: dois(text)[0],
     isbn: text
       .match(/\b(?:97[89][ -]?)?\d[\d -]{8,15}[\dX]\b/)?.[0]
       ?.replace(/[ -]/g, ""),
     edition: text.match(/\b\d+(?:st|nd|rd|th) ed\./i)?.[0],
-    type: quoted ? "article-journal" : "book",
+    type: quote ? "article-journal" : "book",
+    ...(quote
+      ? {
+          containerTitle: tail.split(/,|\./)[0]?.trim(),
+          volume: tail.match(/\bvol\.\s*(\d+)/i)?.[1],
+          issue: tail.match(/\bno\.\s*(\d+)/i)?.[1],
+          pages: tail.match(/\bpp?\.\s*(\d+(?:[–-]\d+)?)/i)?.[1],
+        }
+      : {}),
+    ...(url ? { url: url.startsWith("http") ? url : `https://${url}` } : {}),
   };
 }
+
+/** A reference list identifies works; it is never source evidence. */
+export function bibliographyIntake(text: string) {
+  const heading = /^\s*(?:works cited|references|bibliography)\s*$/im.exec(
+    text,
+  );
+  if (!heading || text.slice(0, heading.index).trim()) return undefined;
+  const entries = reconstructReferences(text.slice(heading.index));
+  if (
+    !entries.length ||
+    entries.some((e) => !e.parsed.title || !e.parsed.authors.length)
+  )
+    return undefined;
+  return entries;
+}
+export async function uploadedBibliography(
+  db: Sql,
+  ws: string,
+  extractionId: string,
+) {
+  const pages = (
+    await db.query(
+      "SELECT text FROM source_pages WHERE workspace_id=$1 AND extraction_id=$2 ORDER BY page_index",
+      [ws, extractionId],
+    )
+  ).rows;
+  return bibliographyIntake(pages.map((p) => p.text).join("\n"));
+}
+
 export async function importReferences(
   db: Database,
   ws: string,

@@ -162,8 +162,19 @@ export function documentSentences(text: string) {
     const protectedText = line[0]
       .replace(/[.!?](?=["”'’]?\s*\([^()]+\))/g, "∯")
       .replace(/\([^()]*\)/g, (s) => s.replace(/[.!?]/g, "∯"))
+      .replace(/\b(?:[A-Z]\.){2,}/g, (abbr, offset, line) => {
+        const next = line.slice(offset + abbr.length).trimStart();
+        // Keep the final period only at an actual sentence boundary. Internal
+        // acronym periods and initials must never create fragment claims.
+        const boundary =
+          !next ||
+          /^(?:It|They|This|That|The|These|Those|He|She|We|However|Furthermore|According|Along|Though)\b/.test(
+            next,
+          );
+        return abbr.slice(0, -1).replace(/\./g, "∯") + (boundary ? "." : "∯");
+      })
       .replace(
-        /\bet al\.|\b(?:Dr|Mr|Mrs|Prof|vs)\.|\b[A-Z]\.(?=\s*[A-Z])/g,
+        /\bet al\.|\b(?:Dr|Mr|Mrs|Prof|vs)\.|(?<![\p{L}.∯])[A-Z]\.(?=\s+[A-Z])/gu,
         (s) => s.replace(/\./g, "∯"),
       )
       .replace(/(?:https?:\/\/|10\.\d{4,9}\/)[^\s)]+/g, (s) =>
