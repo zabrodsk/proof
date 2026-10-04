@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { track } from "./analytics";
 import {
   ArrowRight,
   BookOpen,
@@ -545,6 +546,7 @@ export default function StudioAnalysis({
       "POST",
       { idempotencyKey },
     );
+    track("corrections_applied", { correction_count: findingIds.length });
     return result;
   }
   function openInventory(selection?: CitationInventorySelection) {
@@ -646,6 +648,7 @@ export default function StudioAnalysis({
       link.href = url;
       link.download = documentDownloadName(work.title, format);
       link.click();
+      track("document_exported", { format });
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }).catch(() => {});
   }
@@ -678,6 +681,7 @@ export default function StudioAnalysis({
       });
       if (!response.ok) throw Error("Source upload failed. Please retry.");
       await api(`/api/v1/uploads/${intent.id}/complete`, {});
+      track("source_uploaded", { media_type: mediaType });
       setExcludedSourceIds((ids) => ids.filter((id) => id !== intent.id));
       await loadSources();
     }).catch(() => {});
@@ -1063,6 +1067,11 @@ export default function StudioAnalysis({
               const result = await response.json();
               if (!response.ok)
                 throw Error(result.error || "Could not start the check.");
+              track("check_started", {
+                mode,
+                source_count: selectedReady.length,
+                claim_count: approvedClaims.length,
+              });
               setFindings([]);
               await openRun(result.id);
             }).catch(() => {})

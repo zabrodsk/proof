@@ -45,7 +45,8 @@
     "pg": "^8.23.0",
     "pg-boss": "^12.35.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "jose": "^6.2.12"
+    "jose": "^6.2.12",
+    "posthog-js": "^1.435.8"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

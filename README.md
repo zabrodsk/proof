@@ -175,7 +175,30 @@ The worker uses `PROOF_PROCESS=worker` and `npm run worker`. It needs no public 
 
 Run the database migrations with `npm run db:migrate`. After deployment, check web health, worker job consumption, a source upload, and a completed analysis.
 
-Configuration: [web](railway.json) · [worker](railway.worker.json) · [Docker image](Dockerfile) · [environment](.env.example)
+Railway's production web, worker, and landing services connect to `zabrodsk/proof` on `main`. A push to `main`, including a merged pull request, triggers all three deployments. Pushes to other branches do not deploy production. Railway builds each service from the GitHub revision, so uncommitted local files are not deployed. This uses [Railway's GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys) and needs no Railway token in GitHub Actions.
+
+To restore these connections and service settings, sign in with `railway login` and run `bash scripts/configure-railway.sh`. The web and worker use `Dockerfile`; the landing uses `Dockerfile.landing`. Only web and landing have an HTTP healthcheck. The script targets the existing production services and retains their variables, volumes, and domains. Railway's deprecated `railway.json` files are removed so the worker does not inherit the web healthcheck.
+
+Configuration: [deployment setup](scripts/configure-railway.sh) · [Docker image](Dockerfile) · [landing image](Dockerfile.landing) · [environment](.env.example)
+
+</details>
+
+<details>
+<summary><strong>Configure PostHog</strong></summary>
+
+Analytics starts disabled. After approving the destination and event payload, set these runtime variables on Railway's `proof-web` and `proof-landing` services:
+
+```sh
+PROOF_POSTHOG_ENABLED=true
+PROOF_POSTHOG_TOKEN=phc_your_public_project_token
+PROOF_POSTHOG_HOST=https://eu.i.posthog.com
+```
+
+Use `https://us.i.posthog.com` for a US project. The browser reads only this public configuration from `/api/analytics/config`; never supply a personal API key. Railway must redeploy after runtime-variable changes, but the frontend needs no rebuild to embed them. Set `PROOF_POSTHOG_ENABLED=false` to turn collection off.
+
+Events are `$pageview`, `document_created`, `source_uploaded`, `check_started`, `corrections_applied`, and `document_exported`. Every event has `app=proof`, which separates Proof from other products in a shared PostHog project. Other properties are route templates, aggregate counts, check modes, media types, and export formats. A property allowlist strips document text, titles, filenames, account details, referrers, raw URLs, and query strings. Analytics uses memory only, respects Do Not Track, and disables autocapture, session replay, error capture, surveys, and feature flags. Reloading starts a new anonymous identity, so cross-session retention and user attribution are unavailable. SDK or network failures do not block the app.
+
+See [PostHog SDK configuration](https://posthog.com/docs/references/posthog-js/types/PostHogConfig). Unit tests cover the configuration gate and property filtering; browser tests intercept every PostHog request and use synthetic data.
 
 </details>
 
