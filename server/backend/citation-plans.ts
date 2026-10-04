@@ -1,3 +1,4 @@
+import { requireWorkSource } from "./work-sources.js";
 import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
 import type { BackendFinding, EvidenceLink } from "../../shared/backend.js";
@@ -193,6 +194,7 @@ export async function citationPlan(
     ];
     for (const evidence of selections) {
       if (sources.has(evidence.assetId)) continue;
+      await requireWorkSource(tx, ws, version.document_id, evidence.assetId);
       const row = (
         await tx.query(
           "SELECT * FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL AND status='ready'",
@@ -1092,6 +1094,7 @@ export async function applyCitationPlan(
       string,
       any,
     ][]) {
+      await requireWorkSource(tx, ws, documentId, assetId);
       const asset = (
         await tx.query(
           "SELECT * FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL",
@@ -1274,7 +1277,7 @@ export async function applyVerifiedFixes(
         version.text.slice(fix.start, fix.end) !== fix.original
       )
         throw new HttpError(409, "An edit span no longer matches the draft.");
-      await validateFixEvidence(tx, ws, row.data, row.config);
+      await validateFixEvidence(tx, ws, row.data, row.config, documentId);
       fixes.push(fix);
     }
     fixes.sort((a, b) => a.start - b.start);

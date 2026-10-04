@@ -1,8 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
-import { readFile } from "node:fs/promises";
 import { migrateIntegrationTables } from "../../server/integrations/database.js";
-import { type Database, workspace } from "../../server/backend/db.js";
+import { type Database, workspace, migrate } from "../../server/backend/db.js";
 import { IntegrationStore } from "../../server/integrations/store.js";
 import { IntegrationService } from "../../server/integrations/service.js";
 import {
@@ -30,15 +29,18 @@ export async function fixture(path?: string) {
       return results[results.length - 1] || { rows: [] };
     },
     transaction: (work) =>
-      pg.transaction((tx) => work({ query: (s, p) => tx.query(s, p) })),
+      pg.transaction((tx) =>
+        work({
+          query: async (s, p) => {
+            if (p?.length) return tx.query(s, p);
+            const results = await tx.exec(s);
+            return results.at(-1) || { rows: [] };
+          },
+        }),
+      ),
     close: () => pg.close(),
   };
-  await pg.exec(
-    await readFile(
-      new URL("../../migrations/001_backend.sql", import.meta.url),
-      "utf8",
-    ),
-  );
+  await migrate(db);
   await migrateIntegrationTables(db);
   const objects = new Map<string, Buffer>();
   const blobs: BlobStore = {

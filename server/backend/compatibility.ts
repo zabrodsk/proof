@@ -1,3 +1,4 @@
+import { attachSource } from "./work-sources.js";
 import express, { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -216,6 +217,7 @@ export async function processCompatibilityJob(
         year: "",
       };
       const a = await createAsset(tx, ws, metadata, "source.txt", "text/plain");
+      await attachSource(tx, ws, documentId, a.id);
       assetIds.push(a.id);
       const importId = randomUUID();
       // Prefer the supplied bytes over a link if both are present.
@@ -228,6 +230,7 @@ export async function processCompatibilityJob(
           kind,
           JSON.stringify({
             kind,
+            documentId,
             assetId: a.id,
             text: source.text,
             url: source.url,

@@ -1,3 +1,5 @@
+import { attachSource, runDocumentId } from "../server/backend/work-sources.js";
+import { createFixtureRun as createRun } from "./fixtures/work-sources.js";
 import { after, before, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -10,7 +12,7 @@ import {
   type Sql,
 } from "../server/backend/db.js";
 import { createAsset, ingestAsset } from "../server/backend/library.js";
-import { createRun, ownedRun } from "../server/backend/service.js";
+import { ownedRun } from "../server/backend/service.js";
 import { processRun, type EngineDeps } from "../server/backend/engine.js";
 import { runInput, type Selection } from "../shared/backend.js";
 import type { BlobStore } from "../server/backend/storage.js";
@@ -249,6 +251,12 @@ async function citationSource(
     "source.txt",
     "text/plain",
     body.length,
+  );
+  await attachSource(
+    db,
+    f.ws,
+    await runDocumentId(db, f.ws, f.run.id),
+    saved.id,
   );
   await f.blobs.put(saved.key, body, "text/plain");
   const extractionId = await ingestAsset(db, f.blobs, f.ws, saved.id);
@@ -2155,6 +2163,12 @@ test("selected-reference snapshots are reused without searches and author mismat
     "text/plain",
     body.length,
   );
+  await attachSource(
+    db,
+    f.ws,
+    await runDocumentId(db, f.ws, f.run.id),
+    cached.id,
+  );
   await f.blobs.put(cached.key, body, "text/plain");
   const extractionId = await ingestAsset(db, f.blobs, f.ws, cached.id);
   await db.query("UPDATE source_assets SET access='full_text' WHERE id=$1", [
@@ -2226,6 +2240,12 @@ test("cited-first checks skip alternative judgments only after inspected support
       "other.txt",
       "text/plain",
       body.length,
+    );
+    await attachSource(
+      db,
+      f.ws,
+      await runDocumentId(db, f.ws, f.run.id),
+      alternative.id,
     );
     await f.blobs.put(alternative.key, body, "text/plain");
     const extractionId = await ingestAsset(db, f.blobs, f.ws, alternative.id);

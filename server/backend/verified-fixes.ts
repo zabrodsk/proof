@@ -9,6 +9,7 @@ export async function validateFixEvidence(
   ws: string,
   finding: BackendFinding,
   config: { sourceSnapshots?: Record<string, any> },
+  documentId: string,
 ) {
   const reject = () => {
     throw new HttpError(
@@ -18,6 +19,11 @@ export async function validateFixEvidence(
   };
   if (!finding.evidence?.length) reject();
   for (const evidence of finding.evidence) {
+    const association = await tx.query(
+      "SELECT asset_id FROM document_sources WHERE workspace_id=$1 AND document_id=$2 AND asset_id=$3",
+      [ws, documentId, evidence.assetId],
+    );
+    if (!association.rows.length) reject();
     const source = (
       await tx.query(
         "SELECT * FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE",

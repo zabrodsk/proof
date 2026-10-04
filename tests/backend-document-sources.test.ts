@@ -63,6 +63,10 @@ async function references(
   text: string,
   external = false,
 ) {
+  await db.query(
+    "INSERT INTO documents(id,workspace_id,title) VALUES($1,$2,'Fixture work') ON CONFLICT DO NOTHING",
+    [documentId, ws],
+  );
   const id = await db.transaction((tx) =>
     queueDocumentSources(tx, ws, documentId, text, external),
   );
@@ -112,6 +116,10 @@ const deps = {
 test("automatic import without external permission stores separate references but no fabricated passages", async () => {
   const ws = await workspace(db, randomUUID()),
     documentId = randomUUID();
+  await db.query(
+    "INSERT INTO documents(id,workspace_id,title) VALUES($1,$2,'Fixture work')",
+    [documentId, ws],
+  );
   const id = await db.transaction((tx) =>
     queueDocumentSources(
       tx,
@@ -151,7 +159,7 @@ test("automatic import without external permission stores separate references bu
   );
 });
 
-test("retrieved references are indexed, reused across documents, and attached to checker runs", async () => {
+test("retrieved references are indexed separately for each work and attached to checker runs", async () => {
   const ws = await workspace(db, randomUUID()),
     documentId = randomUUID(),
     version = randomUUID();
@@ -174,13 +182,13 @@ test("retrieved references are indexed, reused across documents, and attached to
   const assets = (
     await db.query("SELECT * FROM source_assets WHERE workspace_id=$1", [ws])
   ).rows;
-  assert.equal(assets.length, 2);
+  assert.equal(assets.length, 4);
   assert.ok(
     assets.every(
       (a) =>
         a.status === "ready" &&
         a.access === "full_text" &&
-        a.metadata.importedDocumentIds.includes(nextDocument),
+        a.metadata.importedDocumentIds.length === 1,
     ),
   );
   const article = assets.find((a) => a.metadata.doi === "10.1234/study");
@@ -227,7 +235,9 @@ test("retrieved references are indexed, reused across documents, and attached to
     ])
   ).rows[0];
   assert.equal(run.input.selectedSources.length, 2);
-  const excludedId = assets[0].id;
+  const excludedId = assets.find((a) =>
+    a.metadata.importedDocumentIds.includes(documentId),
+  )!.id;
   const excludedRun = await createRun(
     db,
     ws,
@@ -281,5 +291,41 @@ test("a failed retrieval does not prevent another source being imported; abstrac
   assert.match(
     assets.find((a) => a.status === "unavailable")?.metadata.importNotice,
     /Provider unavailable/,
+  );
+});
+
+test("source migration recovers historic associations once without restoring removals", async () => {
+  const ws = await workspace(db, randomUUID());
+  const documentId = randomUUID();
+  await db.query(
+    "INSERT INTO documents(id,workspace_id,title) VALUES($1,$2,'Historic work')",
+    [documentId, ws],
+  );
+  const id = await references(
+    ws,
+    documentId,
+    "Claim.\nReferences\nhttps://example.org/historic",
+  );
+  await importDocumentSources(db, blobs, ws, id, documentId, false, deps);
+  await db.query("DROP TABLE document_sources");
+  await migrate(db);
+  const { rows } = await db.query(
+    "SELECT asset_id FROM document_sources WHERE workspace_id=$1 AND document_id=$2",
+    [ws, documentId],
+  );
+  assert.equal(rows.length, 1);
+  await db.query(
+    "DELETE FROM document_sources WHERE workspace_id=$1 AND document_id=$2",
+    [ws, documentId],
+  );
+  await migrate(db);
+  assert.equal(
+    (
+      await db.query(
+        "SELECT asset_id FROM document_sources WHERE workspace_id=$1 AND document_id=$2",
+        [ws, documentId],
+      )
+    ).rows.length,
+    0,
   );
 });

@@ -1,3 +1,8 @@
+import {
+  attachSource,
+  requireWorkSource,
+  runDocumentId,
+} from "./work-sources.js";
 import { retrieveNamedReference } from "./reference-retrieval.js";
 import { randomUUID } from "node:crypto";
 import type { Eligibility, Selection } from "../../shared/backend.js";
@@ -260,6 +265,11 @@ async function loadState(
   );
   const state = rows[0]?.data as ResearchState | undefined;
   if (state?.version !== researchVersion) return;
+  if (state.selections.length) {
+    const documentId = await runDocumentId(db, ws, runId);
+    for (const selection of state.selections)
+      await requireWorkSource(db, ws, documentId, selection.assetId);
+  }
   await validateSelection(db, ws, state.selections);
   return state;
 }
@@ -275,6 +285,7 @@ async function previousSearches(
     `SELECT r.data FROM research_results r JOIN runs parent ON parent.id=r.run_id AND parent.workspace_id=r.workspace_id
      WHERE r.workspace_id=$1 AND r.run_id<>$2 AND r.query_key=$3
      AND parent.invalidated=false AND parent.cancel_requested=false
+     AND EXISTS (SELECT 1 FROM document_versions v JOIN runs current_run ON current_run.workspace_id=v.workspace_id JOIN document_versions current_v ON current_v.workspace_id=current_run.workspace_id AND current_v.id=current_run.document_version_id WHERE v.workspace_id=parent.workspace_id AND v.id=parent.document_version_id AND current_run.id=$2 AND current_v.document_id=v.document_id)
      AND parent.created_at > now()-interval '5 minutes'
      ORDER BY parent.created_at DESC LIMIT 1`,
     [ws, runId, key],
@@ -328,6 +339,7 @@ async function existingSnapshot(
   ws: string,
   doi: string,
   academic: boolean,
+  runId: string,
   textFingerprint?: string,
 ) {
   const { rows } = await db.query(
@@ -336,8 +348,8 @@ async function existingSnapshot(
     WHERE a.workspace_id=$1 AND lower(a.metadata->>'doi')=$2 AND a.deleted_at IS NULL
     AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
     AND ($4::boolean=false OR a.eligibility='eligible')
-    AND ($5::text IS NULL OR a.metadata->>'textFingerprint'=$5) ORDER BY a.created_at DESC LIMIT 1`,
-    [ws, doi, versions.parser, academic, textFingerprint || null],
+    AND ($5::text IS NULL OR a.metadata->>'textFingerprint'=$5) AND EXISTS (SELECT 1 FROM document_sources ds JOIN document_versions v ON v.workspace_id=ds.workspace_id AND v.document_id=ds.document_id JOIN runs r ON r.workspace_id=v.workspace_id AND r.document_version_id=v.id WHERE ds.workspace_id=a.workspace_id AND ds.asset_id=a.id AND r.id=$6) ORDER BY a.created_at DESC LIMIT 1`,
+    [ws, doi, versions.parser, academic, textFingerprint || null, runId],
   );
   return rows[0];
 }
@@ -486,14 +498,14 @@ async function sourceSnapshot(
     // Serialize identity reuse within this workspace, including concurrent claims.
     await tx.query("SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", [ws]);
     const old = doi
-      ? await existingSnapshot(tx, ws, doi, academic, textFingerprint)
+      ? await existingSnapshot(tx, ws, doi, academic, runId, textFingerprint)
       : (
           await tx.query(
             `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
         LEFT JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$4 AND e.status IN ('complete','partial')
         WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
-        AND a.metadata->>'url'=$2 AND a.metadata->>'textFingerprint'=$3 ORDER BY a.created_at DESC LIMIT 1`,
-            [ws, source.url, textFingerprint, versions.parser],
+        AND a.metadata->>'url'=$2 AND a.metadata->>'textFingerprint'=$3 AND EXISTS (SELECT 1 FROM document_sources ds JOIN document_versions v ON v.workspace_id=ds.workspace_id AND v.document_id=ds.document_id JOIN runs r ON r.workspace_id=v.workspace_id AND r.document_version_id=v.id WHERE ds.workspace_id=a.workspace_id AND ds.asset_id=a.id AND r.id=$5) ORDER BY a.created_at DESC LIMIT 1`,
+            [ws, source.url, textFingerprint, versions.parser, runId],
           )
         ).rows[0];
     if (old)
@@ -514,6 +526,7 @@ async function sourceSnapshot(
       original ? "application/pdf" : "text/plain",
       body.length,
     );
+    await attachSource(tx, ws, await runDocumentId(tx, ws, runId), created.id);
     await blobs.put(
       created.key,
       body,
@@ -590,7 +603,7 @@ async function resolveCandidate(
     return;
   }
   candidate.doi = doi;
-  let previous = await existingSnapshot(db, ws, doi, false);
+  let previous = await existingSnapshot(db, ws, doi, false, runId);
   // Registry checks and text freshness are separate. An expired or legacy
   // snapshot must not masquerade as the current edition of a mutable source.
   const retrievedAt = Date.parse(
@@ -704,8 +717,8 @@ async function resolvedCandidate(
         WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.status='ready' AND a.access='full_text'
           AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
           AND a.metadata->>'referenceFingerprint'=$2 AND a.metadata->>'textFingerprint' IS NOT NULL
-          AND a.created_at > now() - interval '24 hours' ORDER BY a.created_at DESC LIMIT 1`,
-          [ws, referenceFingerprint, versions.parser],
+          AND EXISTS (SELECT 1 FROM document_sources ds JOIN document_versions v ON v.workspace_id=ds.workspace_id AND v.document_id=ds.document_id JOIN runs r ON r.workspace_id=v.workspace_id AND r.document_version_id=v.id WHERE ds.workspace_id=a.workspace_id AND ds.asset_id=a.id AND r.id=$4) AND a.created_at > now() - interval '24 hours' ORDER BY a.created_at DESC LIMIT 1`,
+          [ws, referenceFingerprint, versions.parser, runId],
         )
       ).rows[0];
       if (previous) {
@@ -1177,8 +1190,8 @@ export async function resolveSelectedReferences(
       if (assetId) {
         // Indexed abstracts and unavailable placeholders still need full-text retrieval.
         const readable = await db.query(
-          "SELECT id FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL AND status='ready' AND access IN ('uploaded','full_text') AND EXISTS (SELECT 1 FROM extractions e WHERE e.workspace_id=source_assets.workspace_id AND e.asset_id=source_assets.id AND e.parser_version=$3 AND e.status='complete')",
-          [ws, assetId, versions.parser],
+          "SELECT id FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL AND status='ready' AND access IN ('uploaded','full_text') AND EXISTS (SELECT 1 FROM extractions e WHERE e.workspace_id=source_assets.workspace_id AND e.asset_id=source_assets.id AND e.parser_version=$3 AND e.status='complete') AND EXISTS (SELECT 1 FROM document_sources ds JOIN document_versions v ON v.workspace_id=ds.workspace_id AND v.document_id=ds.document_id JOIN runs r ON r.workspace_id=v.workspace_id AND r.document_version_id=v.id WHERE ds.workspace_id=source_assets.workspace_id AND ds.asset_id=source_assets.id AND r.id=$4)",
+          [ws, assetId, versions.parser, runId],
         );
         if (readable.rows.length) continue;
       }

@@ -1,3 +1,4 @@
+import { createFixtureRun as createRun } from "./fixtures/work-sources.js";
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -10,7 +11,7 @@ import {
   type Sql,
 } from "../server/backend/db.js";
 import { createAsset, ingestAsset } from "../server/backend/library.js";
-import { createRun } from "../server/backend/service.js";
+
 import {
   citationPlan,
   applyCitationPlan,

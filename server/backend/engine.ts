@@ -1,3 +1,4 @@
+import { requireWorkSource, runDocumentId } from "./work-sources.js";
 import { randomUUID } from "node:crypto";
 import type {
   BackendFinding,
@@ -267,6 +268,9 @@ export async function processRun(
       },
       async () => {
         const input: RunInput = run.input;
+        const sourceDocumentId = await runDocumentId(db, ws, id);
+        for (const selection of input.selectedSources)
+          await requireWorkSource(db, ws, sourceDocumentId, selection.assetId);
         await validateSelection(db, ws, input.selectedSources);
         await db.transaction(async (tx) => {
           const current = await ownedRun(tx, ws, id, true);

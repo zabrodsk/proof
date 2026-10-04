@@ -271,6 +271,13 @@ export async function importReferences(
   text: string,
   external: boolean,
 ) {
+  const importOwner =
+    (
+      await db.query(
+        "SELECT input->>'documentId' AS document_id FROM source_imports WHERE workspace_id=$1 AND id=$2",
+        [ws, id],
+      )
+    ).rows[0]?.document_id || null;
   const entries = reconstructReferences(text);
   if (entries.length > limits.bibliographyEntries)
     throw new Error(
@@ -296,8 +303,8 @@ export async function importReferences(
     const candidates: any[] = [];
     let status = "unidentified";
     const uploads = await db.query(
-      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
-      [ws],
+      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready' AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM document_sources ds WHERE ds.workspace_id=source_assets.workspace_id AND ds.asset_id=source_assets.id AND ds.document_id=$2))",
+      [ws, importOwner],
     );
     const matches = matchBibliographySources(parsed, uploads.rows);
     if (external && !matches.length && parsed.isbn && !parsed.doi) {

@@ -1,3 +1,4 @@
+import { attachSource } from "../server/backend/work-sources.js";
 // Isolated browser test server. Never imported by production. Provider judgments
 // are deterministic fixtures; the HTTP API, database and review engine are real.
 import express from "express";
@@ -422,6 +423,27 @@ app.post("/__e2e/sparrow-abstract", async (_q, r) => {
     saved.id,
   ]);
   r.json({ id: saved.id, extractionId });
+});
+// Most review scenarios explicitly start with the two supplied fixture sources.
+app.post("/api/v1/documents", (q, r, next) => {
+  if (
+    q.body.fixtureSources === false ||
+    r.locals.proofSession !== "browser-e2e"
+  )
+    return next();
+  const send = r.json.bind(r);
+  r.json = (body) => {
+    if (r.statusCode === 201 && body.id) {
+      void Promise.all(
+        [asset.id, citable.id].map((id) => attachSource(db, ws, body.id, id)),
+      )
+        .then(() => send(body))
+        .catch(next);
+      return r;
+    }
+    return send(body);
+  };
+  next();
 });
 app.use("/api/v1", backendRouter(db, blobs));
 app.use("/api/discovery", discoveryRouter());

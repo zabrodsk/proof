@@ -1,3 +1,4 @@
+import { createFixtureRun as createRun } from "./fixtures/work-sources.js";
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -20,7 +21,7 @@ import {
   deleteAsset,
   validateSelection,
 } from "../server/backend/library.js";
-import { createRun, ownedRun, applyFix } from "../server/backend/service.js";
+import { ownedRun, applyFix } from "../server/backend/service.js";
 import { retrieve } from "../server/backend/retrieval.js";
 import { extractFile, passageSpans } from "../server/backend/extraction.js";
 import { runInput, type Selection } from "../shared/backend.js";

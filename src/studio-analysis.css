@@ -854,3 +854,39 @@
 .ps-research-details p {
   margin: 5px 0;
 }
+
+.ps-analysis-source-select {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: inherit;
+}
+.ps-analysis-source-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ps-analysis-source-delete:hover:not(:disabled) {
+  color: #a23832;
+  background: var(--paper);
+  border-color: var(--line);
+}
+.ps-analysis-source-delete:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+.ps-analysis-source-delete:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

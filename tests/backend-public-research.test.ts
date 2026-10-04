@@ -1,3 +1,4 @@
+import { createFixtureRun as createRun } from "./fixtures/work-sources.js";
 import { after, before, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -9,7 +10,7 @@ import {
   type Database,
   type Sql,
 } from "../server/backend/db.js";
-import { createRun, ownedRun } from "../server/backend/service.js";
+import { ownedRun } from "../server/backend/service.js";
 import { processRun } from "../server/backend/engine.js";
 import { research } from "../server/backend/research.js";
 import {
@@ -62,7 +63,7 @@ async function draft(ws: string) {
   );
   return version;
 }
-test("public web evidence is inspected, frozen by content version, reused only within its workspace and never labeled academic", async () => {
+test("public web evidence is inspected, frozen by content version, reused only within its work and never labeled academic", async () => {
   const ws = await workspace(db, randomUUID());
   const files = new Map<string, Buffer>();
   const blobs: BlobStore = {
@@ -229,6 +230,13 @@ test("public web evidence is inspected, frozen by content version, reused only w
       revised.asset.id,
       "unchanged URL/content/parser reuse one stored extraction",
     );
+    const anotherWork = await execute(ws, await draft(ws));
+    assert.notEqual(
+      anotherWork.asset.id,
+      revised.asset.id,
+      "another work cannot reuse source assets from this work",
+    );
+    assert.equal(searches, 4, "another work performs its own searches");
     const otherWorkspace = await workspace(db, randomUUID());
     const other = await execute(otherWorkspace, await draft(otherWorkspace));
     assert.notEqual(
@@ -242,8 +250,8 @@ test("public web evidence is inspected, frozen by content version, reused only w
       )
     ).rows;
     assert.deepEqual(ledger, [
-      { provider: "document", n: 4 },
-      { provider: "exa", n: 4 },
+      { provider: "document", n: 5 },
+      { provider: "exa", n: 6 },
     ]);
   } finally {
     fetch.mock.restore();

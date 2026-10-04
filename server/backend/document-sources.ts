@@ -28,7 +28,12 @@ export async function queueDocumentSources(
   const id = randomUUID();
   await tx.query(
     "INSERT INTO reference_imports(id,workspace_id,original,settings) VALUES($1,$2,$3,$4)",
-    [id, ws, references, JSON.stringify({ externalAccess, automatic: true })],
+    [
+      id,
+      ws,
+      references,
+      JSON.stringify({ externalAccess, automatic: true, documentId }),
+    ],
   );
   await tx.query(
     "INSERT INTO source_imports(id,workspace_id,kind,input) VALUES($1,$2,'bibliography',$3)",

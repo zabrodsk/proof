@@ -1,3 +1,4 @@
+import { attachSource, requireWorkSource } from "../backend/work-sources.js";
 import { createHash, randomUUID } from "node:crypto";
 import { workspace, enqueue, type Database, type Sql } from "../backend/db.js";
 import { createRun as sharedCreateRun, ownedRun } from "../backend/service.js";
@@ -405,7 +406,7 @@ export class IntegrationStore {
       if (documentVersion) {
         const doc = (
           await tx.query(
-            "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",
+            "SELECT text,document_id FROM document_versions WHERE workspace_id=$1 AND id=$2",
             [ws, documentVersion],
           )
         ).rows[0];
@@ -415,6 +416,8 @@ export class IntegrationStore {
             "The authorized document version does not contain the exact submitted text.",
             409,
           );
+        for (const selection of selections)
+          await requireWorkSource(tx, ws, doc.document_id, selection.assetId);
       } else {
         const document = randomUUID();
         documentVersion = randomUUID();
@@ -426,6 +429,8 @@ export class IntegrationStore {
           "INSERT INTO document_versions(id,workspace_id,document_id,text) VALUES($1,$2,$3,$4)",
           [documentVersion, ws, document, input.text],
         );
+        for (const selection of selections)
+          await attachSource(tx, ws, document, selection.assetId);
       }
       const transactionDb: Database = {
         query: (s, v) => tx.query(s, v),

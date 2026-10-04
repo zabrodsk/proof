@@ -50,7 +50,7 @@ export async function processImport(
       [ws, id, text],
     );
     await importReferences(db, ws, id, text, input.externalAccess === true);
-    if (input.automatic && input.documentId)
+    if (input.documentId)
       await importDocumentSources(
         db,
         blobs,

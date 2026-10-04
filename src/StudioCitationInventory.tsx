@@ -345,7 +345,10 @@ export default function StudioCitationInventory(
         tabIndex={0}
       >
         {tab === "sources" ? (
-          <div className="ps-inventory-source-library">{sourceLibrary}</div>
+          <div className="ps-inventory-source-library">
+            {sourceLibrary}
+            {importDisclosure}
+          </div>
         ) : (
           <>
             <div
@@ -365,23 +368,22 @@ export default function StudioCitationInventory(
                 </div>
                 {!plan || (tab === "in-text" && !plan.audit) ? (
                   <div className="ps-inventory-empty">
-                    <h3>
-                      No checked{" "}
-                      {tab === "works-cited"
-                        ? "bibliography"
-                        : "citation inventory"}{" "}
-                      yet
-                    </h3>
+                    <h3>Citation check required</h3>
                     <p>
-                      Run a citation check to inspect the citations and entries
+                      Run a citation check to view the{" "}
+                      {tab === "works-cited"
+                        ? "Works Cited entries"
+                        : "in-text citations"}{" "}
                       in your draft.
                     </p>
-                    {importDisclosure}
-                    {!plan && (
-                      <div className="ps-inventory-source-library">
-                        {sourceLibrary}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      className="ps-outline"
+                      onClick={onBackToReview}
+                    >
+                      Go to check
+                      <ArrowRight size={16} />
+                    </button>
                   </div>
                 ) : (
                   <>

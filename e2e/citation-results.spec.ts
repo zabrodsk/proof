@@ -344,3 +344,34 @@ test("inventory cannot overwrite a draft while its hidden editor is saving", asy
     )
     .toBe(text + "\n\nMy new paragraph.");
 });
+
+test("unchecked citation tabs show a shortcut to the check instead of the source library", async ({
+  page,
+  request,
+}) => {
+  const response = await request.post("/api/v1/documents", {
+    data: {
+      title: "Unchecked citations",
+      text: "The trial included 218 adults.",
+    },
+  });
+  expect(response.status()).toBe(201);
+  const document = await response.json();
+  for (const name of [/^In-text citations/, /^Works Cited/]) {
+    await page.goto(`/app/works/${document.id}/citations`);
+    await page.getByRole("tab", { name }).click();
+    const panel = page.getByRole("tabpanel");
+    await expect(
+      panel.getByRole("heading", { name: "Citation check required" }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("heading", { name: "Source library" }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByText("Import references", { exact: true }),
+    ).toHaveCount(0);
+    await panel.getByRole("button", { name: "Go to check" }).click();
+    await expect(page).toHaveURL(`/app/works/${document.id}`);
+    await expect(page.getByRole("group", { name: "Check type" })).toBeVisible();
+  }
+});

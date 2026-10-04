@@ -13,6 +13,7 @@ import {
   Library,
   LoaderCircle,
   Search,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { parseCitationOccurrences } from "../shared/citation-occurrences";
@@ -283,7 +284,7 @@ export default function StudioAnalysis({
     const all: Source[] = [];
     for (let offset = 0; ; offset += 100) {
       const page = await api<{ items: Source[] }>(
-        `/api/v1/sources?limit=100&offset=${offset}`,
+        `/api/v1/sources?documentId=${work.id}&limit=100&offset=${offset}`,
       );
       all.push(...page.items);
       if (page.items.length < 100) break;
@@ -298,7 +299,7 @@ export default function StudioAnalysis({
         const all: Source[] = [];
         for (let offset = 0; ; offset += 100) {
           const page = await api<{ items: Source[] }>(
-            `/api/v1/sources?limit=100&offset=${offset}`,
+            `/api/v1/sources?documentId=${work.id}&limit=100&offset=${offset}`,
           );
           all.push(...page.items);
           if (page.items.length < 100) break;
@@ -668,6 +669,7 @@ export default function StudioAnalysis({
         uploadUrl: string;
         headers: Record<string, string>;
       }>("/api/v1/uploads", {
+        documentId: work.id,
         filename: file.name,
         mediaType,
         bytes: file.size,
@@ -1528,57 +1530,88 @@ export default function StudioAnalysis({
       )}
       <div className="ps-analysis-source-list">
         {visibleSources.map((source) => (
-          <label
+          <div
             className={`ps-source-option ps-analysis-source ${selected.includes(source.id) ? "is-selected" : ""}`}
             key={`${source.id}:${source.extraction_id || "pending"}`}
             id={`source-${source.id}`}
           >
-            <input
-              type="checkbox"
-              checked={selected.includes(source.id)}
-              disabled={!!busy}
-              onChange={(event) =>
-                setExcludedSourceIds((current) =>
-                  event.target.checked
-                    ? current.filter((id) => id !== source.id)
-                    : [...new Set([...current, source.id])],
-                )
-              }
-            />
-            <span className="ps-source-icon">
-              <FileText size={19} />
-            </span>
-            <span className="ps-analysis-source-copy">
-              <strong>{source.metadata.title}</strong>
-              <small className="ps-analysis-source-state">
-                {source.contentKind === "bibliography"
-                  ? `Bibliography · ${source.referenceCount} references`
-                  : source.extraction_status === "complete" &&
-                      source.status === "ready"
-                    ? "Text extracted"
-                    : source.extraction_status === "partial" &&
+            <label className="ps-analysis-source-select">
+              <input
+                type="checkbox"
+                checked={selected.includes(source.id)}
+                disabled={!!busy}
+                onChange={(event) =>
+                  setExcludedSourceIds((current) =>
+                    event.target.checked
+                      ? current.filter((id) => id !== source.id)
+                      : [...new Set([...current, source.id])],
+                  )
+                }
+              />
+              <span className="ps-source-icon">
+                <FileText size={19} />
+              </span>
+              <span className="ps-analysis-source-copy">
+                <strong>{source.metadata.title}</strong>
+                <small className="ps-analysis-source-state">
+                  {source.contentKind === "bibliography"
+                    ? `Bibliography · ${source.referenceCount} references`
+                    : source.extraction_status === "complete" &&
                         source.status === "ready"
-                      ? "Partial text"
-                      : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
-              </small>
-              <small>
-                {source.access.replaceAll("_", " ")} · Eligibility{" "}
-                {source.eligibility}
-              </small>
-              {source.metadata.importedDocumentIds?.includes(work.id) && (
-                <small>Detected in your document</small>
-              )}
-              {source.metadata.importNotice && (
-                <small>{source.metadata.importNotice}</small>
-              )}
-              {source.extraction_status === "partial" && (
-                <small>
-                  Some pages could not be read. Analysis covers extracted text
-                  only.
+                      ? "Text extracted"
+                      : source.extraction_status === "partial" &&
+                          source.status === "ready"
+                        ? "Partial text"
+                        : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
                 </small>
-              )}
-            </span>
-          </label>
+                <small>
+                  {source.access.replaceAll("_", " ")} · Eligibility{" "}
+                  {source.eligibility}
+                </small>
+                {source.metadata.importedDocumentIds?.includes(work.id) && (
+                  <small>Detected in your document</small>
+                )}
+                {source.metadata.importNotice && (
+                  <small>{source.metadata.importNotice}</small>
+                )}
+                {source.extraction_status === "partial" && (
+                  <small>
+                    Some pages could not be read. Analysis covers extracted text
+                    only.
+                  </small>
+                )}
+              </span>
+            </label>
+            <button
+              type="button"
+              className="ps-analysis-source-delete"
+              aria-label={`Delete source: ${source.metadata.title}`}
+              title="Delete source"
+              disabled={!!busy || active}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Delete “${source.metadata.title}”? This removes the source and its associated reports from your library.`,
+                  )
+                )
+                  return;
+                void action("Deleting source", async () => {
+                  await api(
+                    `/api/v1/sources/${source.id}?documentId=${work.id}`,
+                    undefined,
+                    "DELETE",
+                  );
+                  setExcludedSourceIds((ids) =>
+                    ids.filter((id) => id !== source.id),
+                  );
+                  await loadSources();
+                  await onUpdated();
+                }).catch(() => {});
+              }}
+            >
+              <Trash2 size={17} />
+            </button>
+          </div>
         ))}
       </div>
     </section>

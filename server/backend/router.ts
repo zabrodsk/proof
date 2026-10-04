@@ -1,3 +1,8 @@
+import {
+  attachSource,
+  ownedDocument,
+  requireWorkSource,
+} from "./work-sources.js";
 import express, { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -215,6 +220,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     const v = z
       .object({
         metadata: sourceMetadata,
+        documentId: z.string().uuid().optional(),
         filename: z
           .string()
           .regex(/\.(pdf|docx|txt|md)$/i)
@@ -246,6 +252,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         v.mediaType,
         v.bytes,
       );
+      if (v.documentId) await attachSource(tx, ws, v.documentId, a.id);
       if (v.sha256)
         await tx.query(
           "UPDATE source_assets SET checksum=$3 WHERE workspace_id=$1 AND id=$2",
@@ -300,12 +307,16 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     res.status(202).json({ assetId: id });
   });
   r.get("/sources", async (req, res) => {
+    const documentId =
+      req.query.documentId === undefined ? null : uuid(req.query.documentId);
+    if (documentId) await ownedDocument(db, res.locals.workspace, documentId);
     const rows = await db.query(
-      "SELECT a.id,a.metadata,a.status,a.access,a.eligibility,e.id AS extraction_id,e.status AS extraction_status,e.coverage FROM source_assets a LEFT JOIN extractions e ON a.id=e.asset_id AND a.workspace_id=e.workspace_id WHERE a.workspace_id=$1 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT $2 OFFSET $3",
+      "SELECT a.id,a.metadata,a.status,a.access,a.eligibility,e.id AS extraction_id,e.status AS extraction_status,e.coverage FROM source_assets a LEFT JOIN extractions e ON a.id=e.asset_id AND a.workspace_id=e.workspace_id WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM document_sources ds WHERE ds.workspace_id=a.workspace_id AND ds.asset_id=a.id AND ds.document_id=$4)) ORDER BY a.created_at DESC LIMIT $2 OFFSET $3",
       [
         res.locals.workspace,
         page(req.query.limit, 50, 100),
         page(req.query.offset, 0, 1_000_000),
+        documentId,
       ],
     );
     const items = await Promise.all(
@@ -352,7 +363,41 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         .send(await blobs.get(a.object_key));
   });
   r.delete("/sources/:id", async (req, res) => {
-    await deleteAsset(db, res.locals.workspace, uuid(req.params.id));
+    const ws = res.locals.workspace,
+      id = uuid(req.params.id);
+    if (req.query.documentId !== undefined) {
+      const documentId = uuid(req.query.documentId);
+      await db.transaction(async (tx) => {
+        await tx.query("SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", [
+          ws,
+        ]);
+        await ownedDocument(tx, ws, documentId);
+        await asset(tx, ws, id, true);
+        await requireWorkSource(tx, ws, documentId, id);
+        await tx.query(
+          "DELETE FROM document_sources WHERE workspace_id=$1 AND document_id=$2 AND asset_id=$3",
+          [ws, documentId, id],
+        );
+        await tx.query(
+          "DELETE FROM runs WHERE workspace_id=$1 AND document_version_id IN (SELECT id FROM document_versions WHERE workspace_id=$1 AND document_id=$2) AND (input::text LIKE $3 OR config->'sourceSnapshots' ? $4 OR id IN (SELECT run_id FROM research_results WHERE workspace_id=$1 AND data::text LIKE $3))",
+          [ws, documentId, `%${id}%`, id],
+        );
+        const remaining = await tx.query(
+          "SELECT asset_id FROM document_sources WHERE workspace_id=$1 AND asset_id=$2",
+          [ws, id],
+        );
+        if (!remaining.rows.length)
+          await deleteAsset(
+            {
+              ...db,
+              query: (sql, args) => tx.query(sql, args),
+              transaction: (fn) => fn(tx),
+            },
+            ws,
+            id,
+          );
+      });
+    } else await deleteAsset(db, ws, id);
     res.status(202).json({ status: "deleting" });
   });
   r.get("/passages/:id", async (req, res) => {
@@ -396,7 +441,11 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         );
         if (!doc.rows.length) throw notFound();
       }
-      if (v.assetId) await asset(tx, ws, v.assetId);
+      if (v.assetId) {
+        await asset(tx, ws, v.assetId);
+        if (v.documentId)
+          await requireWorkSource(tx, ws, v.documentId, v.assetId);
+      }
       if (v.kind !== "bibliography" && !v.assetId) {
         const a = await createAsset(
           tx,
@@ -410,6 +459,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
           "text/plain",
         );
         v.assetId = a.id;
+        if (v.documentId) await attachSource(tx, ws, v.documentId, a.id);
       }
       if (v.kind === "bibliography")
         await tx.query(
@@ -420,6 +470,7 @@ export function backendRouter(db: Database, blobs: BlobStore) {
             v.text || "",
             JSON.stringify({
               externalAccess: v.externalAccess,
+              documentId: v.documentId,
               originAssetId: v.assetId,
             }),
           ],
@@ -511,6 +562,8 @@ export function backendRouter(db: Database, blobs: BlobStore) {
           [ws, e.import_id],
         )
       ).rows[0];
+      if (v.assetId && imp.settings.documentId)
+        await requireWorkSource(tx, ws, imp.settings.documentId, v.assetId);
       const id = randomUUID();
       await tx.query(
         "INSERT INTO reference_imports(id,workspace_id,version,status,original,settings) VALUES($1,$2,$3,'complete',$4,$5)",

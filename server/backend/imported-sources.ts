@@ -1,3 +1,4 @@
+import { attachSource } from "./work-sources.js";
 import type { Source } from "../../shared/types.js";
 import { resolveDOI } from "../sources.js";
 import { remoteFile } from "../remote.js";
@@ -52,14 +53,15 @@ export async function importDocumentSources(
       await tx.query("SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", [ws]);
       const existing = (
         await tx.query(
-          "SELECT id FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND (id=$2 OR metadata->>'importedIdentity'=$3 OR ($4::text IS NOT NULL AND lower(metadata->>'doi')=lower($4)) OR ($5::text IS NOT NULL AND metadata->>'url'=$5)) ORDER BY (status='ready') DESC,created_at LIMIT 1",
-          [ws, entry.asset_id, identity, doi || null, url || null],
+          "SELECT id FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM document_sources ds WHERE ds.workspace_id=source_assets.workspace_id AND ds.asset_id=source_assets.id AND ds.document_id=$6) AND (id=$2 OR metadata->>'importedIdentity'=$3 OR ($4::text IS NOT NULL AND lower(metadata->>'doi')=lower($4)) OR ($5::text IS NOT NULL AND metadata->>'url'=$5)) ORDER BY (status='ready') DESC,created_at LIMIT 1",
+          [ws, entry.asset_id, identity, doi || null, url || null, documentId],
         )
       ).rows[0];
       const sourceId =
         existing?.id ||
         (await createAsset(tx, ws, metadata, "reference.txt", "text/plain")).id;
       await asset(tx, ws, sourceId, true);
+      await attachSource(tx, ws, documentId, sourceId);
       await tx.query(
         "UPDATE source_assets SET metadata=metadata || jsonb_build_object('importedDocumentIds',COALESCE(metadata->'importedDocumentIds','[]'::jsonb) || CASE WHEN COALESCE(metadata->'importedDocumentIds','[]'::jsonb) ? $3 THEN '[]'::jsonb ELSE jsonb_build_array($3::text) END) WHERE workspace_id=$1 AND id=$2",
         [ws, sourceId, documentId],

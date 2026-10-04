@@ -64,5 +64,12 @@
     "@napi-rs/canvas": "^1.0.9",
     "@types/pg": "^8.23.1",
     "@playwright/test": "^1.63.0"
+  },
+  "allowScripts": {
+    "core-js@3.50.0": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "onnxruntime-node@1.30.0": true,
+    "protobufjs@7.6.6": true
   }
 }

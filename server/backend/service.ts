@@ -1,3 +1,4 @@
+import { requireWorkSource } from "./work-sources.js";
 import { uploadedBibliography } from "./references.js";
 import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
@@ -63,6 +64,15 @@ export async function createRun(
         [ws, input.referenceImportVersionId],
       );
       if (!imp.rows[0]) throw notFound();
+      const owner = await tx.query(
+        "SELECT id FROM reference_imports WHERE workspace_id=$1 AND id=$2 AND (settings->>'documentId'=$3 OR (settings->>'documentId' IS NULL AND (EXISTS (SELECT 1 FROM source_imports i WHERE i.workspace_id=$1 AND i.id=$2 AND i.input->>'documentId'=$3) OR EXISTS (SELECT 1 FROM document_sources ds WHERE ds.workspace_id=$1 AND ds.document_id=$3::uuid AND ds.asset_id::text=settings->>'originAssetId'))))",
+        [ws, input.referenceImportVersionId, doc.rows[0].document_id],
+      );
+      if (!owner.rows.length)
+        throw new HttpError(
+          400,
+          "This bibliography does not belong to the current work.",
+        );
       if (imp.rows[0].status !== "complete")
         throw new HttpError(409, "Bibliography is still processing.");
       references = (
@@ -88,6 +98,8 @@ export async function createRun(
       }
     }
     await validateSelection(tx, ws, input.selectedSources);
+    for (const source of input.selectedSources)
+      await requireWorkSource(tx, ws, doc.rows[0].document_id, source.assetId);
     const bibliographyAssets: string[] = [];
     for (const selection of [...input.selectedSources]) {
       const source = await asset(tx, ws, selection.assetId, true);
@@ -188,7 +200,7 @@ export async function applyFix(
       fix.documentVersionId !== versionId
     )
       throw new HttpError(409, "This finding has no current verified edit.");
-    await validateFixEvidence(tx, ws, row.data, row.config);
+    await validateFixEvidence(tx, ws, row.data, row.config, documentId);
     const version = (
       await tx.query(
         "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",

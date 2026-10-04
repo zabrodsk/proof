@@ -195,7 +195,7 @@ test("bibliography-only checks keep retrieval consent and run with zero claims",
     })
   ).json();
   await page.goto(`/app/works/${doc.id}/citations`);
-  await page.getByRole("tab", { name: /^Works Cited/ }).click();
+  await page.getByRole("tab", { name: /^Sources/ }).click();
   await page
     .locator("summary")
     .filter({ hasText: /^Import references$/ })
@@ -250,4 +250,45 @@ test("bibliography-only checks keep retrieval consent and run with zero claims",
   expect(input.selectedSources).toEqual([]);
   expect(input.externalAccess).toBe("resolve_selected_references");
   expect(input.referenceImportVersionId).toBeTruthy();
+});
+
+test("source delete button confirms deletion without toggling selection", async ({
+  page,
+  request,
+}) => {
+  const response = await request.post("/api/v1/documents", {
+    data: { title: "Source deletion", text: "The trial included 218 adults." },
+  });
+  const doc = await response.json();
+  let deletedId = "";
+  await page.route("**/api/v1/sources/*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.continue();
+    deletedId = new URL(route.request().url()).pathname.split("/").pop()!;
+    await route.fulfill({ status: 202, json: { status: "deleting" } });
+  });
+  await page.route("**/api/v1/sources?*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.items = data.items.filter(
+      (source: { id: string }) => source.id !== deletedId,
+    );
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto(`/app/works/${doc.id}/citations`);
+  const row = page
+    .locator(".ps-analysis-source")
+    .filter({ hasText: "Citable source" });
+  const remove = row.getByRole("button", {
+    name: "Delete source: Citable source",
+    exact: true,
+  });
+  await expect(row.getByRole("checkbox")).toBeChecked();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await remove.click();
+  await expect(row.getByRole("checkbox")).toBeChecked();
+  expect(deletedId).toBe("");
+  page.once("dialog", (dialog) => dialog.accept());
+  await remove.click();
+  await expect(row).toHaveCount(0);
+  expect(deletedId).not.toBe("");
 });
