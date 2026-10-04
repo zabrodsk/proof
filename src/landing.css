@@ -5161,6 +5161,57 @@ body {
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* Restore the original light palette for the how-it-works section. */
+.lp-how-section {
+  background: var(--lp-paper);
+}
+.lp-how-panel {
+  background: transparent;
+  border-radius: 0;
+  color: var(--lp-ink);
+}
+.lp-how-intro h2 {
+  color: var(--lp-ink);
+}
+.lp-how-intro h2 span {
+  color: var(--lp-accent);
+}
+.lp-process {
+  color: var(--lp-muted);
+}
+.lp-process-number,
+.lp-process-drawing,
+.lp-process-arrow,
+.lp-process-return {
+  color: var(--lp-accent);
+  stroke: var(--lp-accent);
+}
+.lp-process-paper {
+  fill: #e7efe9;
+}
+.lp-process-highlight {
+  fill: var(--lp-accent);
+}
+.lp-process-steps h3 {
+  color: var(--lp-ink);
+}
+.landing .lp-process-cta {
+  background: var(--lp-accent);
+  color: #fff;
+}
+.lp-process-cta .ink-frame {
+  color: #fff;
+}
+.lp-process-cta:hover {
+  background: var(--lp-accent-dark);
+}
+.lp-process-cta:active {
+  background: #103d30;
+}
+.lp-process-cta:focus-visible {
+  outline-color: var(--lp-ink);
+}
 @media (max-width: 1050px) and (min-width: 701px) {
   .lp-process-steps {
     gap: 28px;
