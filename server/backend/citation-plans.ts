@@ -20,11 +20,16 @@ import {
 } from "./citations.js";
 import { assignmentProfiles } from "../../shared/citation-profiles.js";
 import {
+  citationReferences,
+  combinedCitation,
+  referenceMetadata as metadata,
+} from "./citation-mapping.js";
+import {
   citationRequirementForSpan,
   documentSentences,
 } from "../../shared/claims.js";
 
-const planVersion = "citation-plan-3";
+const planVersion = "citation-plan-6";
 function stable(value: any): any {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === "object")
@@ -36,28 +41,6 @@ function stable(value: any): any {
   return value;
 }
 const fingerprint = (value: unknown) => checksum(JSON.stringify(stable(value)));
-function metadata(value: any): ReferenceMetadata {
-  return {
-    ...value,
-    type:
-      value.type ||
-      (value.journal || value.containerTitle
-        ? "article-journal"
-        : value.isbn
-          ? "book"
-          : value.url
-            ? "webpage"
-            : "document"),
-    authors: value.authorDetails?.length
-      ? value.authorDetails.map((author: any) =>
-          author.family || author.given
-            ? { family: author.family, given: author.given }
-            : { literal: author.literal || author.name },
-        )
-      : value.authors,
-    containerTitle: value.containerTitle || value.journal,
-  };
-}
 function snapshot(asset: any, extraction: any) {
   return {
     metadata: asset.metadata,
@@ -242,20 +225,8 @@ export async function citationPlan(
       metadata: s.metadata,
     }));
     const frozenReferences = (run.config.references || []) as any[];
-    const importedReferences = frozenReferences.map((ref) => ({
-      id: ref.asset_id || ref.resolvedAssetId || ref.id,
-      metadata: {
-        ...ref.parsed,
-        authors: ref.parsed?.authorDetails || ref.parsed?.authors || [],
-      },
-    }));
     // Matching a supplied bibliography never implies that its full text exists.
-    const auditReferences = [
-      ...references.filter(
-        (r) => !importedReferences.some((i) => i.id === r.id),
-      ),
-      ...importedReferences,
-    ];
+    const auditReferences = citationReferences(references, frozenReferences);
     const occurrences = parseCitationOccurrences(version.text, auditReferences);
     const sentences = documentSentences(version.text);
     const needsAttribution = (occurrence: (typeof occurrences)[number]) => {
@@ -284,26 +255,36 @@ export async function citationPlan(
       ),
     );
     plan.audit = {
-      occurrences: occurrences.map((o) => ({
-        id: o.id,
-        text: o.raw,
-        start: o.start,
-        end: o.end,
-        form: o.form,
-        status: o.items.some((i) => i.status === "ambiguous")
-          ? "ambiguous"
-          : o.items.every((i) => i.status === "matched")
-            ? "matched"
-            : "unmatched",
-        sourceIds: o.items.flatMap((i) => i.sourceIds),
-        locator: o.items
-          .map((i) => i.locator)
-          .filter(Boolean)
-          .join(", "),
-        citation:
-          findings.find((f) => f.claim.start <= o.start && f.claim.end >= o.end)
-            ?.citation || "not_checked",
-      })),
+      occurrences: occurrences.map((o) => {
+        const finding = findings.find(
+          (f) => f.claim.start <= o.start && f.claim.end >= o.end,
+        );
+        const checks = finding?.citationChecks?.filter(
+          (c) => c.start === o.start && c.end === o.end,
+        );
+        const items = checks?.length ? checks : o.items;
+        return {
+          id: o.id,
+          text: o.raw,
+          start: o.start,
+          end: o.end,
+          form: o.form,
+          status: items.some((i) => i.status === "ambiguous")
+            ? "ambiguous"
+            : items.every((i) => i.status === "matched")
+              ? "matched"
+              : "unmatched",
+          sourceIds: items.flatMap((i) => i.sourceIds),
+          locator: items
+            .map((i) => i.locator)
+            .filter(Boolean)
+            .join(", "),
+          citation: checks?.length
+            ? combinedCitation(checks)
+            : finding?.citation || "not_checked",
+          items: checks,
+        };
+      }),
       bibliographyIssues: [],
       counts: {
         occurrences: occurrences.length,
@@ -321,9 +302,9 @@ export async function citationPlan(
     for (const ref of frozenReferences) {
       if (
         (!ref.asset_id && !ref.resolvedAssetId) ||
-        !["full_text", "uploaded"].includes(
+        !["full_text", "uploaded", "partial_text", "abstract"].includes(
           ref.access ||
-            sources.get(ref.asset_id || ref.resolvedAssetId)?.row.access ||
+            sources.get(ref.resolvedAssetId || ref.asset_id)?.row.access ||
             "unavailable",
         )
       )
@@ -332,7 +313,7 @@ export async function citationPlan(
           text: ref.parsed?.title || ref.original,
           detail:
             ref.resolutionNotice ||
-            "This reference identifies a work, but its full text was not available for evidence checking. Allow retrieval of cited works or upload the article.",
+            "We found the paper, but could not retrieve enough text to verify its claims. Retrieve the cited work or upload the article.",
           referenceIds: [ref.id],
         });
       for (const warning of ref.identityWarnings || [])
@@ -385,7 +366,16 @@ export async function citationPlan(
       plan.warnings.push(
         "This classroom profile audits citations. Make corrections in the required original document; Proof cannot certify its editing history.",
       );
+    if (run.input.mode === "source_check")
+      plan.coverage.totalClaims = findings.filter(
+        (f) => parseCitationOccurrences(f.claim.text, references).length > 0,
+      ).length;
     for (const finding of findings) {
+      if (
+        run.input.mode === "source_check" &&
+        !parseCitationOccurrences(finding.claim.text, references).length
+      )
+        continue;
       if (
         citationRequirementForSpan(
           version.text,
@@ -689,6 +679,22 @@ export async function citationPlan(
             .map((r) => [r.identity, r]),
         ).values(),
       ];
+      if (!candidates.length) {
+        const identified = auditReferences.filter(
+          (reference) =>
+            frozenReferences.some(
+              (ref) =>
+                (ref.resolvedAssetId || ref.asset_id || ref.id) ===
+                  reference.id &&
+                ["matched_ready", "matched_needs_pdf"].includes(ref.status),
+            ) && matches(entry.text, reference.metadata),
+        );
+        if (identified.length === 1) {
+          // Work identity survives unavailable text; evidence and formatting stay withheld.
+          plan.bibliography.entries[i].referenceId = identified[0].id;
+          continue;
+        }
+      }
       if (candidates.length !== 1) {
         plan.warnings.push(
           "A bibliography entry could not be matched uniquely to verified source metadata. It will remain unchanged.",

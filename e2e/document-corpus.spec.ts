@@ -1,4 +1,10 @@
-import { openClaims, openReview, showSources } from "./work-pages";
+import { enableAiProcessing } from "./work-pages";
+import {
+  showCheckDetails,
+  openClaims,
+  openReview,
+  showSources,
+} from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { documentCorpus } from "../tests/fixtures/document-corpus.js";
 
@@ -35,12 +41,13 @@ for (const sample of documentCorpus) {
     await showSources(page);
     await showSources(page);
     await expect(
-      page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+      page
+        .locator(".ps-setup-source:not(.is-waiting)")
+        .filter({ hasText: "Citable source" }),
     ).toBeVisible();
-    await page
-      .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-      .check();
+    await enableAiProcessing(page);
     await page.locator(".ps-setup-start").click();
+    await showCheckDetails(page);
     await expect(
       page.getByText(
         `${expectedCount} of ${expectedCount} selected claims checked.`,
@@ -159,25 +166,27 @@ test("partial citation approval keeps the remaining gap after reopening", async 
   await showSources(page);
   await showSources(page);
   await expect(
-    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+    page
+      .locator(".ps-setup-source:not(.is-waiting)")
+      .filter({ hasText: "Citable source" }),
   ).toBeVisible();
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   await page.locator(".ps-setup-start").click();
+  await page.getByRole("tab", { name: /^Changes/ }).click();
   const review = page.getByRole("region", {
     name: "Citation proposals",
     exact: true,
   });
   await expect(review.locator(".ps-citation-operation input")).toHaveCount(2);
-  await review.locator(".ps-citation-operation input").last().uncheck();
-  await expect(review).toContainText("1 of 2 changes selected.");
+  await review.locator(".ps-citation-operation input").first().check();
+  await expect(review).toContainText("1 of 2 changes selected");
   await review
-    .getByRole("button", { name: "Apply selected citations", exact: true })
+    .getByRole("button", { name: "Apply 1 selected change", exact: true })
     .click();
   await expect(review).toContainText("1 left for review");
-  await expect(review).toContainText("This citation change was not applied.");
+  await expect(review).toContainText("Deferred");
   await page.reload();
+  await page.getByRole("tab", { name: /^Changes/ }).click();
   await expect(review).toContainText("1 left for review");
   const saved = await page
     .getByRole("textbox", { name: "Document text", exact: true })

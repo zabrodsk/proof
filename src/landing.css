@@ -5161,6 +5161,60 @@ body {
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* Keep the citation process as an open, hand-drawn diagram on paper. */
+.lp-how-section {
+  background: var(--lp-paper);
+  box-shadow: 0 0 0 100vmax var(--lp-paper);
+  clip-path: inset(0 -100vmax);
+}
+.lp-how-panel {
+  background: transparent;
+  border-radius: 0;
+  color: var(--lp-ink);
+}
+.lp-how-intro h2 {
+  color: var(--lp-ink);
+}
+.lp-how-intro h2 span {
+  color: var(--lp-accent);
+}
+.lp-process {
+  color: var(--lp-muted);
+}
+.lp-process-number,
+.lp-process-drawing,
+.lp-process-arrow,
+.lp-process-return {
+  color: var(--lp-accent);
+  stroke: var(--lp-accent);
+}
+.lp-process-paper {
+  fill: #e7efe9;
+}
+.lp-process-highlight {
+  fill: var(--lp-accent);
+}
+.lp-process-steps h3 {
+  color: var(--lp-ink);
+}
+.landing .lp-process-cta {
+  background: #b6d8be;
+  color: #1d3329;
+}
+.lp-process-cta .ink-frame {
+  color: #1d3329;
+}
+.lp-process-cta:hover {
+  background: #d0e8d4;
+}
+.lp-process-cta:active {
+  background: #a6cdae;
+}
+.lp-process-cta:focus-visible {
+  outline: 2px solid var(--lp-ink);
+  outline-offset: 6px;
+}
 @media (max-width: 1050px) and (min-width: 701px) {
   .lp-process-steps {
     gap: 28px;

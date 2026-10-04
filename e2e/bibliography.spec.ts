@@ -1,3 +1,4 @@
+import { enableAiProcessing } from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { openReview, showSources } from "./work-pages";
@@ -65,14 +66,16 @@ test("a Word bibliography survives upload, citation audit, and reopening without
         .getByText("4 references found.", { exact: false }),
     ).toBeVisible();
     const retrieval = page.getByRole("checkbox", {
-      name: "Allow Proof to retrieve the works",
+      name: "Retrieve cited works for this check",
       exact: false,
     });
+    await page
+      .locator("summary")
+      .filter({ hasText: /^More options$/ })
+      .click();
     await expect(retrieval).toBeChecked();
     await retrieval.uncheck();
-    await page
-      .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-      .check();
+    await enableAiProcessing(page);
     await page.locator(".ps-setup-start").click();
     await expect(
       page.getByText(
@@ -80,13 +83,26 @@ test("a Word bibliography survives upload, citation audit, and reopening without
         { exact: false },
       ),
     ).toBeVisible();
-    await expect(page.locator(".ps-changes > li")).toHaveCount(5);
-    await expect(page.locator(".ps-changes")).toContainText(
-      "Source text unavailable",
-    );
-    await expect(page.locator(".ps-changes")).not.toContainText(
-      "Not in your sources",
-    );
+    await expect(
+      page.locator(
+        '.ps-citation-issue-group[aria-label="In-text citation issues"] .ps-citation-issue',
+      ),
+    ).toHaveCount(5);
+    await expect(
+      page.locator(
+        '.ps-citation-issue-group[aria-label="In-text citation issues"]',
+      ),
+    ).toContainText("Source text unavailable");
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: "Citation verification incomplete" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.ps-citation-issue-group[aria-label="In-text citation issues"]',
+      ),
+    ).not.toContainText("Not in your sources");
     await expect(
       page.getByRole("textbox", { name: "Document text" }),
     ).toHaveValue(text);
@@ -112,8 +128,12 @@ test("a Word bibliography survives upload, citation audit, and reopening without
       page.getByRole("checkbox", { name: sourceTitle, exact: false }),
     ).toBeChecked();
     await openReview(page);
-    await page.getByRole("button", { name: "New check", exact: true }).click();
-    await expect(retrieval).not.toBeChecked();
+    await page
+      .locator("summary")
+      .filter({ hasText: /^More options$/ })
+      .click();
+    // A reopened setup uses the account default, not a previous run's permission.
+    await expect(retrieval).toBeChecked();
   } finally {
     await request.delete(`/api/v1/sources/${upload.id}`);
   }

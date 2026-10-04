@@ -232,6 +232,83 @@ export async function resolveDOI(
     source.notice +=
       " Europe PMC could not be reached. Only Crossref content is available.";
   }
+  if (source.access !== "full_text") {
+    try {
+      const work = JSON.parse(
+        await request(
+          openAlexUrl(
+            `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(doi)}`,
+          ),
+        ),
+      );
+      if (dois(work.doi || "")[0] !== doi)
+        throw new Error("Source identity mismatch.");
+      if (!source.passages.length && work.abstract_inverted_index) {
+        const words: string[] = [];
+        for (const [word, positions] of Object.entries(
+          work.abstract_inverted_index,
+        ))
+          if (Array.isArray(positions))
+            for (const position of positions)
+              if (
+                Number.isInteger(position) &&
+                position >= 0 &&
+                position < 20000
+              )
+                words[position] = word;
+        const passages = splitPassages(words.join(" "));
+        if (passages.length) {
+          source.passages = passages;
+          source.access = "abstract";
+          source.provider += " · OpenAlex";
+        }
+      }
+      const locations = [
+        work.best_oa_location,
+        ...(work.locations || []),
+        work.primary_location,
+      ].filter(Boolean);
+      const urls = [
+        ...new Set<string>(
+          [
+            ...locations
+              .filter((location: any) => location.is_oa)
+              .map((location: any) => location.pdf_url),
+            ...locations.map((location: any) => location.landing_page_url),
+          ].filter((url): url is string => typeof url === "string"),
+        ),
+      ];
+      if (urls.length) {
+        const { retrieveNamedReference } =
+          await import("./backend/reference-retrieval.js");
+        const retrieved = await retrieveNamedReference(
+          {
+            ...source,
+            containerTitle: source.journal,
+            url: undefined,
+          },
+          undefined,
+          { urls },
+        );
+        if (
+          retrieved.source.access === "full_text" ||
+          retrieved.source.access === "partial_text" ||
+          !source.passages.length
+        ) {
+          source.passages = retrieved.source.passages;
+          source.access = retrieved.source.access;
+          source.url = retrieved.source.url;
+          source.provider += " · Publisher or repository";
+        }
+      }
+    } catch (error) {
+      // Preserve successful abstract retrieval when a later PDF or provider fails.
+      if (providerContext.getStore()?.signal.aborted) throw error;
+    }
+  }
+  if (source.access === "abstract")
+    source.notice +=
+      " Could not access the full article. Abstract available for verification.";
   return saveSource(source);
 }
 export async function resolveReference(

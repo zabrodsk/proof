@@ -8,6 +8,25 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: `http://127.0.0.1:${testPort}`,
+    // Existing review tests start after the one-time privacy choice.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: `http://127.0.0.1:${testPort}`,
+          localStorage: [
+            {
+              name: "proof.preferences.v1:browser-e2e",
+              value: JSON.stringify({
+                privacyReviewed: true,
+                aiProcessing: false,
+                retrieveCitedWorks: true,
+              }),
+            },
+          ],
+        },
+      ],
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

@@ -23,6 +23,7 @@ const predicate = new RegExp(
       "retains?|retained|acknowledges?|acknowledged|points?|pointed|visits?|visited|experiences?|experienced|observes?|observed|tests?|tested|addresses?|addressed|compares?|compared|explains?|explained|identif(?:ies|y|ied)|records?|recorded|attends?|attended",
       "generates?|generated|absorbs?|absorbed|freezes?|froze|falls?|fell|orbits?|orbited|ends?|ended|grows?|grew|declines?|declined|proves?|proved|cures?|cured|uses?|used",
       "involves?|involved|adjusts?|adjusted|funds?|funded|changes?|changed|permits?|permitted",
+      "means?|meant|damages?|damaged",
       "est|sont|était|étaient|a\\s+(?:recruté|montré|réduit|augmenté|inclus|publié)|ont|je|jsou|byl|byla|bylo|byli|má|mají|sn[ií]žil[aoiy]?|zvyšuje|snižuje|způsobuje",
     ].join("|") +
     ")(?!\\p{L})",

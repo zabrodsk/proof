@@ -110,11 +110,22 @@ globalThis.fetch = async (input, options) => {
     const trialPassage = choicesByPassage.find(([, value]) =>
       value.includes("The trial included 218 adults."),
     );
-    const supportingPassage = hasTrial
-      ? trialPassage
-      : hasParis
-        ? parisPassage
-        : undefined;
+    const memoryClaim =
+      request.state.claim.includes("Sparrow, Liu, and Wegner (2011)") &&
+      request.state.claim.includes("lower recall") &&
+      request.state.claim.includes("where it could be found");
+    const memoryPassage = choicesByPassage.find(
+      ([, value]) =>
+        value.includes("lower rates of recall of the information itself") &&
+        value.includes("where to access it"),
+    );
+    const supportingPassage = memoryClaim
+      ? memoryPassage
+      : hasTrial
+        ? trialPassage
+        : hasParis
+          ? parisPassage
+          : undefined;
     const numeric =
       /120 adults/.test(request.state.claim) &&
       choicesByPassage.some(([, value]) => value.includes("218 adults"));
@@ -376,6 +387,41 @@ app.get("/__e2e/provider-requests", (q, r) => {
       (item) => !q.query.runId || item.runId === q.query.runId,
     ),
   });
+});
+app.post("/__e2e/sparrow-abstract", async (_q, r) => {
+  const text =
+    "When people expect to have future access to information, they have lower rates of recall of the information itself and enhanced recall instead for where to access it.";
+  const metadata = {
+    title:
+      "Google effects on memory: Cognitive consequences of having information at our fingertips",
+    authors: ["Betsy Sparrow", "Jenny Liu", "Daniel M. Wegner"],
+    authorDetails: [
+      { given: "Betsy", family: "Sparrow" },
+      { given: "Jenny", family: "Liu" },
+      { given: "Daniel M.", family: "Wegner" },
+    ],
+    year: "2011",
+    doi: "10.1126/science.1207745",
+    journal: "Science",
+    containerTitle: "Science",
+    type: "article-journal" as const,
+    pagination: "unavailable",
+    assetKind: "retrieved_text_snapshot",
+  };
+  const saved = await createAsset(
+    db,
+    ws,
+    metadata,
+    "abstract.txt",
+    "text/plain",
+    Buffer.byteLength(text),
+  );
+  await blobs.put(saved.key, Buffer.from(text), "text/plain");
+  const extractionId = await ingestAsset(db, blobs, ws, saved.id);
+  await db.query("UPDATE source_assets SET access='abstract' WHERE id=$1", [
+    saved.id,
+  ]);
+  r.json({ id: saved.id, extractionId });
 });
 app.use("/api/v1", backendRouter(db, blobs));
 app.use("/api/discovery", discoveryRouter());

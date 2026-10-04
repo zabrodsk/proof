@@ -3,11 +3,17 @@ import { useCallback, useEffect, useState } from "react";
 export interface StudioPreferences {
   sidebarCollapsed: boolean;
   motion: "system" | "reduced";
+  privacyReviewed: boolean;
+  aiProcessing: boolean;
+  retrieveCitedWorks: boolean;
 }
 
 export const defaultStudioPreferences: Readonly<StudioPreferences> = {
   sidebarCollapsed: false,
   motion: "system",
+  privacyReviewed: false,
+  aiProcessing: false,
+  retrieveCitedWorks: false,
 };
 
 const changeEvent = "proof:studio-preferences-changed";
@@ -23,6 +29,10 @@ function normalizePreferences(value: unknown): StudioPreferences {
   return {
     sidebarCollapsed: saved.sidebarCollapsed === true,
     motion: saved.motion === "reduced" ? "reduced" : "system",
+    privacyReviewed: saved.privacyReviewed === true,
+    aiProcessing: saved.privacyReviewed === true && saved.aiProcessing === true,
+    retrieveCitedWorks:
+      saved.privacyReviewed === true && saved.retrieveCitedWorks === true,
   };
 }
 
@@ -52,12 +62,14 @@ export function writeStudioPreferences(
 
 // Keep settings, the sidebar, and other tabs on the same per-account preferences.
 export function useStudioPreferences(userId?: string) {
+  const [loadedUserId, setLoadedUserId] = useState(userId);
   const [preferences, setPreferences] = useState(() =>
     readStudioPreferences(userId),
   );
   const [error, setError] = useState("");
 
   useEffect(() => {
+    setLoadedUserId(userId);
     setPreferences(readStudioPreferences(userId));
     setError("");
     const key = studioPreferencesKey(userId);
@@ -94,5 +106,10 @@ export function useStudioPreferences(userId?: string) {
     [userId],
   );
 
-  return { preferences, updatePreferences, error };
+  return {
+    preferences:
+      loadedUserId === userId ? preferences : readStudioPreferences(userId),
+    updatePreferences,
+    error,
+  };
 }

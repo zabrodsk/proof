@@ -19,18 +19,21 @@ export async function retrieve(
   },
 ): Promise<{ passages: Passage[]; citedIds: string[]; locatorKnown: boolean }> {
   const embedding = await embed(query, "query", embeddingOptions);
-  const range = locator?.match(/^(\d+)-(\d+)$/);
-  const labels =
-    range &&
-    Number(range[2]) - Number(range[1]) >= 0 &&
-    Number(range[2]) - Number(range[1]) <= 100
-      ? Array.from(
-          { length: Number(range[2]) - Number(range[1]) + 1 },
-          (_, i) => String(Number(range[1]) + i),
-        )
-      : locator
-        ? [locator]
-        : [];
+  const labels = [
+    ...new Set(
+      (locator?.split(",") || []).flatMap((part) => {
+        const value = part.trim();
+        const range = value.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+        if (!range) return [value];
+        const size = Number(range[2]) - Number(range[1]);
+        return size >= 0 && size <= 100
+          ? Array.from({ length: size + 1 }, (_, i) =>
+              String(Number(range[1]) + i),
+            )
+          : [value];
+      }),
+    ),
+  ];
   const params: any[] = [
     ws,
     selection.extractionId,
@@ -69,6 +72,8 @@ export async function retrieve(
   return {
     passages: selected.map(({ cited, rank, ...p }) => p),
     citedIds: cited.map((p) => p.id),
-    locatorKnown: cited.length > 0,
+    locatorKnown:
+      labels.length > 0 &&
+      labels.every((label) => cited.some((p) => p.pageLabel === label)),
   };
 }

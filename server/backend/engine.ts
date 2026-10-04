@@ -16,7 +16,12 @@ import {
   citationRequirementForSpan,
 } from "../claims.js";
 import { planResearch } from "./research-plan.js";
-import { citations, matchesCitation } from "../parse.js";
+import { citations } from "../parse.js";
+import {
+  citationReferences,
+  claimCitationChecks,
+  combinedCitation,
+} from "./citation-mapping.js";
 import { judgeClaim } from "../judge.js";
 import { type Database, event } from "./db.js";
 import { asset, checksum, validateSelection } from "./library.js";
@@ -132,7 +137,13 @@ async function assessPacket(
 ): Promise<Finding> {
   const cacheKey = checksum(
     JSON.stringify({
-      claim: claimData,
+      claim: {
+        ...claimData,
+        text: claim.text,
+        start: claim.start,
+        end: claim.end,
+        citations: claim.citations,
+      },
       packet,
       model: run.config.model,
       prompt: run.config.prompt,
@@ -152,16 +163,13 @@ async function assessPacket(
     )
   ).rows[0]?.data;
   if (!assessment) {
-    if (
-      provenanceFrozen &&
-      ["abstract", "metadata", "unavailable"].includes(source.access)
-    )
+    if (provenanceFrozen && ["metadata", "unavailable"].includes(source.access))
       assessment = {
         ...claim,
         method: "unverified",
         status: "uncertain",
         explanation:
-          "The work was identified, but only an abstract, preview, or metadata is available. Full-text evidence was not checked.",
+          "The work was identified, but no meaningful source text is available to check this claim.",
       };
     else if (
       !provenanceFrozen ||
@@ -282,8 +290,28 @@ export async function processRun(
           )
         ).rows;
         if (!claims.length) {
-          const candidates = claimCandidates(document.text, input.claimSpans),
-            permitted = candidates.slice(0, run.config.limits.claims);
+          const allCandidates = claimCandidates(
+            document.text,
+            input.claimSpans,
+          );
+          const citationRefs = citationReferences(
+            Object.entries(run.config.sourceSnapshots || {}).map(
+              ([id, source]: [string, any]) => ({
+                id,
+                metadata: source.metadata,
+              }),
+            ),
+            run.config.references || [],
+          );
+          const candidates =
+            input.mode === "source_check"
+              ? allCandidates.filter(
+                  (claim) =>
+                    claimCitationChecks(claim.text, claim.start, citationRefs)
+                      .length > 0,
+                )
+              : allCandidates;
+          const permitted = candidates.slice(0, run.config.limits.claims);
           await db.transaction(async (tx) => {
             await ownedRun(tx, ws, id, true);
             for (let ordinal = 0; ordinal < permitted.length; ordinal++)
@@ -316,18 +344,28 @@ export async function processRun(
                           selected.start <= s.start && selected.end >= s.end,
                       ),
                   ),
-                  excludedSpans: input.claimSpans
-                    ? selectClaims(document.text)
-                        .candidates.filter(
-                          (s) =>
-                            !input.claimSpans?.some(
-                              (selected) =>
-                                selected.start <= s.start &&
-                                selected.end >= s.end,
-                            ),
-                        )
-                        .map(({ start, end }) => ({ start, end }))
-                    : [],
+                  excludedSpans:
+                    input.mode === "source_check"
+                      ? selectClaims(document.text)
+                          .candidates.filter(
+                            (s) =>
+                              !candidates.some(
+                                (c) => c.start === s.start && c.end === s.end,
+                              ),
+                          )
+                          .map(({ start, end }) => ({ start, end }))
+                      : input.claimSpans
+                        ? selectClaims(document.text)
+                            .candidates.filter(
+                              (s) =>
+                                !input.claimSpans?.some(
+                                  (selected) =>
+                                    selected.start <= s.start &&
+                                    selected.end >= s.end,
+                                ),
+                            )
+                            .map(({ start, end }) => ({ start, end }))
+                        : [],
                   selectionPolicy: run.config.claimSelection,
                   documentCandidates: selectClaims(document.text).candidates
                     .length,
@@ -386,7 +424,14 @@ export async function processRun(
           );
         const resolvedReferenceIds = new Set<string>(
           (run.config.references || [])
-            .filter((r: any) => r.status === "matched_ready" && r.asset_id)
+            .filter(
+              (r: any) =>
+                r.status === "matched_ready" &&
+                r.asset_id &&
+                ["full_text", "uploaded", "partial_text", "abstract"].includes(
+                  sourceSnapshots[r.asset_id]?.access,
+                ),
+            )
             .map((r: any) => r.id),
         );
         if (
@@ -413,13 +458,24 @@ export async function processRun(
             const ref = (run.config.references || []).find(
               (r: any) => r.id === candidate.referenceEntryId,
             );
-            if (ref)
+            if (ref) {
+              if (
+                candidate.assetId &&
+                candidate.assetId !== ref.asset_id &&
+                resolved.selections.some((s) => s.assetId === candidate.assetId)
+              ) {
+                const superseded = sourceSelections.findIndex(
+                  (s) => s.assetId === ref.asset_id,
+                );
+                if (superseded >= 0) sourceSelections.splice(superseded, 1);
+              }
               Object.assign(ref, {
                 resolvedAssetId: candidate.assetId,
                 resolutionNotice: candidate.reason,
                 access: candidate.access,
                 identityWarnings: candidate.identityWarnings,
               });
+            }
           }
           await db.query(
             "UPDATE runs SET config=jsonb_set(jsonb_set(config,'{references}',$3::jsonb),'{resolvedSources}',$4::jsonb) WHERE workspace_id=$1 AND id=$2",
@@ -435,6 +491,9 @@ export async function processRun(
             if (
               candidate.referenceEntryId &&
               candidate.assetId &&
+              ["full_text", "uploaded", "partial_text", "abstract"].includes(
+                candidate.access || sourceSnapshots[candidate.assetId]?.access,
+              ) &&
               resolved.selections.some((s) => s.assetId === candidate.assetId)
             )
               resolvedReferenceIds.add(candidate.referenceEntryId);
@@ -481,6 +540,7 @@ export async function processRun(
                   citations: claimCitations,
                   assetIds: citedAssetIds,
                   status: result.citation,
+                  checks: result.citationChecks,
                 }),
               ],
             );
@@ -523,10 +583,21 @@ export async function processRun(
           };
           const commonKnowledge =
             claimRow.data.citationRequirement === "common_knowledge";
+          let citationChecks = claimCitationChecks(
+            claimRow.data.text,
+            claimRow.data.start,
+            citationReferences(
+              Object.keys(sourceSnapshots).map((id) => ({
+                id,
+                metadata: sourceSnapshots[id].metadata,
+              })),
+              run.config.references || [],
+            ),
+          );
           const claim: Claim = {
             id: claimRow.id,
             ...claimRow.data,
-            citations: citations(claimRow.data.text),
+            citations: citationChecks.map((check) => check.text),
           };
           if (
             citationWorkflow &&
@@ -538,6 +609,7 @@ export async function processRun(
               claim: claimRow.data,
               support: "not_verified",
               citation: "not_required",
+              citationChecks,
               basis: "supplied_text",
               eligibility: "unknown",
               processing: "complete",
@@ -632,9 +704,9 @@ export async function processRun(
                 failed ||=
                   assessment.method === "unverified" ||
                   assessment.status === "uncertain" ||
-                  ["abstract", "metadata", "unavailable"].includes(
-                    current.access,
-                  ) ||
+                  ["metadata", "unavailable"].includes(current.access) ||
+                  (wholeAcademicText &&
+                    ["abstract", "partial_text"].includes(current.access)) ||
                   !!current.metadata.publicationWarning;
               }
             }
@@ -762,36 +834,53 @@ export async function processRun(
               [ws, id, JSON.stringify(sourceSnapshots)],
             );
           });
-          const cited = sources.filter((s) =>
-            claim.citations.some(
-              (c) =>
-                matchesCitation(c, {
-                  ...s.asset.metadata,
-                  authors: s.asset.metadata.authors || [],
-                  doi: s.asset.metadata.doi,
-                } as Source) ||
-                (run.config.references || []).some(
-                  (r: any) =>
-                    r.resolvedAssetId === s.selection.assetId &&
-                    matchesCitation(c, {
-                      ...r.parsed,
-                      authors: r.parsed?.authors || [],
-                    } as Source),
-                ),
+          citationChecks = claimCitationChecks(
+            claim.text,
+            claim.start,
+            citationReferences(
+              sources.map((s) => ({
+                id: s.selection.assetId,
+                metadata: s.asset.metadata,
+              })),
+              run.config.references || [],
             ),
           );
-          const ambiguous =
-            (cited.length > 1 && claim.citations.length === 1) ||
-            claim.citations.length > 1;
-          const unmatchedCitedWork =
-            claim.citations.length > 0 && !cited.length;
+          claim.citations = citationChecks.map((check) => check.text);
+          for (const check of citationChecks) {
+            if (check.sourceIds.length === 1)
+              check.sourceAccess =
+                sourceSnapshots[check.sourceIds[0]]?.access ||
+                (run.config.references || []).find(
+                  (ref: any) =>
+                    (ref.resolvedAssetId || ref.asset_id) ===
+                    check.sourceIds[0],
+                )?.access ||
+                check.sourceAccess;
+          }
+          const cited = sources.filter((s) =>
+            citationChecks.some((check) =>
+              check.sourceIds.includes(s.selection.assetId),
+            ),
+          );
+          const ambiguous = citationChecks.some(
+            (check) => check.status === "ambiguous",
+          );
+          const unmatchedCitedWork = citationChecks.some(
+            (check) =>
+              check.status === "unmatched" ||
+              !sources.some((s) =>
+                check.sourceIds.includes(s.selection.assetId),
+              ),
+          );
           const intendedSources = cited.length ? cited : sources;
           const sourceTextUnavailable =
             intendedSources.length > 0 &&
             intendedSources.every(
               (s) =>
                 s.provenanceFrozen &&
-                !["uploaded", "full_text"].includes(s.asset.access),
+                !["uploaded", "full_text", "partial_text", "abstract"].includes(
+                  s.asset.access,
+                ),
             );
           let citation: Citation =
             input.mode !== "source_check" ||
@@ -802,23 +891,17 @@ export async function processRun(
                 : cited.length === 0 || ambiguous
                   ? "ambiguous"
                   : "not_checked";
-          const citedIdentityMismatch = (run.config.references || []).some(
-            (r: any) =>
-              r.identityWarnings?.length &&
-              cited.some((s) => s.selection.assetId === r.resolvedAssetId),
-          );
           const evidence: EvidenceLink[] = [];
           const inspected = new Set<string>();
           const primary: Support[] = [],
-            alternative: Support[] = [],
-            citedLocation: Support[] = [],
-            citedSource: Support[] = [];
+            alternative: Support[] = [];
+          const incompleteCitations = new Set<
+            (typeof citationChecks)[number]
+          >();
           let semanticFailures = 0,
             academicUncertainty = false,
             attempts = 0,
-            retrievedPassages = 0,
-            locatorKnown = true,
-            hadLocator = false;
+            retrievedPassages = 0;
           const primaryAssessments: Finding["status"][] = [];
           const proposedFixes: NonNullable<BackendFinding["fix"]>[] = [];
           const allEligible =
@@ -855,7 +938,8 @@ export async function processRun(
               combineSupport(primary) === "supported" &&
               semanticFailures === 0 &&
               !academicUncertainty &&
-              !ambiguous
+              !ambiguous &&
+              citationChecks.every((check) => check.citation === "correct")
             )
               continue;
             if (inspectWholeText) {
@@ -867,7 +951,8 @@ export async function processRun(
               ).rows[0];
               academicUncertainty ||=
                 extraction?.status !== "complete" ||
-                !["full_text", "uploaded"].includes(item.asset.access);
+                (input.mode !== "source_check" &&
+                  !["full_text", "uploaded"].includes(item.asset.access));
             }
             const identityMismatch = (run.config.references || []).some(
               (r: any) =>
@@ -888,203 +973,269 @@ export async function processRun(
               !isCited
             )
               continue;
-            const citationText = claim.citations.find(
-              (c) =>
-                matchesCitation(c, {
-                  ...item.asset.metadata,
-                  authors: item.asset.metadata.authors || [],
-                } as Source) ||
-                (run.config.references || []).some(
-                  (r: any) =>
-                    r.resolvedAssetId === item.selection.assetId &&
-                    matchesCitation(c, {
-                      ...r.parsed,
-                      authors: r.parsed?.authors || [],
-                    } as Source),
-                ),
+            const sourceChecks = citationChecks.filter((check) =>
+              check.sourceIds.includes(item.selection.assetId),
             );
-            const locatorMatch = citationText?.match(
-              /(?:,?\s+(?:p\.?\s*)?)(\d{1,4})(?:[–-](\d{1,4}))?\s*$/,
-            );
-            const locator = locatorMatch?.[1];
-            const actualLocator =
-              locator && !/^(19|20)\d{2}$/.test(locator)
-                ? locator + (locatorMatch?.[2] ? "-" + locatorMatch[2] : "")
-                : undefined;
-            hadLocator ||= !!actualLocator;
-            const retrieved = await retrieve(
-              db,
-              ws,
-              item.selection,
-              claim.text,
-              actualLocator,
-              inspectWholeText ? Number.MAX_SAFE_INTEGER : 10,
-              run.config.embeddingEnabled === undefined
-                ? undefined
-                : {
-                    enabled: run.config.embeddingEnabled,
-                    revision: run.config.embeddingRevision,
-                    modelDirectory: run.config.embeddingModelDirectory,
-                  },
-            );
-            retrievedPassages += retrieved.passages.length;
-            if (isCited && actualLocator && !retrieved.locatorKnown)
-              locatorKnown = false;
-            const source: Source = {
-              id: item.selection.assetId,
-              title: item.asset.metadata.title,
-              authors: item.asset.metadata.authors || [],
-              year: item.asset.metadata.year || "",
-              doi: item.asset.metadata.doi,
-              access: item.asset.access,
-              provider: "Persistent library",
-              retrievedAt:
-                item.asset.created_at?.toISOString?.() ||
-                String(item.asset.created_at),
-              passages: retrieved.passages.map((p) => p.text),
-              publicationWarning: item.asset.metadata.publicationWarning,
-            };
-            const role =
-              input.mode !== "source_check" &&
-              !sourceSelections.some(
-                (s) => s.assetId === item.selection.assetId,
-              )
-                ? "research"
-                : alternativeOnly
-                  ? "alternative"
-                  : "cited";
-            const citedPackets = packets(
-              retrieved.passages.filter((p) =>
-                retrieved.citedIds.includes(p.id),
-              ),
-            );
-            const otherPackets = packets(
-              retrieved.passages.filter(
-                (p) => !retrieved.citedIds.includes(p.id),
-              ),
-            );
-            for (const packet of [...citedPackets, ...otherPackets]) {
-              controller.signal.throwIfAborted();
-              const assessment = await assessPacket(
+            // Each citation gets its own located evidence packet, including repeated
+            // references to the same work on different pages.
+            for (const check of sourceChecks.length
+              ? sourceChecks
+              : [undefined]) {
+              const actualLocator = check?.locator;
+              if (check) check.sourceAccess = item.asset.access;
+              const attributedClaim = check?.claimText
+                ? {
+                    ...claim,
+                    text: check.claimText,
+                    start: check.claimStart!,
+                    end: check.claimEnd!,
+                    citations: [check.text],
+                  }
+                : claim;
+              const citedLocation: Support[] = [],
+                citedSource: Support[] = [];
+              const checked = new Set<string>();
+              let sourceFailures = 0,
+                sourceUncertainty = false;
+              const retrieved = await retrieve(
                 db,
                 ws,
-                id,
-                run,
-                input,
-                claim,
-                claimRow.data,
-                source,
-                packet,
-                item.asset.metadata,
-                item.asset.eligibility,
-                item.provenanceFrozen,
-                input.sourcePolicy === "academic" ||
-                  (input.sourcePolicy === "public" &&
-                    plan?.route === "academic") ||
-                  (input.sourcePolicy === "matched" &&
-                    !sourceSelections.some(
-                      (s) => s.assetId === item.selection.assetId,
-                    ) &&
-                    researchPlan.get(claim.start)?.route === "academic"),
-                deps.judge,
+                item.selection,
+                attributedClaim.text,
+                actualLocator,
+                inspectWholeText ? Number.MAX_SAFE_INTEGER : 10,
+                run.config.embeddingEnabled === undefined
+                  ? undefined
+                  : {
+                      enabled: run.config.embeddingEnabled,
+                      revision: run.config.embeddingRevision,
+                      modelDirectory: run.config.embeddingModelDirectory,
+                    },
               );
-              assertEvidence(assessment, packet);
-              attempts++;
-              if (assessment.method === "unverified") semanticFailures++;
-              if (assessment.method !== "unverified")
-                for (const p of packet) inspected.add(p.id);
-              const support = supportOf(assessment);
-              academicUncertainty ||=
-                inspectWholeText && assessment.status === "uncertain";
-              if (!alternativeOnly) primaryAssessments.push(assessment.status);
-              (alternativeOnly ? alternative : primary).push(support);
-              const passage = packet.find(
-                (p) => p.text === assessment.evidence,
+              retrievedPassages += retrieved.passages.length;
+              const source: Source = {
+                id: item.selection.assetId,
+                title: item.asset.metadata.title,
+                authors: item.asset.metadata.authors || [],
+                year: item.asset.metadata.year || "",
+                doi: item.asset.metadata.doi,
+                access: item.asset.access,
+                provider: "Persistent library",
+                retrievedAt:
+                  item.asset.created_at?.toISOString?.() ||
+                  String(item.asset.created_at),
+                passages: retrieved.passages.map((p) => p.text),
+                publicationWarning: item.asset.metadata.publicationWarning,
+              };
+              const role =
+                input.mode !== "source_check" &&
+                !sourceSelections.some(
+                  (s) => s.assetId === item.selection.assetId,
+                )
+                  ? "research"
+                  : alternativeOnly
+                    ? "alternative"
+                    : "cited";
+              const citedPackets = packets(
+                retrieved.passages.filter((p) =>
+                  retrieved.citedIds.includes(p.id),
+                ),
               );
-              const isCitedPacket = packet.some((p) =>
-                retrieved.citedIds.includes(p.id),
+              const otherPackets = packets(
+                retrieved.passages.filter(
+                  (p) => !retrieved.citedIds.includes(p.id),
+                ),
               );
-              if (isCited)
-                citedSource.push(
-                  passage || support !== "supported" ? support : "not_verified",
+              for (const packet of [...citedPackets, ...otherPackets]) {
+                controller.signal.throwIfAborted();
+                const assessment = await assessPacket(
+                  db,
+                  ws,
+                  id,
+                  run,
+                  input,
+                  attributedClaim,
+                  claimRow.data,
+                  source,
+                  packet,
+                  item.asset.metadata,
+                  item.asset.eligibility,
+                  item.provenanceFrozen,
+                  input.sourcePolicy === "academic" ||
+                    (input.sourcePolicy === "public" &&
+                      plan?.route === "academic") ||
+                    (input.sourcePolicy === "matched" &&
+                      !sourceSelections.some(
+                        (s) => s.assetId === item.selection.assetId,
+                      ) &&
+                      researchPlan.get(claim.start)?.route === "academic"),
+                  deps.judge,
                 );
-              if (isCited && isCitedPacket)
-                citedLocation.push(
-                  (passage && retrieved.citedIds.includes(passage.id)) ||
-                    support !== "supported"
-                    ? support
-                    : "not_verified",
+                assertEvidence(assessment, packet);
+                attempts++;
+                if (assessment.method === "unverified") {
+                  semanticFailures++;
+                  sourceFailures++;
+                }
+                sourceUncertainty ||=
+                  inspectWholeText && assessment.status === "uncertain";
+                if (assessment.method !== "unverified")
+                  for (const p of packet) {
+                    inspected.add(p.id);
+                    checked.add(p.id);
+                  }
+                const support = supportOf(assessment);
+                academicUncertainty ||=
+                  inspectWholeText && assessment.status === "uncertain";
+                if (!alternativeOnly)
+                  primaryAssessments.push(assessment.status);
+                (alternativeOnly ? alternative : primary).push(support);
+                const passage = packet.find(
+                  (p) => p.text === assessment.evidence,
                 );
-              if (passage) {
-                evidence.push({ ...passage, role, support });
+                const isCitedPacket = packet.some((p) =>
+                  retrieved.citedIds.includes(p.id),
+                );
+                if (isCited)
+                  citedSource.push(
+                    passage || support !== "supported"
+                      ? support
+                      : "not_verified",
+                  );
+                if (isCited && isCitedPacket)
+                  citedLocation.push(
+                    (passage && retrieved.citedIds.includes(passage.id)) ||
+                      support !== "supported"
+                      ? support
+                      : "not_verified",
+                  );
+                if (passage) {
+                  evidence.push({
+                    ...passage,
+                    role,
+                    support,
+                    sourceAccess: source.access,
+                    ...(assessment.evidenceExcerpt &&
+                    passage.text.includes(assessment.evidenceExcerpt)
+                      ? { excerpt: assessment.evidenceExcerpt }
+                      : {}),
+                  });
+                }
+                notices.push(assessment.explanation);
+                if (check)
+                  check.explanation = [
+                    ...(check.explanation || []),
+                    assessment.explanation,
+                  ];
+                if (source.access === "abstract")
+                  notices.push(
+                    "Could not access the full article. Abstract available and used for verification.",
+                  );
+                if (
+                  (isCited ||
+                    input.checkScope === "selected_library" ||
+                    (!claim.citations.length &&
+                      input.selectedSources.some(
+                        (s) => s.assetId === item.selection.assetId,
+                      ))) &&
+                  !ambiguous &&
+                  citationChecks.length <= 1 &&
+                  item.extractionComplete &&
+                  assessment.fix &&
+                  ((assessment.fixKind === "number" &&
+                    assessment.numericCorrection) ||
+                    (assessment.fixKind === "quotation" &&
+                      assessment.evidenceExcerpt &&
+                      passage?.text.includes(assessment.evidenceExcerpt) &&
+                      assessment.fix.includes(
+                        `"${assessment.evidenceExcerpt}"`,
+                      ))) &&
+                  passage &&
+                  !alternativeOnly &&
+                  !source.publicationWarning
+                )
+                  proposedFixes.push({
+                    original: claim.text,
+                    replacement: assessment.fix,
+                    start: claim.start,
+                    end: claim.end,
+                    documentVersionId: input.documentVersionId,
+                    kind:
+                      assessment.fixKind === "number" ? "number" : "quotation",
+                  });
               }
-              notices.push(assessment.explanation);
-              if (
-                (isCited ||
-                  input.checkScope === "selected_library" ||
-                  (!claim.citations.length &&
-                    input.selectedSources.some(
-                      (s) => s.assetId === item.selection.assetId,
-                    ))) &&
-                !ambiguous &&
-                item.extractionComplete &&
-                assessment.fix &&
-                ((assessment.fixKind === "number" &&
-                  assessment.numericCorrection) ||
-                  (assessment.fixKind === "quotation" &&
-                    assessment.evidenceExcerpt &&
-                    passage?.text.includes(assessment.evidenceExcerpt) &&
-                    assessment.fix.includes(
-                      `"${assessment.evidenceExcerpt}"`,
-                    ))) &&
-                passage &&
-                !alternativeOnly &&
-                !source.publicationWarning
-              )
-                proposedFixes.push({
-                  original: claim.text,
-                  replacement: assessment.fix,
-                  start: claim.start,
-                  end: claim.end,
-                  documentVersionId: input.documentVersionId,
-                  kind:
-                    assessment.fixKind === "number" ? "number" : "quotation",
-                });
+              if (check) {
+                check.checkedPassageIds = [
+                  ...new Set([...check.checkedPassageIds, ...checked]),
+                ];
+                check.support =
+                  check.status === "matched"
+                    ? combineSupport(citedSource)
+                    : "not_verified";
+                if (
+                  sourceFailures ||
+                  sourceUncertainty ||
+                  !item.extractionComplete
+                ) {
+                  incompleteCitations.add(check);
+                  check.support =
+                    check.support === "supported"
+                      ? "not_verified"
+                      : check.support;
+                }
+                if (
+                  input.mode === "source_check" &&
+                  input.checkScope !== "selected_library" &&
+                  check.status === "matched"
+                ) {
+                  check.citation = identityMismatch
+                    ? "wrong_source"
+                    : actualLocator &&
+                        (["abstract", "partial_text"].includes(source.access) ||
+                          !retrieved.locatorKnown)
+                      ? "ambiguous"
+                      : check.support !== "supported"
+                        ? "not_checked"
+                        : actualLocator &&
+                            combineSupport(citedLocation) !== "supported"
+                          ? "wrong_locator"
+                          : "correct";
+                }
+              }
             }
           }
           if (
             input.mode === "source_check" &&
-            input.checkScope !== "selected_library" &&
-            claim.citations.length &&
-            cited.length &&
-            !ambiguous
+            input.checkScope !== "selected_library"
           ) {
-            const all = combineSupport(citedSource),
-              located = combineSupport(citedLocation);
-            citation = hadLocator
-              ? !locatorKnown
-                ? "ambiguous"
-                : located === "supported"
-                  ? "correct"
-                  : all === "supported"
-                    ? "wrong_locator"
-                    : "not_checked"
-              : all === "supported"
-                ? "correct"
-                : "not_checked";
-            if (
-              [
-                "not_verified",
-                "contradicted",
-                "partial",
-                "overstated",
-              ].includes(all) &&
-              combineSupport(alternative) === "supported"
-            )
-              citation = "wrong_source";
+            for (const check of citationChecks) {
+              const otherSupport =
+                combineSupport(alternative) === "supported" ||
+                citationChecks.some(
+                  (other) =>
+                    other.status === "matched" &&
+                    other.support === "supported" &&
+                    !incompleteCitations.has(other) &&
+                    !other.sourceIds.some((id) => check.sourceIds.includes(id)),
+                );
+              if (
+                check.status === "matched" &&
+                check.citation === "not_checked" &&
+                !incompleteCitations.has(check) &&
+                check.support !== "mixed" &&
+                check.checkedPassageIds.length > 0 &&
+                otherSupport &&
+                [
+                  "not_verified",
+                  "contradicted",
+                  "partial",
+                  "overstated",
+                ].includes(check.support)
+              )
+                check.citation = "wrong_source";
+            }
+            citation = combinedCitation(citationChecks);
           }
-          if (citedIdentityMismatch && claim.citations.length)
-            citation = "wrong_source";
           if (commonKnowledge) {
             if (claim.citations.length && citation !== "not_checked")
               notices.push(
@@ -1117,6 +1268,7 @@ export async function processRun(
             claim: claimRow.data,
             support,
             citation,
+            citationChecks,
             basis:
               input.sourcePolicy === "user_supplied" ||
               suppliedSufficient ||
@@ -1162,7 +1314,11 @@ export async function processRun(
                 : attempts > 0 && semanticFailures === 0
                   ? "complete"
                   : "partial",
-            evidence,
+            evidence: [
+              ...new Map(
+                evidence.map((e) => [`${e.id}:${e.role}`, e]),
+              ).values(),
+            ],
             explanation: [...new Set(notices)],
             checkedPassageIds: [...inspected],
             fix,

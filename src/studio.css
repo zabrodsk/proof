@@ -1110,6 +1110,14 @@
   top: 32px;
 }
 
+.ps-project-popover-floating {
+  position: fixed;
+  right: auto;
+  z-index: 100;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
 .ps-document-popover {
   right: 0;
   top: 52px;
@@ -1401,6 +1409,28 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
+}
+
+.ps-privacy-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 20px 0;
+  cursor: pointer;
+}
+.ps-privacy-choice input {
+  flex-shrink: 0;
+  margin-top: 4px;
+  accent-color: var(--forest);
+}
+.ps-privacy-choice span {
+  display: grid;
+  gap: 6px;
+}
+.ps-privacy-choice small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .ps-signin {

@@ -14,6 +14,8 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import { parseCitationOccurrences } from "../shared/citation-occurrences";
+import type { ReferenceMetadata } from "../shared/citation-format";
 import { selectClaims } from "../shared/claims";
 import {
   approvedClaimSpans,
@@ -28,15 +30,20 @@ import StudioDocument, { type CheckMode } from "./StudioDocument";
 import StudioClaims from "./StudioClaims";
 import type { BackendFinding, RunInput } from "../shared/backend";
 import type { CitationPlan } from "../shared/citation-plan";
-import StudioCitationPlan from "./StudioCitationPlan";
-import StudioCitationAudit from "./StudioCitationAudit";
+import StudioCitationResults from "./StudioCitationResults";
+import StudioCitationInventory, {
+  type CitationInventoryTab,
+  type CitationInventorySelection,
+} from "./StudioCitationInventory";
+import { citationIssues } from "./studio-citation-review";
 import { api, ApiError, type StudioWork } from "./studio-api";
+import type { StudioPreferences } from "./studio-preferences";
 
 type Source = {
   contentKind?: "bibliography" | "source";
   referenceCount?: number;
   id: string;
-  metadata: {
+  metadata: ReferenceMetadata & {
     title: string;
     pagination?: string;
     originalFormat?: string;
@@ -84,22 +91,26 @@ const importPending = (status: string) =>
 export default function StudioAnalysis({
   work,
   sourceSelectionKey,
+  preferences,
   section,
   onUpdated,
   onSave,
   onOpenSources,
   onOpenReview,
   onOpenClaims,
+  onOpenPrivacy,
   documentOptionsTarget,
 }: {
   work: StudioWork;
   sourceSelectionKey: string;
+  preferences: StudioPreferences;
   section: string;
   onUpdated: () => Promise<void>;
   onSave: (text: string) => Promise<{ runId?: string } | undefined>;
   onOpenSources: () => void;
   onOpenReview: () => void;
   onOpenClaims: () => void;
+  onOpenPrivacy: () => void;
   documentOptionsTarget: HTMLElement | null;
 }) {
   const [sourceSearch, setSourceSearch] = useState("");
@@ -142,17 +153,35 @@ export default function StudioAnalysis({
   const [discoveryScope, setDiscoveryScope] = useState<"public" | "academic">(
     "academic",
   );
-  const [resolveReferences, setResolveReferences] = useState(true);
-  const [permission, setPermission] = useState(false);
+  const [retrievalOverride, setRetrievalOverride] = useState<boolean>();
+  const resolveReferences = retrievalOverride ?? preferences.retrieveCitedWorks;
+  const permission = preferences.aiProcessing;
   const [run, setRun] = useState<Run>();
   const [citationPlan, setCitationPlan] = useState<CitationPlan>();
-  const [citationFocus, setCitationFocus] = useState<{
+  const [documentFocus, setDocumentFocus] = useState<{
     start: number;
     end: number;
     token: number;
   }>();
   const [planError, setPlanError] = useState("");
+  const [inventoryTab, setInventoryTab] =
+    useState<CitationInventoryTab>("sources");
+  const [inventorySelection, setInventorySelection] =
+    useState<CitationInventorySelection>();
+  const [sourceFocus, setSourceFocus] = useState<string>();
+  const [reviewFindingId, setReviewFindingId] = useState<string>();
   const [findings, setFindings] = useState<BackendFinding[]>([]);
+  const reviewIssues = useMemo(
+    () =>
+      citationPlan
+        ? citationIssues(
+            citationPlan,
+            findings,
+            (run?.input?.mode ?? mode) === "source_check",
+          )
+        : [],
+    [citationPlan, findings, run, mode],
+  );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [bibliography, setBibliography] = useState("");
@@ -161,11 +190,6 @@ export default function StudioAnalysis({
   const [citations, setCitations] = useState<Citation[]>([]);
   const [history, setHistory] = useState<Run[]>([]);
   const [editorReady, setEditorReady] = useState(true);
-  const [claimFocus, setClaimFocus] = useState<{
-    start: number;
-    end: number;
-    token: number;
-  }>();
   const [excludedClaims, setExcludedClaims] = useState<Set<number>>(new Set());
   const [includedSkipped, setIncludedSkipped] = useState<Set<number>>(
     new Set(),
@@ -193,12 +217,42 @@ export default function StudioAnalysis({
   >([]);
   const [claimSearch, setClaimSearch] = useState("");
   const preview = useMemo(() => selectClaims(work.content), [work.content]);
+  const citationOccurrences = useMemo(
+    () => [
+      ...parseCitationOccurrences(
+        work.content,
+        sources.map((source) => ({ id: source.id, metadata: source.metadata })),
+      ),
+      ...(citationPlan &&
+      citationPlan.documentVersionId === work.documentVersionId
+        ? (citationPlan.audit?.occurrences || []).map((o) => ({
+            id: o.id,
+            start: o.start,
+            end: o.end,
+            raw: o.text,
+            form: "parenthetical" as const,
+            items: [],
+          }))
+        : []),
+    ],
+    [work.content, work.documentVersionId, sources, citationPlan],
+  );
+  const hasCitation = (claim: { start: number; end: number }) =>
+    citationOccurrences.some(
+      (o) => o.start >= claim.start && o.end <= claim.end,
+    );
+  const reviewFindings =
+    (run?.input?.mode ?? mode) === "source_check"
+      ? findings.filter((finding) => hasCitation(finding.claim))
+      : findings;
   const approvedClaims = [
     ...preview.candidates.filter((c) => !excludedClaims.has(c.start)),
     ...preview.skipped.filter((c) => includedSkipped.has(c.start)),
-  ].sort((a, b) => a.start - b.start);
+  ]
+    .filter((claim) => mode !== "source_check" || hasCitation(claim))
+    .sort((a, b) => a.start - b.start);
   useEffect(() => {
-    setClaimFocus(undefined);
+    setDocumentFocus(undefined);
     setClaimSearch("");
     setExcludedClaims(new Set());
     setIncludedSkipped(new Set());
@@ -262,10 +316,6 @@ export default function StudioAnalysis({
                 item.document_version_id === work.documentVersionId,
             ) || runs.items[0];
           if (recent) {
-            setResolveReferences(
-              recent.input?.externalAccess !== "none" ||
-                !recent.config?.bibliographyAssets,
-            );
             const recentMode = runMode(recent);
             modeRef.current = recentMode;
             setMode(recentMode);
@@ -340,7 +390,7 @@ export default function StudioAnalysis({
   }, [work.id, work.documentVersionId]);
   useEffect(() => {
     setCitationPlan(undefined);
-    setCitationFocus(undefined);
+    setDocumentFocus(undefined);
     setPlanError("");
     if (
       !run ||
@@ -433,7 +483,6 @@ export default function StudioAnalysis({
         setBibliography(result.item.input.text || "");
         setReferenceId(result.item.id);
         setImportStatus(result.item.status);
-        setResolveReferences(result.item.input.externalAccess === true);
       })
       .catch((e) => {
         if (!disposed) setError(e.message);
@@ -497,6 +546,50 @@ export default function StudioAnalysis({
       { idempotencyKey },
     );
     return result;
+  }
+  function openInventory(selection?: CitationInventorySelection) {
+    setInventoryTab(
+      selection?.kind === "occurrence" ? "in-text" : "works-cited",
+    );
+    setInventorySelection(selection);
+    onOpenSources();
+  }
+  function openSource(id: string) {
+    setInventoryTab("sources");
+    setSourceSearch("");
+    setSourceFocus(id);
+    onOpenSources();
+  }
+  useEffect(() => {
+    if (section !== "citations" || inventoryTab !== "sources" || !sourceFocus)
+      return;
+    document
+      .getElementById(`source-${sourceFocus}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [section, inventoryTab, sourceFocus]);
+  async function saveBibliographyEntry(index: number, text: string) {
+    const entry = citationPlan?.bibliography.entries[index];
+    if (
+      !entry ||
+      stale ||
+      active ||
+      busy ||
+      !editorReady ||
+      entry.start === undefined ||
+      entry.end === undefined ||
+      work.content.slice(entry.start, entry.end) !== entry.original
+    )
+      throw Error(
+        "This entry belongs to an earlier version. Run a new check before changing it.",
+      );
+    await action("Saving bibliography entry", async () => {
+      await onSave(
+        work.content.slice(0, entry.start) +
+          text +
+          work.content.slice(entry.end),
+      );
+      await onUpdated();
+    });
   }
   async function applyCitationPlan(operationIds: string[]) {
     if (!citationPlan || !work.documentVersionId) return;
@@ -637,7 +730,7 @@ export default function StudioAnalysis({
     </>
   );
 
-  if (section !== "citations") {
+  const reviewWorkspace = (() => {
     const persistent = !!work.documentVersionId;
     const outputCurrent =
       !citationPlan ||
@@ -664,7 +757,7 @@ export default function StudioAnalysis({
                       ? "Sources are still processing or unavailable. Select a ready source or add references."
                       : "Upload and select a source, or add references to continue."
                     : !permission
-                      ? "Allow AI processing to start this check."
+                      ? "Enable AI processing in Privacy & processing settings to start this check."
                       : undefined;
     const canStart = !blockedReason;
     const sourceInputs = (
@@ -703,7 +796,15 @@ export default function StudioAnalysis({
                     >
                       <FileText size={16} aria-hidden="true" />
                       <span>
-                        <strong>{source.metadata.title}</strong>
+                        <strong>
+                          <button
+                            type="button"
+                            className="ps-setup-source-link"
+                            onClick={() => openSource(source.id)}
+                          >
+                            {source.metadata.title}
+                          </button>
+                        </strong>
                         <small>
                           {source.contentKind === "bibliography"
                             ? `${source.referenceCount} references found. Proof will match the cited works; this list is not evidence.`
@@ -755,19 +856,6 @@ export default function StudioAnalysis({
             </button>
           </p>
         </details>
-        {mode === "source_check" && hasBibliography && (
-          <label className="ps-setup-consent">
-            <input
-              type="checkbox"
-              checked={resolveReferences}
-              onChange={(event) => setResolveReferences(event.target.checked)}
-            />
-            <span>
-              Allow Proof to retrieve the works in this bibliography. It will
-              not search for unrelated sources.
-            </span>
-          </label>
-        )}
       </>
     );
     const setup = !persistent ? (
@@ -815,12 +903,7 @@ export default function StudioAnalysis({
           </fieldset>
         )}
         {mode === "source_check" ? (
-          <div className="ps-setup-inputs">
-            <p className="ps-setup-copy">
-              Upload source documents so Proof can compare them with your draft.
-            </p>
-            {sourceInputs}
-          </div>
+          <div className="ps-setup-inputs">{sourceInputs}</div>
         ) : (
           <details className="ps-setup-options">
             <summary>My sources and bibliography (optional)</summary>
@@ -833,6 +916,17 @@ export default function StudioAnalysis({
         )}
         <details className="ps-setup-options">
           <summary>More options</summary>
+          {mode === "source_check" && (
+            <label className="ps-setup-consent">
+              <input
+                type="checkbox"
+                checked={resolveReferences}
+                disabled={!!busy || active}
+                onChange={(event) => setRetrievalOverride(event.target.checked)}
+              />
+              <span>Retrieve cited works for this check</span>
+            </label>
+          )}
           <label className="ps-setup-profile">
             <span>Citation profile</span>
             <select
@@ -890,17 +984,25 @@ export default function StudioAnalysis({
             Your citations and bibliography will still be audited.
           </p>
         )}
-        <label className="ps-setup-consent">
-          <input
-            type="checkbox"
-            checked={permission}
-            onChange={(e) => setPermission(e.target.checked)}
-          />
+        <div className="ps-setup-processing">
           <span>
-            Allow AI providers to process my text
-            {mode === "source_check" ? " and sources" : " and search research"}.
+            AI processing {permission ? "enabled" : "disabled"}
+            {mode === "source_check" && (
+              <>
+                {" "}
+                · Cited-work retrieval{" "}
+                {resolveReferences ? "enabled" : "disabled"}
+              </>
+            )}
           </span>
-        </label>
+          <button
+            className="ps-review-link"
+            onClick={onOpenPrivacy}
+            aria-label="Change privacy and processing settings"
+          >
+            Change
+          </button>
+        </div>
         <button
           className="ps-primary ps-setup-start"
           disabled={!canStart}
@@ -985,8 +1087,16 @@ export default function StudioAnalysis({
       </div>
     );
     return (
-      <div className="ps-live ps-live-workspace">
+      <div
+        className="ps-live ps-live-workspace"
+        hidden={section === "citations"}
+      >
         {errorNotice}
+        {planError && (
+          <p className="ps-review-error" role="alert">
+            Citation proposals unavailable. {planError}
+          </p>
+        )}
         {section === "claims" && (
           <StudioClaims
             rows={claimReviewRows(
@@ -995,6 +1105,7 @@ export default function StudioAnalysis({
               findings,
               stale,
               currentOverrides,
+              citationOccurrences,
             )}
             selectedCount={approvedClaims.length}
             mode={mode}
@@ -1009,13 +1120,18 @@ export default function StudioAnalysis({
                     <input
                       type="checkbox"
                       checked={
-                        preview.skipped.some(
+                        (mode !== "source_check" || !!claim.hasCitation) &&
+                        (preview.skipped.some(
                           (item) => item.start === claim.start,
                         )
                           ? includedSkipped.has(claim.start)
-                          : !excludedClaims.has(claim.start)
+                          : !excludedClaims.has(claim.start))
                       }
-                      disabled={!!busy || active}
+                      disabled={
+                        !!busy ||
+                        active ||
+                        (mode === "source_check" && !claim.hasCitation)
+                      }
                       onChange={(event) => {
                         const skipped = preview.skipped.some(
                           (item) => item.start === claim.start,
@@ -1042,7 +1158,7 @@ export default function StudioAnalysis({
               );
             }}
             onLocate={(claim) => {
-              setClaimFocus({
+              setDocumentFocus({
                 start: claim.start,
                 end: claim.end,
                 token: Date.now(),
@@ -1056,10 +1172,10 @@ export default function StudioAnalysis({
           />
         )}
         <StudioDocument
-          hidden={section === "claims"}
-          claimFocus={claimFocus}
+          hidden={section === "claims" || section === "citations"}
+          documentFocus={documentFocus}
           content={work.content}
-          findings={findings}
+          findings={reviewFindings}
           run={
             run && {
               ...run,
@@ -1096,7 +1212,6 @@ export default function StudioAnalysis({
               if (next === "discover")
                 setDiscoveryScope(nextRun.input.sourcePolicy);
             }
-            setPermission(false);
             setFindings([]);
             setRun(nextRun);
           }}
@@ -1105,131 +1220,204 @@ export default function StudioAnalysis({
               ? `${run.input?.citationProfile === "classroom" ? "Classroom audit" : "Standard MLA 9"}${run.input?.assignmentProfile ? ` · ${run.input.assignmentProfile === "draft" ? "600-word draft" : "Four-source bibliography"}` : ""} · ${run.input?.sourcePolicy === "academic" ? "Academic only" : run.input?.sourcePolicy === "public" ? "All sources" : run.input?.sourcePolicy === "matched" ? "Academic and authoritative sources" : "Your selected sources"}`
               : undefined
           }
-          citationReview={
-            citationPlan ? (
+          citationIssueCount={citationPlan ? reviewIssues.length : undefined}
+          citationCounts={citationPlan?.audit?.counts}
+          citationDetails={
+            citationPlan && (
               <>
-                {citationPlan.audit && (
-                  <StudioCitationAudit
-                    audit={citationPlan.audit}
-                    stale={stale || !editorReady}
-                    onLocate={(start, end) =>
-                      setCitationFocus({ start, end, token: Date.now() })
-                    }
-                  />
-                )}
-                <StudioCitationPlan
-                  key={citationPlan.id}
-                  plan={citationPlan}
-                  content={work.content}
-                  documentVersionId={work.documentVersionId}
-                  findings={findings}
-                  blocked={!editorReady || !!busy || active}
-                  sourceTitle={(id) =>
-                    sources.find((source) => source.id === id)?.metadata.title
-                  }
-                  sourcePagination={(id) =>
-                    sources.find((source) => source.id === id)?.metadata
-                      .pagination
-                  }
-                  onApply={applyCitationPlan}
-                />
-              </>
-            ) : planError ? (
-              <p className="ps-review-error" role="alert">
-                Citation proposals unavailable. {planError}
-              </p>
-            ) : undefined
-          }
-          citationFocus={citationFocus}
-          documentOptionsTarget={documentOptionsTarget}
-          documentActions={
-            <div
-              className="ps-document-output"
-              aria-label="Saved document output"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div>
-                <strong>Saved document</strong>
-                <p>
-                  Copy or download the complete saved version. Plain text does
-                  not preserve italics or indentation.
-                </p>
-                {!outputCurrent && (
-                  <p role="status">
-                    Citations are saved. Reload the saved document before
-                    copying or downloading it.
+                {[...new Set(citationPlan.warnings)].map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+                {!!citationPlan.exemptions?.length && (
+                  <p>
+                    {citationPlan.exemptions.length}{" "}
+                    {citationPlan.exemptions.length === 1
+                      ? "claim needs"
+                      : "claims need"}{" "}
+                    no citation. Review their classifications on the Claims
+                    page; their accuracy was not checked.
                   </p>
                 )}
-              </div>
-              <div className="ps-document-output-actions">
-                <button
-                  className="ps-outline"
-                  disabled={
-                    !persistent ||
-                    !editorReady ||
-                    !!busy ||
-                    active ||
-                    !outputCurrent
-                  }
-                  onClick={() =>
-                    void action("Copying document", async () => {
-                      await navigator.clipboard.writeText(work.content);
-                      setCopiedId(`document:${work.documentVersionId}`);
-                    }).catch(() => {})
-                  }
-                >
-                  {copiedId === `document:${work.documentVersionId}` ? (
-                    <Check size={15} />
-                  ) : (
-                    <Clipboard size={15} />
+              </>
+            )
+          }
+          onCitationFinding={setReviewFindingId}
+          citationReview={
+            citationPlan ? (
+              <StudioCitationResults
+                key={citationPlan.id}
+                plan={citationPlan}
+                issues={reviewIssues}
+                content={work.content}
+                documentVersionId={work.documentVersionId}
+                findings={reviewFindings}
+                stale={
+                  stale ||
+                  citationPlan.documentVersionId !== work.documentVersionId
+                }
+                blocked={!editorReady || !!busy || active}
+                sourceTitle={(id) =>
+                  sources.find((source) => source.id === id)?.metadata.title
+                }
+                sourcePagination={(id) =>
+                  sources.find((source) => source.id === id)?.metadata
+                    .pagination
+                }
+                onApply={applyCitationPlan}
+                onLocate={(start, end) =>
+                  setDocumentFocus({ start, end, token: Date.now() })
+                }
+                onOpenInventory={openInventory}
+                onOpenSource={openSource}
+                focusedFindingId={reviewFindingId}
+                onAcceptFix={(finding) =>
+                  action("Applying edit", async () => {
+                    if (!work.documentVersionId) return;
+                    const result = await applyFixes(
+                      [finding.id],
+                      work.documentVersionId,
+                    );
+                    await onUpdated();
+                    await openRun(result.runId);
+                  })
+                }
+              />
+            ) : undefined
+          }
+          documentOptionsTarget={documentOptionsTarget}
+          documentActions={
+            <>
+              <div
+                className="ps-document-output"
+                aria-label="Saved document output"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div>
+                  <strong>Saved document</strong>
+                  <p>
+                    Copy or download the complete saved version. Plain text does
+                    not preserve italics or indentation.
+                  </p>
+                  {!outputCurrent && (
+                    <p role="status">
+                      Citations are saved. Reload the saved document before
+                      copying or downloading it.
+                    </p>
                   )}
-                  {copiedId === `document:${work.documentVersionId}`
-                    ? "Document copied"
-                    : "Copy document"}
-                </button>
-                <button
-                  className="ps-outline"
-                  disabled={
-                    !persistent ||
-                    !editorReady ||
-                    !!busy ||
-                    active ||
-                    !outputCurrent
-                  }
-                  onClick={() => void downloadDocument("txt")}
-                >
-                  <Download size={15} />
-                  Download text
-                </button>
-                <button
-                  className="ps-outline"
-                  disabled={
-                    !persistent ||
-                    !editorReady ||
-                    !!busy ||
-                    active ||
-                    !outputCurrent
-                  }
-                  onClick={() => void downloadDocument("html")}
-                >
-                  <Download size={15} />
-                  Download formatted HTML
-                </button>
-                {!outputCurrent && (
+                </div>
+                <div className="ps-document-output-actions">
                   <button
                     className="ps-outline"
-                    disabled={!!busy}
+                    disabled={
+                      !persistent ||
+                      !editorReady ||
+                      !!busy ||
+                      active ||
+                      !outputCurrent
+                    }
                     onClick={() =>
-                      void action("Reloading saved document", onUpdated).catch(
-                        () => {},
-                      )
+                      void action("Copying document", async () => {
+                        await navigator.clipboard.writeText(work.content);
+                        setCopiedId(`document:${work.documentVersionId}`);
+                      }).catch(() => {})
                     }
                   >
-                    Reload saved document
+                    {copiedId === `document:${work.documentVersionId}` ? (
+                      <Check size={15} />
+                    ) : (
+                      <Clipboard size={15} />
+                    )}
+                    {copiedId === `document:${work.documentVersionId}`
+                      ? "Document copied"
+                      : "Copy document"}
                   </button>
-                )}
+                  <button
+                    className="ps-outline"
+                    disabled={
+                      !persistent ||
+                      !editorReady ||
+                      !!busy ||
+                      active ||
+                      !outputCurrent
+                    }
+                    onClick={() => void downloadDocument("txt")}
+                  >
+                    <Download size={15} />
+                    Download text
+                  </button>
+                  <button
+                    className="ps-outline"
+                    disabled={
+                      !persistent ||
+                      !editorReady ||
+                      !!busy ||
+                      active ||
+                      !outputCurrent
+                    }
+                    onClick={() => void downloadDocument("html")}
+                  >
+                    <Download size={15} />
+                    Download formatted HTML
+                  </button>
+                  {!outputCurrent && (
+                    <button
+                      className="ps-outline"
+                      disabled={!!busy}
+                      onClick={() =>
+                        void action(
+                          "Reloading saved document",
+                          onUpdated,
+                        ).catch(() => {})
+                      }
+                    >
+                      Reload saved document
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+              {citationPlan?.audit?.assignmentChecks && (
+                <details
+                  className="ps-document-assignment"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <summary>Assignment requirements</summary>
+                  <section aria-label="Assignment requirements">
+                    {citationPlan.audit.wordCounts && (
+                      <p>
+                        Word count: body {citationPlan.audit.wordCounts.body},
+                        title {citationPlan.audit.wordCounts.title},
+                        bibliography{" "}
+                        {citationPlan.audit.wordCounts.bibliography}. Assignment
+                        count: {citationPlan.audit.wordCounts.combined}{" "}
+                        body-and-title words. Confirm whether the title counts
+                        with your teacher.
+                      </p>
+                    )}
+                    {stale && (
+                      <p role="status">
+                        These requirements were checked against an earlier
+                        document version.
+                      </p>
+                    )}
+                    <ul>
+                      {citationPlan.audit.assignmentChecks.map(
+                        (check, index) => (
+                          <li key={`${check.label}:${index}`}>
+                            <strong>{check.label}</strong> ·{" "}
+                            {check.status === "pass"
+                              ? "Text check passed"
+                              : check.status === "manual"
+                                ? "Manual review"
+                                : "Needs review"}
+                            <p>{check.detail}</p>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </section>
+                </details>
+              )}
+            </>
           }
           setup={setup}
           onEditorReady={setEditorReady}
@@ -1276,250 +1464,264 @@ export default function StudioAnalysis({
         />
       </div>
     );
-  }
+  })();
 
-  return (
-    <div className="ps-live">
-      {notices}
-      <div className="ps-detail-heading">
+  const sourceLibrary = (
+    <section
+      className="ps-card ps-citations ps-live-panel ps-analysis-sources"
+      aria-labelledby="source-library-title"
+    >
+      <div className="ps-analysis-heading">
         <div>
-          <h2>Sources & citations</h2>
-          <p>
-            Upload the sources you cite and keep your references consistent.
-          </p>
+          <Library size={19} />
+          <h2 id="source-library-title">Source library</h2>
         </div>
-        <span className="ps-pill">
-          <BookOpen size={16} />
-          MLA 9
-        </span>
+        <span className="ps-analysis-count">{sources.length}</span>
       </div>
-      <div className="ps-analysis-layout ps-analysis-citations">
-        <section
-          className="ps-card ps-citations ps-live-panel ps-analysis-sources"
-          aria-labelledby="source-library-title"
-        >
-          <div className="ps-analysis-heading">
-            <div>
-              <Library size={19} />
-              <h2 id="source-library-title">Source library</h2>
-            </div>
-            <span className="ps-analysis-count">{sources.length}</span>
-          </div>
-          <p className="ps-analysis-intro">
-            All sources are included by default. Uncheck a source to leave it
-            out of checks for this work.
-          </p>
-          <label className={`ps-analysis-upload ${busy ? "is-disabled" : ""}`}>
-            <Upload size={22} />
-            <strong>Upload a source</strong>
-            <span>PDF, DOCX, TXT, or Markdown</span>
-            {uploadInput}
+      <p className="ps-analysis-intro">
+        All sources are included by default. Uncheck a source to leave it out of
+        checks for this work.
+      </p>
+      <label className={`ps-analysis-upload ${busy ? "is-disabled" : ""}`}>
+        <Upload size={22} />
+        <strong>Upload a source</strong>
+        <span>PDF, DOCX, TXT, or Markdown</span>
+        {uploadInput}
+      </label>
+      <p className="ps-analysis-provenance">
+        <CircleHelp size={14} />
+        Proof has not independently confirmed the origin of uploaded sources.
+        Checks cover the text Proof can extract.
+      </p>
+      {sources.length > 0 && (
+        <div className="ps-analysis-source-tools">
+          <label className="ps-analysis-search">
+            <Search size={16} />
+            <input
+              aria-label="Search sources"
+              placeholder="Search sources"
+              value={sourceSearch}
+              onChange={(event) => setSourceSearch(event.target.value)}
+            />
           </label>
-          <p className="ps-analysis-provenance">
-            <CircleHelp size={14} />
-            Proof has not independently confirmed the origin of uploaded
-            sources. Checks cover the text Proof can extract.
-          </p>
-          {sources.length > 0 && (
-            <div className="ps-analysis-source-tools">
-              <label className="ps-analysis-search">
-                <Search size={16} />
-                <input
-                  aria-label="Search sources"
-                  placeholder="Search sources"
-                  value={sourceSearch}
-                  onChange={(event) => setSourceSearch(event.target.value)}
-                />
-              </label>
-              <span>{selectedReady.length} selected</span>
-            </div>
-          )}
-          {!sources.length && (
-            <div className="ps-analysis-empty">
-              <BookOpen size={26} />
-              <strong>No sources yet</strong>
-              <p>Upload a paper, book excerpt, or Works Cited document.</p>
-            </div>
-          )}
-          {!!sources.length && !visibleSources.length && (
-            <p className="ps-analysis-no-matches">
-              No sources match your search.
-            </p>
-          )}
-          <div className="ps-analysis-source-list">
-            {visibleSources.map((source) => (
-              <label
-                className={`ps-source-option ps-analysis-source ${selected.includes(source.id) ? "is-selected" : ""}`}
-                key={`${source.id}:${source.extraction_id || "pending"}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.includes(source.id)}
-                  disabled={!!busy}
-                  onChange={(event) =>
-                    setExcludedSourceIds((current) =>
-                      event.target.checked
-                        ? current.filter((id) => id !== source.id)
-                        : [...new Set([...current, source.id])],
-                    )
-                  }
-                />
+          <span>{selectedReady.length} selected</span>
+        </div>
+      )}
+      {!sources.length && (
+        <div className="ps-analysis-empty">
+          <BookOpen size={26} />
+          <strong>No sources yet</strong>
+          <p>Upload a paper, book excerpt, or Works Cited document.</p>
+        </div>
+      )}
+      {!!sources.length && !visibleSources.length && (
+        <p className="ps-analysis-no-matches">No sources match your search.</p>
+      )}
+      <div className="ps-analysis-source-list">
+        {visibleSources.map((source) => (
+          <label
+            className={`ps-source-option ps-analysis-source ${selected.includes(source.id) ? "is-selected" : ""}`}
+            key={`${source.id}:${source.extraction_id || "pending"}`}
+            id={`source-${source.id}`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(source.id)}
+              disabled={!!busy}
+              onChange={(event) =>
+                setExcludedSourceIds((current) =>
+                  event.target.checked
+                    ? current.filter((id) => id !== source.id)
+                    : [...new Set([...current, source.id])],
+                )
+              }
+            />
+            <span className="ps-source-icon">
+              <FileText size={19} />
+            </span>
+            <span className="ps-analysis-source-copy">
+              <strong>{source.metadata.title}</strong>
+              <small className="ps-analysis-source-state">
+                {source.contentKind === "bibliography"
+                  ? `Bibliography · ${source.referenceCount} references`
+                  : source.extraction_status === "complete" &&
+                      source.status === "ready"
+                    ? "Text extracted"
+                    : source.extraction_status === "partial" &&
+                        source.status === "ready"
+                      ? "Partial text"
+                      : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
+              </small>
+              <small>
+                {source.access.replaceAll("_", " ")} · Eligibility{" "}
+                {source.eligibility}
+              </small>
+              {source.metadata.importedDocumentIds?.includes(work.id) && (
+                <small>Detected in your document</small>
+              )}
+              {source.metadata.importNotice && (
+                <small>{source.metadata.importNotice}</small>
+              )}
+              {source.extraction_status === "partial" && (
+                <small>
+                  Some pages could not be read. Analysis covers extracted text
+                  only.
+                </small>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+  const importControls = (
+    <section className="ps-card ps-citations ps-live-panel ps-analysis-bibliography">
+      <div className="ps-analysis-heading">
+        <div>
+          <BookOpen size={19} />
+          <h2>MLA bibliography</h2>
+        </div>
+      </div>
+      <p className="ps-analysis-intro">
+        Paste your references to format them in MLA. Review missing details
+        before you use the result.
+      </p>
+      <label className="ps-analysis-input-label" htmlFor="studio-bibliography">
+        Your references
+      </label>
+      <textarea
+        id="studio-bibliography"
+        className="ps-editor"
+        aria-label="Bibliography"
+        placeholder="Paste your bibliography here, one reference per line..."
+        value={bibliography}
+        onChange={(e) => setBibliography(e.target.value)}
+      />
+      <button
+        className="ps-primary"
+        disabled={!!busy || !bibliography.trim() || importing}
+        onClick={() =>
+          void action("Importing bibliography...", async () => {
+            const result = await api<{ id: string }>("/api/v1/source-imports", {
+              kind: "bibliography",
+              documentId: work.id,
+              text: bibliography,
+              externalAccess: false,
+            });
+            setReferenceId(result.id);
+            setImportStatus("pending");
+            setCitations([]);
+          }).catch(() => {})
+        }
+      >
+        {importing ? (
+          <LoaderCircle size={17} className="ps-analysis-spin" />
+        ) : (
+          <BookOpen size={17} />
+        )}{" "}
+        {importing ? "Formatting..." : "Format bibliography"}
+      </button>
+      {importStatus && (
+        <p className="ps-analysis-import-status" role="status">
+          {importing
+            ? "Your references are being processed. Available source text is retrieved for automatic imports."
+            : importStatus === "complete"
+              ? `${citations.length} formatted ${citations.length === 1 ? "reference" : "references"}`
+              : `Import ${importStatus.replaceAll("_", " ")}`}
+        </p>
+      )}
+      {!!citations.length && (
+        <div className="ps-analysis-citation-list">
+          <div className="ps-analysis-citation-heading">
+            <h3>Formatted references</h3>
+            <span>MLA 9</span>
+          </div>
+          <div
+            className="ps-analysis-citation-scroll"
+            role="region"
+            aria-label="Formatted citations"
+            tabIndex={0}
+          >
+            {citations.map((c, index) => (
+              <article className="ps-source ps-analysis-citation" key={c.id}>
                 <span className="ps-source-icon">
-                  <FileText size={19} />
+                  <FileText size={20} />
                 </span>
-                <span className="ps-analysis-source-copy">
-                  <strong>{source.metadata.title}</strong>
-                  <small className="ps-analysis-source-state">
-                    {source.contentKind === "bibliography"
-                      ? `Bibliography · ${source.referenceCount} references`
-                      : source.extraction_status === "complete" &&
-                          source.status === "ready"
-                        ? "Text extracted"
-                        : source.extraction_status === "partial" &&
-                            source.status === "ready"
-                          ? "Partial text"
-                          : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
-                  </small>
-                  <small>
-                    {source.access.replaceAll("_", " ")} · Eligibility{" "}
-                    {source.eligibility}
-                  </small>
-                  {source.metadata.importedDocumentIds?.includes(work.id) && (
-                    <small>Detected in your document</small>
-                  )}
-                  {source.metadata.importNotice && (
-                    <small>{source.metadata.importNotice}</small>
-                  )}
-                  {source.extraction_status === "partial" && (
-                    <small>
-                      Some pages could not be read. Analysis covers extracted
-                      text only.
-                    </small>
-                  )}
+                <div>
+                  <p className="ps-analysis-reference-text">{c.text}</p>
+                  {[
+                    ...c.warnings,
+                    ...c.missingMetadata.map((m) => `Missing: ${m}`),
+                  ].map((warning, i) => (
+                    <p className="ps-analysis-warning" key={i}>
+                      <CircleAlert size={14} />
+                      {warning}
+                    </p>
+                  ))}
+                  <button
+                    className="ps-outline"
+                    onClick={() =>
+                      void action("Copying citation...", async () => {
+                        await navigator.clipboard.writeText(c.text);
+                        setCopiedId(c.id);
+                      }).catch(() => {})
+                    }
+                  >
+                    {copiedId === c.id ? (
+                      <Check size={15} />
+                    ) : (
+                      <Clipboard size={15} />
+                    )}
+                    {copiedId === c.id ? "Copied" : "Copy citation"}
+                  </button>
+                </div>
+                <span className="ps-source-number">
+                  {String(index + 1).padStart(2, "0")}
                 </span>
-              </label>
+              </article>
             ))}
           </div>
-        </section>
-        <section className="ps-card ps-citations ps-live-panel ps-analysis-bibliography">
-          <div className="ps-analysis-heading">
-            <div>
-              <BookOpen size={19} />
-              <h2>MLA bibliography</h2>
-            </div>
-          </div>
-          <p className="ps-analysis-intro">
-            Paste your references to format them in MLA. Review missing details
-            before you use the result.
-          </p>
-          <label
-            className="ps-analysis-input-label"
-            htmlFor="studio-bibliography"
-          >
-            Your references
-          </label>
-          <textarea
-            id="studio-bibliography"
-            className="ps-editor"
-            aria-label="Bibliography"
-            placeholder="Paste your bibliography here, one reference per line..."
-            value={bibliography}
-            onChange={(e) => setBibliography(e.target.value)}
-          />
-          <button
-            className="ps-primary"
-            disabled={!!busy || !bibliography.trim() || importing}
-            onClick={() =>
-              void action("Importing bibliography...", async () => {
-                const result = await api<{ id: string }>(
-                  "/api/v1/source-imports",
-                  {
-                    kind: "bibliography",
-                    documentId: work.id,
-                    text: bibliography,
-                    externalAccess: false,
-                  },
-                );
-                setReferenceId(result.id);
-                setImportStatus("pending");
-                setCitations([]);
-              }).catch(() => {})
-            }
-          >
-            {importing ? (
-              <LoaderCircle size={17} className="ps-analysis-spin" />
-            ) : (
-              <BookOpen size={17} />
-            )}{" "}
-            {importing ? "Formatting..." : "Format bibliography"}
-          </button>
-          {importStatus && (
-            <p className="ps-analysis-import-status" role="status">
-              {importing
-                ? "Your references are being processed. Available source text is retrieved for automatic imports."
-                : importStatus === "complete"
-                  ? `${citations.length} formatted ${citations.length === 1 ? "reference" : "references"}`
-                  : `Import ${importStatus.replaceAll("_", " ")}`}
-            </p>
-          )}
-          {!!citations.length && (
-            <div className="ps-analysis-citation-list">
-              <div className="ps-analysis-citation-heading">
-                <h3>Formatted references</h3>
-                <span>MLA 9</span>
-              </div>
-              <div
-                className="ps-analysis-citation-scroll"
-                role="region"
-                aria-label="Formatted citations"
-                tabIndex={0}
-              >
-                {citations.map((c, index) => (
-                  <article
-                    className="ps-source ps-analysis-citation"
-                    key={c.id}
-                  >
-                    <span className="ps-source-icon">
-                      <FileText size={20} />
-                    </span>
-                    <div>
-                      <p className="ps-analysis-reference-text">{c.text}</p>
-                      {[
-                        ...c.warnings,
-                        ...c.missingMetadata.map((m) => `Missing: ${m}`),
-                      ].map((warning, i) => (
-                        <p className="ps-analysis-warning" key={i}>
-                          <CircleAlert size={14} />
-                          {warning}
-                        </p>
-                      ))}
-                      <button
-                        className="ps-outline"
-                        onClick={() =>
-                          void action("Copying citation...", async () => {
-                            await navigator.clipboard.writeText(c.text);
-                            setCopiedId(c.id);
-                          }).catch(() => {})
-                        }
-                      >
-                        {copiedId === c.id ? (
-                          <Check size={15} />
-                        ) : (
-                          <Clipboard size={15} />
-                        )}
-                        {copiedId === c.id ? "Copied" : "Copy citation"}
-                      </button>
-                    </div>
-                    <span className="ps-source-number">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+        </div>
+      )}
+    </section>
+  );
+
+  return (
+    <>
+      {reviewWorkspace}
+      <div
+        className="ps-live ps-citation-workspace"
+        hidden={section !== "citations"}
+      >
+        {notices}
+        <StudioCitationInventory
+          plan={citationPlan}
+          content={work.content}
+          stale={
+            stale ||
+            (!!citationPlan &&
+              citationPlan.documentVersionId !== work.documentVersionId)
+          }
+          busy={!!busy || active || !editorReady}
+          tab={inventoryTab}
+          onTab={setInventoryTab}
+          selection={inventorySelection}
+          onSelection={setInventorySelection}
+          sourceLibrary={sourceLibrary}
+          importControls={importControls}
+          sourceCount={sources.length}
+          sourceTitle={(id) =>
+            sources.find((source) => source.id === id)?.metadata.title
+          }
+          onLocate={(start, end) => {
+            setDocumentFocus({ start, end, token: Date.now() });
+            onOpenReview();
+          }}
+          onOpenSource={openSource}
+          onBackToReview={onOpenReview}
+          onSaveEntry={saveBibliographyEntry}
+        />
       </div>
-    </div>
+    </>
   );
 }

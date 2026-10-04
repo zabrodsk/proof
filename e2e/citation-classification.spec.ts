@@ -1,3 +1,4 @@
+import { enableAiProcessing } from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { openClaims, openReview, showSources } from "./work-pages";
 
@@ -73,9 +74,7 @@ test("Claims explains general facts, evidence claims and uncertain classificatio
   await expect(
     page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
   ).toBeVisible();
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   const outbound = page.waitForRequest(
     (r) =>
       r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/runs",

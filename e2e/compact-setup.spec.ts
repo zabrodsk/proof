@@ -1,5 +1,47 @@
+import { enableAiProcessing } from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { openClaims, openReview, showSources } from "./work-pages";
+
+test("used source titles open the matching source from the setup card", async ({
+  page,
+  request,
+}) => {
+  const doc = await (
+    await request.post("/api/v1/documents", {
+      data: {
+        title: "Source shortcuts",
+        text: "The trial included 218 adults.",
+      },
+    })
+  ).json();
+  await page.goto(`/app/works/${doc.id}`);
+  await expect(
+    page.getByRole("button", { name: /^Your sources/ }),
+  ).toBeVisible();
+  await showSources(page);
+  const sourceLink = page
+    .locator(".ps-setup-source")
+    .getByRole("button", { name: "Citable source", exact: true });
+  await sourceLink.click();
+  await expect(page).toHaveURL(`/app/works/${doc.id}/citations`);
+  await expect(page.getByRole("tab", { name: /^Sources/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const source = page
+    .locator(".ps-analysis-source")
+    .filter({ hasText: "Citable source" });
+  await expect(source).toBeInViewport();
+  await expect(source.getByRole("checkbox")).toBeChecked();
+
+  await openReview(page);
+  await showSources(page);
+  await sourceLink.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`/app/works/${doc.id}/citations`);
+  await expect(source).toBeInViewport();
+  await expect(source.getByRole("checkbox")).toBeChecked();
+});
 
 test("setup defaults, disabled reasons and keyboard-accessible secondary options", async ({
   page,
@@ -21,11 +63,9 @@ test("setup defaults, disabled reasons and keyboard-accessible secondary options
     page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
   ).toBeVisible();
   await expect(page.locator("#studio-start-reason")).toContainText(
-    "Allow AI processing",
+    "Enable AI processing",
   );
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   await expect(page.locator(".ps-setup-start")).toBeEnabled();
   const options = page.locator("summary").filter({ hasText: /^More options$/ });
   await options.focus();
@@ -114,9 +154,7 @@ test("manually restored claims are sent with exact spans and retain selection", 
   await expect(
     page.locator(".ps-setup-source").filter({ hasText: "Synthetic source" }),
   ).toBeVisible();
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   const outbound = page.waitForRequest(
     (r) =>
       r.method() === "POST" && new URL(r.url()).pathname === "/api/v1/runs",
@@ -125,9 +163,14 @@ test("manually restored claims are sent with exact spans and retain selection", 
   expect((await outbound).postDataJSON().claimSpans).toEqual([
     { start: 0, end: text.length },
   ]);
-  await expect(
-    page.getByText("1 of 1 selected claims checked.", { exact: false }),
-  ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const runs = await (
+        await request.get(`/api/v1/documents/${doc.id}/runs`)
+      ).json();
+      return runs.items[0]?.coverage?.completedClaims;
+    })
+    .toBe(1);
   await openClaims(page);
   await page.getByRole("button", { name: "Unsure", exact: true }).click();
   await expect(page.locator(".ps-claim-result-row")).toHaveCount(1);
@@ -152,6 +195,11 @@ test("bibliography-only checks keep retrieval consent and run with zero claims",
     })
   ).json();
   await page.goto(`/app/works/${doc.id}/citations`);
+  await page.getByRole("tab", { name: /^Works Cited/ }).click();
+  await page
+    .locator("summary")
+    .filter({ hasText: /^Import references$/ })
+    .click();
   await page
     .getByRole("textbox", { name: "Bibliography", exact: true })
     .fill(
@@ -172,16 +220,18 @@ test("bibliography-only checks keep retrieval consent and run with zero claims",
     page.getByRole("button", { name: "Manage", exact: true }),
   ).toBeVisible();
   const consent = page.getByRole("checkbox", {
-    name: "Allow Proof to retrieve",
+    name: "Retrieve cited works for this check",
     exact: false,
   });
+  await page
+    .locator("summary")
+    .filter({ hasText: /^More options$/ })
+    .click();
   await expect(consent).toBeChecked();
   await consent.uncheck();
   await expect(consent).not.toBeChecked();
   await consent.check();
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   await page
     .getByRole("button", { name: "Edit used sources", exact: true })
     .click();

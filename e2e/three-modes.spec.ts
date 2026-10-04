@@ -1,4 +1,6 @@
+import { enableAiProcessing } from "./work-pages";
 import {
+  showCheckDetails,
   openClaims,
   openReview,
   showSources,
@@ -29,7 +31,12 @@ async function draft(
 }
 async function source(request: APIRequestContext, title = "Citable source") {
   const items = (await (await request.get("/api/v1/sources")).json()).items;
-  const saved = items.find((item: any) => item.metadata.title === title);
+  const saved = items.find(
+    (item: any) =>
+      item.metadata.title === title &&
+      item.extraction_id &&
+      item.status === "ready",
+  );
   expect(saved).toBeTruthy();
   return {
     assetId: saved.id,
@@ -87,9 +94,7 @@ async function choose(page: Page, mode: string) {
     .click();
 }
 async function permit(page: Page) {
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
 }
 
 test("mode setup preserves the draft and never starts research before claim approval", async ({
@@ -137,6 +142,7 @@ test("mode setup preserves the draft and never starts research before claim appr
   await openReview(page);
   await permit(page);
   await page.locator(".ps-setup-start").click();
+  await showCheckDetails(page);
   await expect(
     page.getByText("1 of 1 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -186,6 +192,76 @@ test("citation audit separates claim support from a wrong printed locator and a 
   expect(requests.some((item: any) => item.url.includes("api.exa.ai"))).toBe(
     false,
   );
+});
+
+test("combined citations show separate page verdicts in the review and citation audit", async ({
+  page,
+  request,
+}, testInfo) => {
+  const document = await draft(
+    request,
+    "The trial included 218 adults (Brown 21; Brown 22).",
+  );
+  const checked = await run(request, {
+    documentVersionId: document.documentVersionId,
+    mode: "source_check",
+    selectedSources: [await source(request)],
+    allowProviderProcessing: true,
+  });
+  const findings = (
+    await (await request.get(`/api/v1/runs/${checked.id}/findings`)).json()
+  ).items;
+  expect(findings[0].citation).toBe("wrong_locator");
+  expect(
+    findings[0].citationChecks.map((check: any) => check.citation),
+  ).toEqual(["correct", "wrong_locator"]);
+  await page.goto(`/app/works/${document.id}`);
+  const issue = page
+    .locator(".ps-citation-issue")
+    .filter({ hasText: "Wrong citation page" });
+  await issue.locator(".ps-citation-issue-toggle").click();
+  const checks = issue
+    .getByRole("group")
+    .filter({ hasText: "Individual citation checks" });
+  await checks.getByText("Individual citation checks", { exact: true }).click();
+  await expect(checks).toContainText("Brown 21 · Citation matches");
+  await expect(checks).toContainText("Brown 22 · Check the page reference");
+  await expect(checks).toContainText("Pages: 21");
+  await expect(checks).toContainText("Pages: 22");
+  await page
+    .getByRole("button", { name: "Open Sources & citations", exact: true })
+    .click();
+  async function inventoryChecks() {
+    await page.getByRole("tab", { name: /^In-text citations/ }).click();
+    await page
+      .locator(".ps-inventory-row")
+      .filter({ hasText: "(Brown 21; Brown 22)" })
+      .click();
+    const individual = page
+      .locator(".ps-inventory-other-issues")
+      .filter({ hasText: "Individual citation checks" });
+    await individual
+      .getByText("Individual citation checks", { exact: true })
+      .click();
+    await expect(individual).toContainText("Brown 21");
+    await expect(individual).toContainText(
+      "Citation matches checked evidence.",
+    );
+    await expect(individual).toContainText("Brown 22");
+    await expect(individual).toContainText("Check locator.");
+  }
+  await inventoryChecks();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: `output/citation-mapping/${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+  await page.reload();
+  await inventoryChecks();
 });
 
 test("generated citation plan needs approval, preserves gaps and unused references, applies once, and exports the saved version", async ({
@@ -386,10 +462,13 @@ test("the generated document is reviewed, saved, reopened and downloaded through
   await showSources(page);
   await showSources(page);
   await expect(
-    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+    page
+      .locator(".ps-setup-source:not(.is-waiting)")
+      .filter({ hasText: "Citable source" }),
   ).toBeVisible();
   await permit(page);
   await page.locator(".ps-setup-start").click();
+  await page.getByRole("tab", { name: /^Changes/ }).click();
   const proposals = page.getByRole("region", { name: "Citation proposals" });
   await expect(proposals).toBeVisible();
   await expect(
@@ -402,14 +481,12 @@ test("the generated document is reviewed, saved, reopened and downloaded through
   );
   await expect(proposals.locator("figcaption")).toContainText("Page 21");
   const selection = proposals.getByRole("checkbox", {
-    name: "Citation for The trial",
+    name: /Select .*citation · Paragraph 1/,
     exact: false,
   });
+  await expect(selection).not.toBeChecked();
   await selection.focus();
-  await selection.press("Space");
-  await expect(
-    page.getByRole("button", { name: "Apply selected citations", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Apply/ })).toBeDisabled();
   await selection.press("Space");
   await expect(selection).toBeChecked();
   await page.screenshot({
@@ -417,7 +494,7 @@ test("the generated document is reviewed, saved, reopened and downloaded through
     fullPage: true,
   });
   await page
-    .getByRole("button", { name: "Apply selected citations", exact: true })
+    .getByRole("button", { name: "Apply 1 selected change", exact: true })
     .click();
   const editor = page.getByRole("textbox", { name: "Document text" });
   await expect(editor).toHaveValue(
@@ -582,17 +659,25 @@ test("a bibliography-only classroom audit runs without inventing claims and keep
   await showSources(page);
   await showSources(page);
   await expect(
-    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+    page
+      .locator(".ps-setup-source:not(.is-waiting)")
+      .filter({ hasText: "Citable source" }),
   ).toBeVisible();
   await permit(page);
   await expect(page.locator(".ps-setup-start")).toBeEnabled();
   await page.locator(".ps-setup-start").click();
+  await expect(page.locator(".ps-review-outcome")).toContainText(
+    "2 bibliography entries",
+  );
+  await page
+    .getByRole("button", { name: "More document options", exact: true })
+    .click();
+  await page.getByText("Assignment requirements", { exact: true }).click();
   const audit = page.getByRole("region", {
-    name: "Citation audit",
+    name: "Assignment requirements",
     exact: true,
   });
   await expect(audit).toBeVisible();
-  await expect(audit).toContainText("2 bibliography entries");
   await expect(audit).toContainText("separate four-source assignment");
   await expect(audit).toContainText("Manual review");
   await expect(
@@ -768,17 +853,16 @@ test("audience common-knowledge choice persists and cannot exempt quotes or stud
   await showSources(page);
   await showSources(page);
   await expect(
-    page.locator(".ps-setup-source").filter({ hasText: "Citable source" }),
+    page
+      .locator(".ps-setup-source:not(.is-waiting)")
+      .filter({ hasText: "Citable source" }),
   ).toBeVisible();
   await permit(page);
   await page.locator(".ps-setup-start").click();
-  const proposals = page.getByRole("region", {
-    name: "Citation proposals",
-    exact: true,
-  });
-  await expect(proposals).toBeVisible();
-  await expect(proposals).toContainText("No citation needed · 1");
-  await expect(proposals).toContainText("Berlin is the capital of Germany.");
+  await showCheckDetails(page);
+  await expect(page.locator(".ps-check-details")).toContainText(
+    "1 claim needs no citation.",
+  );
   const checked = (
     await (await request.get(`/api/v1/documents/${document.id}/runs`)).json()
   ).items[0];
@@ -793,9 +877,10 @@ test("audience common-knowledge choice persists and cannot exempt quotes or stud
     findings.find((finding: any) => finding.claim.start === 0).support,
   ).toBe("not_verified");
   await page.reload();
-  await expect(
-    page.getByRole("region", { name: "Citation proposals", exact: true }),
-  ).toContainText("No citation needed · 1");
+  await showCheckDetails(page);
+  await expect(page.locator(".ps-check-details")).toContainText(
+    "1 claim needs no citation.",
+  );
   await page.getByRole("button", { name: "New check", exact: true }).click();
   await openClaims(page);
   await expect(berlin).toHaveValue("common_knowledge");

@@ -139,10 +139,14 @@ export async function importDocumentSources(
                   ? {
                       title: resolved.title,
                       authors: resolved.authors,
+                      authorDetails: resolved.authorDetails,
                       year: resolved.year,
                       doi: resolved.doi,
                       type: "article-journal",
                       containerTitle: resolved.journal,
+                      volume: resolved.volume,
+                      issue: resolved.issue,
+                      pages: resolved.pages,
                     }
                   : {}),
                 sourceUrl: url,
@@ -162,11 +166,15 @@ export async function importDocumentSources(
               JSON.stringify({
                 title: resolved.title,
                 authors: resolved.authors,
+                authorDetails: resolved.authorDetails,
                 year: resolved.year,
                 doi: resolved.doi,
                 url: resolved.url,
                 type: "article-journal",
                 containerTitle: resolved.journal,
+                volume: resolved.volume,
+                issue: resolved.issue,
+                pages: resolved.pages,
               }),
             ],
           );

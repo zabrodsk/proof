@@ -114,7 +114,7 @@ export function findingAssessment(f: BackendFinding, mode?: RunInput["mode"]) {
   if (f.evidenceGap === "source_unavailable")
     return {
       meaning:
-        "The cited work's full text was not available to check. This does not mean the claim is unsupported.",
+        "Enough source text was not available to verify this claim. This does not mean the claim is unsupported.",
       next: "Use New check to retrieve the works listed in your bibliography, or upload the original articles.",
     };
   if (f.processing !== "complete" || f.evidenceGap === "check_incomplete")

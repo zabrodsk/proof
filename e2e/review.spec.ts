@@ -1,3 +1,5 @@
+import { enableAiProcessing } from "./work-pages";
+import { showCheckDetails } from "./work-pages";
 import { test, expect } from "@playwright/test";
 const essay =
   "Jane Smith\nIoanna Mavridou\n4G2 English\n14 January 2026\n\nThe trial included 218 adults.\nJohn was born on the Reservation.\n\nWorks Cited\nTest Author. Synthetic source.";
@@ -63,17 +65,10 @@ for (const mode of ["source_check", "fact_check", "discover"] as const) {
       ),
     ).toBe(true);
     await page.goto(`/app/works/${doc.id}`);
-    if (mode !== "source_check")
-      await page
-        .getByRole("group", { name: "Check type" })
-        .getByRole("button", {
-          name: mode === "fact_check" ? "Fact-check" : "Generate citations",
-          exact: true,
-        })
-        .click();
     await expect(
       page.getByRole("textbox", { name: "Document text" }),
     ).toHaveValue(essay);
+    await showCheckDetails(page);
     await expect(
       page.getByText("4 text segments skipped.", { exact: false }),
     ).toBeVisible();
@@ -104,28 +99,33 @@ test("user can start a source check with consent and see only claim cards", asyn
   await page
     .getByRole("checkbox", { name: "Synthetic source", exact: false })
     .check();
-  await page
-    .getByRole("checkbox", {
-      name: "Allow AI providers to process my text",
-      exact: false,
-    })
-    .check();
+  await enableAiProcessing(page);
   await page.locator(".ps-setup-start").click();
+  await showCheckDetails(page);
   await expect(
     page.getByText("4 text segments skipped.", { exact: false }),
   ).toBeVisible();
-  await page
-    .getByRole("group", { name: "Show", exact: true })
-    .getByRole("button", { name: "All", exact: true })
-    .click();
-  await expect(page.locator(".ps-changes > li")).toHaveCount(2);
-  await expect(page.locator(".ps-changes")).toContainText(
-    "The trial included 218 adults.",
-  );
-  await expect(page.locator(".ps-changes")).toContainText(
-    "John was born on the Reservation.",
-  );
-  await expect(page.locator(".ps-changes")).not.toContainText("Jane Smith");
+
+  await expect(
+    page.locator(
+      '.ps-citation-issue-group[aria-label="In-text citation issues"] .ps-citation-issue',
+    ),
+  ).toHaveCount(2);
+  await expect(
+    page.locator(
+      '.ps-citation-issue-group[aria-label="In-text citation issues"]',
+    ),
+  ).toContainText("The trial included 218 adults.");
+  await expect(
+    page.locator(
+      '.ps-citation-issue-group[aria-label="In-text citation issues"]',
+    ),
+  ).toContainText("John was born on the Reservation.");
+  await expect(
+    page.locator(
+      '.ps-citation-issue-group[aria-label="In-text citation issues"]',
+    ),
+  ).not.toContainText("Jane Smith");
   await expect(
     page.getByRole("textbox", { name: "Document text" }),
   ).toHaveValue(essay);
@@ -164,9 +164,11 @@ test("metadata-only document shows no candidate claims, never verified", async (
     )
     .toBe("complete");
   await page.goto(`/app/works/${doc.id}`);
+  await showCheckDetails(page);
   await expect(
     page.getByText("No candidate claims found.", { exact: false }),
   ).toBeVisible();
+  await showCheckDetails(page);
   await expect(
     page.getByText("3 text segments skipped.", { exact: false }),
   ).toBeVisible();
@@ -198,9 +200,7 @@ test("consent is required before a user can start a source check", async ({
     .getByRole("checkbox", { name: "Synthetic source", exact: false })
     .check();
   await expect(start).toBeDisabled();
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   await expect(start).toBeEnabled();
 });
 

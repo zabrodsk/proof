@@ -65,6 +65,15 @@ export function carriedFindings(
     const next: BackendFinding = {
       ...finding,
       claim: { ...finding.claim, ...claim },
+      ...(finding.citationChecks
+        ? {
+            citationChecks: finding.citationChecks.map((check) => ({
+              ...check,
+              start: check.start + claim.start - finding.claim.start,
+              end: check.end + claim.start - finding.claim.start,
+            })),
+          }
+        : {}),
     };
     delete next.fix;
     if (finding.fix) {
@@ -161,6 +170,20 @@ export async function carryForward(
       "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,$5,$6)",
       [findingId, ws, runId, claimId, row.ordinal, JSON.stringify(next)],
     );
+    const citations = await tx.query(
+      "SELECT l.data FROM citation_links l JOIN findings f ON f.workspace_id=l.workspace_id AND f.claim_id=l.claim_id WHERE f.workspace_id=$1 AND f.id=$2",
+      [ws, previous.id],
+    );
+    for (const citation of citations.rows)
+      await tx.query(
+        "INSERT INTO citation_links(id,workspace_id,claim_id,data) VALUES($1,$2,$3,$4)",
+        [
+          randomUUID(),
+          ws,
+          claimId,
+          JSON.stringify({ ...citation.data, checks: next.citationChecks }),
+        ],
+      );
     const links = await tx.query(
       "SELECT passage_id,data FROM evidence_links WHERE workspace_id=$1 AND finding_id=$2",
       [ws, previous.id],

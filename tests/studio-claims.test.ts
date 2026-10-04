@@ -161,3 +161,12 @@ test("skipped claims stay in the unsure filter regardless of selection", () => {
   assert.equal(rows[0].unsure, true);
   assert.equal(rows[0].finding, finding);
 });
+
+test("claim rows retain uncited claims and distinguish unmatched citations", () => {
+  const content =
+    "The trial included 218 adults (Unknown 1).\nThese findings mean the treatment cures depression.";
+  const rows = claimReviewRows(content, selectClaims(content), [], false);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].hasCitation, true);
+  assert.equal(rows[1].hasCitation, false);
+});

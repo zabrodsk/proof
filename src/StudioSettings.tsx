@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -6,6 +6,7 @@ import {
   LogOut,
   PanelLeft,
   Plug,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { signOut, type Session } from "./studio-api";
@@ -30,6 +31,10 @@ export default function StudioSettings({
   const [saved, setSaved] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [accountError, setAccountError] = useState("");
+  useEffect(() => {
+    if (window.location.hash === "#privacy")
+      document.getElementById("privacy")?.scrollIntoView({ block: "start" });
+  }, []);
   const accountName = session.user?.name || "Local workspace";
   const nameParts = accountName.trim().split(/\s+/);
   const initials =
@@ -189,6 +194,63 @@ export default function StudioSettings({
             <p>Changes save automatically for this account in this browser.</p>
           )}
         </div>
+      </section>
+
+      <section
+        className="ps-settings-card"
+        id="privacy"
+        aria-labelledby="studio-privacy-heading"
+      >
+        <div className="ps-settings-card-heading">
+          <ShieldCheck size={20} />
+          <h2 id="studio-privacy-heading">Privacy &amp; processing</h2>
+        </div>
+        <label className="ps-privacy-choice">
+          <input
+            type="checkbox"
+            checked={preferences.aiProcessing}
+            onChange={(event) =>
+              setSaved(
+                updatePreferences({
+                  privacyReviewed: true,
+                  aiProcessing: event.target.checked,
+                }),
+              )
+            }
+          />
+          <span>
+            <strong>Allow AI processing</strong>
+            <small>
+              Send your text and selected source passages to AI providers to
+              check claims and citations. Turning this off prevents new checks.
+            </small>
+          </span>
+        </label>
+        <label className="ps-privacy-choice">
+          <input
+            type="checkbox"
+            checked={preferences.retrieveCitedWorks}
+            onChange={(event) =>
+              setSaved(
+                updatePreferences({
+                  privacyReviewed: true,
+                  retrieveCitedWorks: event.target.checked,
+                }),
+              )
+            }
+          />
+          <span>
+            <strong>Retrieve cited works</strong>
+            <small>
+              Allow Proof to look up and retrieve bibliography works by default.
+              Override this for a check under More options.
+            </small>
+          </span>
+        </label>
+        <p className="ps-analysis-intro">
+          Changes save for this account in this browser. Turning off permissions
+          does not cancel a check already running.
+        </p>
       </section>
 
       <section

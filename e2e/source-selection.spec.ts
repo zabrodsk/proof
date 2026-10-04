@@ -1,3 +1,4 @@
+import { enableAiProcessing } from "./work-pages";
 import { test, expect } from "@playwright/test";
 import { openReview } from "./work-pages";
 
@@ -34,9 +35,7 @@ test("sources start included, editing happens on Sources, and exclusions survive
   await expect(page.locator(".ps-setup-sources")).not.toContainText(
     "Citable source",
   );
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
   await page.locator(".ps-setup-start").click();
   await expect
     .poll(async () => {

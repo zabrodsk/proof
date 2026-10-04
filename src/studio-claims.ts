@@ -1,3 +1,7 @@
+import {
+  parseCitationOccurrences,
+  type CitationOccurrence,
+} from "../shared/citation-occurrences";
 import { citationRequirementForSpan } from "../shared/claims";
 import type { selectClaims } from "../shared/claims";
 import type { BackendFinding } from "../shared/backend";
@@ -7,6 +11,7 @@ export type ClaimReviewRow = {
   end: number;
   text: string;
   citationRequirement: CitationRequirement;
+  hasCitation?: boolean;
   unsure?: boolean;
   finding?: BackendFinding;
 };
@@ -17,6 +22,7 @@ export function claimReviewRows(
   findings: BackendFinding[],
   stale: boolean,
   citationOverrides: ReadonlyMap<number, CitationRequirement> = new Map(),
+  occurrences: CitationOccurrence[] = parseCitationOccurrences(content),
 ): ClaimReviewRow[] {
   return [
     ...preview.candidates,
@@ -28,6 +34,9 @@ export function claimReviewRows(
       end: claim.end,
       text: content.slice(claim.start, claim.end),
       unsure: "unsure" in claim,
+      hasCitation: occurrences.some(
+        (o) => o.start >= claim.start && o.end <= claim.end,
+      ),
       citationRequirement: citationRequirementForSpan(
         content,
         claim.start,

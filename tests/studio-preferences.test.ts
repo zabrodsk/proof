@@ -4,6 +4,7 @@ import {
   readStudioPreferences,
   writeStudioPreferences,
   studioPreferencesKey,
+  defaultStudioPreferences,
 } from "../src/studio-preferences.js";
 
 test("preferences stay isolated by account and invalid saved values use defaults", () => {
@@ -33,10 +34,12 @@ test("preferences stay isolated by account and invalid saved values use defaults
       motion: "reduced",
     });
     assert.deepEqual(readStudioPreferences("first-user"), {
+      ...defaultStudioPreferences,
       sidebarCollapsed: true,
       motion: "reduced",
     });
     assert.deepEqual(readStudioPreferences("second-user"), {
+      ...defaultStudioPreferences,
       sidebarCollapsed: false,
       motion: "system",
     });
@@ -45,14 +48,39 @@ test("preferences stay isolated by account and invalid saved values use defaults
       '{"sidebarCollapsed":"true","motion":"invalid"}',
     );
     assert.deepEqual(readStudioPreferences("second-user"), {
+      ...defaultStudioPreferences,
       sidebarCollapsed: false,
       motion: "system",
     });
     data.set(studioPreferencesKey("second-user"), "bad json");
     assert.deepEqual(readStudioPreferences("second-user"), {
+      ...defaultStudioPreferences,
       sidebarCollapsed: false,
       motion: "system",
     });
+    writeStudioPreferences("first-user", {
+      privacyReviewed: true,
+      aiProcessing: true,
+      retrieveCitedWorks: true,
+    });
+    assert.equal(readStudioPreferences("first-user").aiProcessing, true);
+    assert.equal(readStudioPreferences("first-user").retrieveCitedWorks, true);
+    assert.equal(readStudioPreferences("second-user").aiProcessing, false);
+    writeStudioPreferences("first-user", { aiProcessing: false });
+    assert.equal(readStudioPreferences("first-user").aiProcessing, false);
+    assert.equal(readStudioPreferences("first-user").retrieveCitedWorks, true);
+    data.set(
+      studioPreferencesKey("second-user"),
+      JSON.stringify({
+        aiProcessing: true,
+        retrieveCitedWorks: true,
+      }),
+    );
+    assert.equal(readStudioPreferences("second-user").aiProcessing, false);
+    assert.equal(
+      readStudioPreferences("second-user").retrieveCitedWorks,
+      false,
+    );
   } finally {
     if (storageDescriptor)
       Object.defineProperty(globalThis, "localStorage", storageDescriptor);

@@ -1,4 +1,51 @@
 import test from "node:test";
+
+test("publisher HTML remains usable full text when its PDF link fails", async () => {
+  const article = "https://www.science.org/doi/10.1234/html";
+  const title = "An exact reference title";
+  const body =
+    "The study found a lower recall rate in the tested population. ".repeat(25);
+  const result = await retrieveNamedReference(
+    { title, year: "2024", doi: "10.1234/html" },
+    {
+      search: async () => [{ url: article, title }] as any,
+      download: async (target) => {
+        if (target.endsWith(".pdf")) throw Error("PDF unavailable");
+        return {
+          url: target,
+          type: "text/html",
+          buffer: Buffer.from(
+            `<meta name="citation_pdf_url" content="/paper.pdf"><meta name="citation_doi" content="10.1234/html"><article><h1>${title}</h1><p>2024</p><section id="article-body">${body}</section></article>`,
+          ),
+        };
+      },
+      extract: extractFile,
+    },
+  );
+  assert.equal(result.source.access, "full_text");
+  assert.ok(result.source.passages.join(" ").includes(body.trim()));
+});
+
+test("a conflicting publisher DOI cannot provide evidence for a selected reference", async () => {
+  const article = "https://www.science.org/doi/10.1234/wrong";
+  await assert.rejects(
+    retrieveNamedReference(
+      { title: "Memory study", year: "2024", doi: "10.1234/right" },
+      {
+        search: async () => [{ url: article, title: "Memory study" }] as any,
+        download: async (url) => ({
+          url,
+          type: "text/html",
+          buffer: Buffer.from(
+            `<meta name="citation_doi" content="10.1234/wrong"><h1>Memory study 2024</h1><section id="abstract">${"A finding about memory in the tested population. ".repeat(10)}</section>`,
+          ),
+        }),
+        extract: extractFile,
+      },
+    ),
+    /different DOI/,
+  );
+});
 import assert from "node:assert/strict";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import {
@@ -98,4 +145,55 @@ test("similar papers and non-original hosts cannot establish selected-work evide
     }),
     /different work/,
   );
+});
+
+test("a failed publisher PDF preserves its identified abstract as evidence", async () => {
+  const abstract =
+    "When people expect to have future access to information, they have lower rates of recall of the information itself and enhanced recall instead for where to access it.";
+  const title = "Google effects on memory";
+  const article = "https://www.science.org/doi/10.1126/science.1207745";
+  const result = await retrieveNamedReference(
+    { title, year: "2011", doi: "10.1126/science.1207745" },
+    {
+      search: async () => [{ url: article, title }] as any,
+      download: async (target) => {
+        if (target.endsWith(".pdf")) throw Error("PDF unavailable");
+        return {
+          url: target,
+          type: "text/html",
+          buffer: Buffer.from(
+            `<html><meta name="citation_title" content="${title}"><meta name="citation_pdf_url" content="/paper.pdf"><h1>${title}</h1><p>Science 2011</p><section id="abstract"><h2>Abstract</h2><p>${abstract}</p></section></html>`,
+          ),
+        };
+      },
+      extract: extractFile,
+    },
+  );
+  assert.equal(result.source.access, "abstract");
+  assert.deepEqual(result.source.passages, [abstract]);
+  assert.equal(result.source.url, article);
+  assert.equal(result.source.doi, "10.1126/science.1207745");
+  assert.equal(result.file, undefined);
+});
+
+test("readable pages from an incomplete PDF retain partial evidence without claiming full text", async () => {
+  const text = `${reference.title}\n2020\n${"The source reports a narrowly scoped finding about liability. ".repeat(25)}`;
+  const result = await retrieveNamedReference(reference, {
+    search: async () => [{ url, title: reference.title }] as any,
+    download: async () => ({
+      url,
+      type: "application/pdf",
+      buffer: Buffer.from("%PDF-fixture"),
+    }),
+    extract: async () =>
+      ({
+        pages: [{ text }],
+        coverage: { unreadablePages: [2], omittedPages: [], totalPages: 2 },
+      }) as any,
+  });
+  assert.equal(result.source.access, "partial_text");
+  assert.ok(
+    result.source.passages.join(" ").includes("narrowly scoped finding"),
+  );
+  assert.equal(result.file, undefined);
 });

@@ -1,4 +1,4 @@
-import type { EvidenceLink } from "./backend.js";
+import type { CitationCheck, EvidenceLink } from "./backend.js";
 
 export interface CitationOperation {
   id: string;
@@ -63,6 +63,7 @@ export interface CitationPlan {
       sourceIds: string[];
       locator?: string;
       citation?: string;
+      items?: CitationCheck[];
     }[];
     bibliographyIssues: {
       kind: string;

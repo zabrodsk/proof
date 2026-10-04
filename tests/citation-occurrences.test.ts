@@ -30,6 +30,45 @@ const references = [
   },
 ];
 
+test("APA ampersands and complete narrative author lists identify structured authors", () => {
+  const pair = {
+    id: "pair",
+    metadata: {
+      authors: [{ family: "Parasuraman" }, { family: "Riley" }],
+      year: 1997,
+    },
+  };
+  assert.deepEqual(
+    parseCitationOccurrences("A claim (Parasuraman & Riley, 1997).", [pair])[0]
+      ?.items[0].sourceIds,
+    ["pair"],
+  );
+  const three = {
+    id: "three",
+    metadata: {
+      authors: [{ family: "Sparrow" }, { family: "Liu" }, { family: "Wegner" }],
+      year: 2011,
+    },
+  };
+  for (const text of [
+    "Sparrow, Liu, and Wegner (2011) found an effect.",
+    "A claim (Sparrow, Liu, & Wegner, 2011).",
+  ])
+    assert.deepEqual(
+      parseCitationOccurrences(text, [three])[0]?.items[0].sourceIds,
+      ["three"],
+    );
+});
+
+test("unmatched APA coauthor citations remain visible rather than disappearing", () => {
+  const result = parseCitationOccurrences(
+    "A claim (Unknown & Other, 2024).",
+    references,
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0].items[0].status, "unmatched");
+});
+
 test("occurrences retain repeated exact spans and each combined source", () => {
   const text =
     'A claim (Smith, "Evidence and Its Limits" 104). A claim (Smith, "Evidence and Its Limits" 104). Other (Unknown 42; García Márquez 12).';
@@ -133,4 +172,26 @@ test("factual parentheticals with a year are not citations", () => {
       .items[0].status,
     "unmatched",
   );
+});
+
+test("duplicate bibliography aliases for one work do not create source ambiguity", () => {
+  const parsed = parseCitationOccurrences("A claim (Smith 104).", [
+    references[0],
+    {
+      ...references[0],
+      metadata: { ...references[0].metadata, shortTitle: "Evidence" },
+    },
+  ]);
+  assert.equal(parsed[0].items[0].status, "matched");
+  assert.deepEqual(parsed[0].items[0].sourceIds, ["one"]);
+});
+
+test("duplicate DOI aliases still identify one cited work", () => {
+  const reference = { id: "one", metadata: { doi: "10.1234/example" } };
+  const parsed = parseCitationOccurrences(
+    "A claim https://doi.org/10.1234/example.",
+    [reference, reference],
+  );
+  assert.equal(parsed[0].items[0].status, "matched");
+  assert.deepEqual(parsed[0].items[0].sourceIds, ["one"]);
 });

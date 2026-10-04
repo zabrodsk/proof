@@ -10,6 +10,99 @@ export const normalize = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+
+/** Strong identifiers win. Weak matches retain all candidates for disambiguation. */
+export function matchBibliographySources<T extends { metadata: any }>(
+  parsed: any,
+  sources: T[],
+): T[] {
+  const doi = dois(parsed.doi || "")[0];
+  if (doi)
+    return sources.filter(
+      (source) => dois(source.metadata.doi || "")[0] === doi,
+    );
+  if (parsed.isbn)
+    return sources.filter(
+      (source) =>
+        normalize(source.metadata.isbn || "") === normalize(parsed.isbn),
+    );
+  const families = (value: any): string[] =>
+    (value.authorDetails?.length ? value.authorDetails : value.authors || [])
+      .map((author: any) =>
+        typeof author === "string"
+          ? author.split(",")[0]
+          : author.family || author.literal || author.name || "",
+      )
+      .filter(Boolean);
+  const authors = families(parsed);
+  const authorMatch = (metadata: any) => {
+    const other = families(metadata);
+    return (
+      authors.length > 0 &&
+      authors.every((author) =>
+        other.some(
+          (name) =>
+            normalize(name) === normalize(author) ||
+            name.toLowerCase().endsWith(` ${author.toLowerCase()}`),
+        ),
+      )
+    );
+  };
+  const yearMatch = (metadata: any) =>
+    !!parsed.year && String(metadata.year) === String(parsed.year);
+  const title = normalize(parsed.title || "");
+  const similarTitle = (knownTitle: string) => {
+    const known = normalize(knownTitle);
+    if (title.length < 20 || known.length < 20) return false;
+    if (known.startsWith(title) || title.startsWith(known)) return true;
+    const pairs = (value: string) =>
+      new Set(
+        Array.from({ length: value.length - 1 }, (_, index) =>
+          value.slice(index, index + 2),
+        ),
+      );
+    const left = pairs(title),
+      right = pairs(known);
+    return (
+      (2 * [...left].filter((pair) => right.has(pair)).length) /
+        (left.size + right.size) >=
+      0.9
+    );
+  };
+  const eligible = sources.filter(
+    (source) =>
+      !parsed.edition ||
+      normalize(source.metadata.edition || "") === normalize(parsed.edition),
+  );
+  const authorYear = eligible.filter(
+    (source) => authorMatch(source.metadata) && yearMatch(source.metadata),
+  );
+  if (authorYear.length) {
+    const exact = authorYear.filter(
+      (source) =>
+        parsed.title &&
+        normalize(source.metadata.title || "") === normalize(parsed.title),
+    );
+    if (exact.length) return exact;
+    if (!title) return authorYear;
+  }
+  const exact = eligible.filter(
+    (source) =>
+      title &&
+      normalize(source.metadata.title || "") === title &&
+      (!parsed.year || yearMatch(source.metadata)) &&
+      (!authors.length || authorMatch(source.metadata)),
+  );
+  if (exact.length) return exact;
+  // A shortened title may resolve only when author and year also agree.
+  return eligible.filter((source) => {
+    return (
+      authorMatch(source.metadata) &&
+      yearMatch(source.metadata) &&
+      similarTitle(source.metadata.title || "")
+    );
+  });
+}
 export function reconstructReferences(text: string) {
   const entries: string[] = [];
   let current = "";
@@ -58,20 +151,32 @@ export function parseReference(original: string) {
     .replace(/\s+/g, " ")
     .trim();
   const quote = /["“]([^"”]+)["”]/.exec(text);
+  const apaAuthor = /^(.+?)\s+\((?:1[5-9]|20)\d{2}[a-z]?\)\.\s/.exec(text)?.[1];
   // A period in an author's initial is not the end of the author field.
-  const author = quote
-    ? text
-        .slice(0, quote.index)
-        .replace(/(?<!\b[A-Z])\.\s*$/u, "")
-        .trim()
-    : text.split(".")[0]?.trim() || "";
+  const author =
+    apaAuthor ||
+    (quote
+      ? text
+          .slice(0, quote.index)
+          .replace(/(?<!\b[A-Z])\.\s*$/u, "")
+          .trim()
+      : text.split(".")[0]?.trim() || "");
   const title =
     quote?.[1] ||
     text.match(/\((?:1[5-9]|20)\d{2}[a-z]?\)\.\s+(.+?)\.\s/)?.[1] ||
     text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
-  const authors = author
-    ? author.split(/,?\s+and\s+/).map((s) => s.trim().replace(/,$/, ""))
+  const apaNames = apaAuthor
+    ? [
+        ...apaAuthor.matchAll(
+          /(?:^|,\s*(?:&\s*)?)([\p{L}'’–-]+(?:\s+[\p{L}'’–-]+)*),\s*((?:\p{Lu}\.\s*)+)/gu,
+        ),
+      ]
     : [];
+  const authors = apaNames.length
+    ? apaNames.map((match) => `${match[1].trim()}, ${match[2].trim()}`)
+    : author
+      ? author.split(/,?\s+and\s+/).map((s) => s.trim().replace(/,$/, ""))
+      : [];
   const authorDetails = authors.map((name, index) => {
     if (name.includes(",")) {
       const [family, ...given] = name.split(",");
@@ -83,6 +188,15 @@ export function parseReference(original: string) {
       index > 0 && /^(\p{Lu}[\p{L}'’-]+)\s+(\p{Lu}[\p{L}'’-]+)$/u.exec(name);
     return pair ? { given: pair[1], family: pair[2] } : { literal: name };
   });
+  const apaPublication =
+    apaAuthor && title
+      ? text
+          .slice(text.indexOf(title, apaAuthor.length) + title.length)
+          .replace(/^\.\s*/, "")
+      : "";
+  const apaJournal = /^(.*?),\s*(\d+)(?:\(([^)]+)\))?,\s*([\d–-]+)\./.exec(
+    apaPublication,
+  );
   const tail = quote
     ? text.slice(quote.index + quote[0].length).replace(/^\.?\s*/, "")
     : "";
@@ -101,7 +215,15 @@ export function parseReference(original: string) {
       .match(/\b(?:97[89][ -]?)?\d[\d -]{8,15}[\dX]\b/)?.[0]
       ?.replace(/[ -]/g, ""),
     edition: text.match(/\b\d+(?:st|nd|rd|th) ed\./i)?.[0],
-    type: quote ? "article-journal" : "book",
+    type: quote || apaJournal ? "article-journal" : "book",
+    ...(apaJournal
+      ? {
+          containerTitle: apaJournal[1],
+          volume: apaJournal[2],
+          issue: apaJournal[3],
+          pages: apaJournal[4],
+        }
+      : {}),
     ...(quote
       ? {
           containerTitle: tail.split(/,|\./)[0]?.trim(),
@@ -177,25 +299,7 @@ export async function importReferences(
       "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
       [ws],
     );
-    const matches = uploads.rows.filter(
-      (a) =>
-        (!parsed.isbn ||
-          normalize(a.metadata.isbn || "") === normalize(parsed.isbn)) &&
-        (!parsed.doi ||
-          normalize(a.metadata.doi || "") === normalize(parsed.doi)) &&
-        normalize(a.metadata.title || "") ===
-          normalize(parsed.title || "MISSING") &&
-        (!parsed.edition ||
-          normalize(a.metadata.edition || "") === normalize(parsed.edition)) &&
-        (!parsed.year || a.metadata.year === parsed.year) &&
-        parsed.authors.some((author) =>
-          (a.metadata.authors || []).some(
-            (other: string) =>
-              normalize(author).includes(normalize(other)) ||
-              normalize(other).includes(normalize(author.split(",")[0])),
-          ),
-        ),
-    );
+    const matches = matchBibliographySources(parsed, uploads.rows);
     if (external && !matches.length && parsed.isbn && !parsed.doi) {
       try {
         const book = await resolveIsbn(parsed.isbn);

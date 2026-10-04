@@ -147,6 +147,39 @@ export interface Passage {
 export interface EvidenceLink extends Passage {
   role: "cited" | "alternative" | "research";
   support: Support;
+  sourceAccess?:
+    | "uploaded"
+    | "full_text"
+    | "partial_text"
+    | "abstract"
+    | "metadata"
+    | "unavailable";
+  excerpt?: string;
+}
+export interface CitationCheck {
+  start: number;
+  end: number;
+  itemIndex: number;
+  text: string;
+  sourceIds: string[];
+  status: "matched" | "ambiguous" | "unmatched";
+  locator?: string;
+  support: Support;
+  citation: Citation;
+  checkedPassageIds: string[];
+  claimText?: string;
+  claimStart?: number;
+  claimEnd?: number;
+  sourceAccess?: EvidenceLink["sourceAccess"];
+  explanation?: string[];
+  source?: {
+    title?: string;
+    authors: string[];
+    year?: string | number;
+    doi?: string;
+    journal?: string;
+    bibliographyEntry?: string;
+  };
 }
 export interface BackendFinding {
   id: string;
@@ -160,6 +193,7 @@ export interface BackendFinding {
   };
   support: Support;
   citation: Citation;
+  citationChecks?: CitationCheck[];
   eligibility: Eligibility;
   processing: Processing;
   basis?: "supplied_text" | "academic_research" | "public_sources";

@@ -1,6 +1,14 @@
+import { parseCitationOccurrences } from "../shared/citation-occurrences";
 import { readableDocumentTitle } from "./document-title";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal, flushSync } from "react-dom";
 import type { BackendFinding } from "../shared/backend";
 import { findingTone, findingLabel } from "./studio-document";
 import {
@@ -196,6 +204,13 @@ export default function Studio({ session }: { session: Session }) {
     useState<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
+  const [projectMenuPosition, setProjectMenuPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const studioRoot = useRef<HTMLDivElement>(null);
+  const projectMenuTrigger = useRef<HTMLButtonElement>(null);
+  const projectMenuPopover = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarCollapsed = preferences.sidebarCollapsed;
   const [railSearchOpen, setRailSearchOpen] = useState(false);
@@ -329,7 +344,7 @@ export default function Studio({ session }: { session: Session }) {
   const go = (next: string) => {
     if (next === window.location.pathname) return;
     window.history.pushState({}, "", next);
-    navigate(next);
+    navigate(window.location.pathname);
   };
 
   useEffect(() => {
@@ -367,6 +382,46 @@ export default function Studio({ session }: { session: Session }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  useLayoutEffect(() => {
+    if (openMenu !== "project") return;
+    const positionMenu = () => {
+      const trigger = projectMenuTrigger.current;
+      const popover = projectMenuPopover.current;
+      if (!trigger || !popover) return;
+      const triggerRect = trigger.getBoundingClientRect();
+      if (
+        triggerRect.bottom < 0 ||
+        triggerRect.top > window.innerHeight ||
+        triggerRect.right < 0 ||
+        triggerRect.left > window.innerWidth
+      ) {
+        setOpenMenu(null);
+        setProjectMenuPosition(null);
+        return;
+      }
+      const popoverRect = popover.getBoundingClientRect();
+      const gap = 8;
+      const left = Math.max(
+        gap,
+        Math.min(
+          triggerRect.right - popoverRect.width,
+          window.innerWidth - popoverRect.width - gap,
+        ),
+      );
+      const top =
+        triggerRect.bottom + popoverRect.height + gap <= window.innerHeight
+          ? triggerRect.bottom + gap
+          : Math.max(gap, triggerRect.top - popoverRect.height - gap);
+      setProjectMenuPosition({ left, top });
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [openMenu, menuWorkId]);
 
   const activeWork = works.find((work) => work.id === route.workId) ?? null;
   const focused = !!activeWork;
@@ -570,6 +625,7 @@ export default function Studio({ session }: { session: Session }) {
     );
   return (
     <div
+      ref={studioRoot}
       className={`proof-studio ${!focused ? "is-library" : ""}`}
       onClick={() => openMenu && setOpenMenu(null)}
       onKeyDownCapture={() => {
@@ -1009,38 +1065,65 @@ export default function Studio({ session }: { session: Session }) {
                             <button
                               className="ps-small-icon"
                               aria-label={`Options for ${work.title}`}
-                              onClick={() => {
-                                setMenuWorkId(work.id);
-                                setOpenMenu(
+                              aria-expanded={
+                                openMenu === "project" && menuWorkId === work.id
+                              }
+                              aria-controls="ps-project-menu"
+                              onClick={(event) => {
+                                if (
                                   openMenu === "project" &&
-                                    menuWorkId === work.id
-                                    ? null
-                                    : "project",
-                                );
+                                  menuWorkId === work.id
+                                ) {
+                                  setOpenMenu(null);
+                                  setProjectMenuPosition(null);
+                                  projectMenuTrigger.current = null;
+                                } else {
+                                  projectMenuTrigger.current =
+                                    event.currentTarget;
+                                  setMenuWorkId(work.id);
+                                  setProjectMenuPosition(null);
+                                  setOpenMenu("project");
+                                }
                               }}
                             >
                               <MoreHorizontal size={18} />
                             </button>
-                            {openMenu === "project" &&
-                              menuWorkId === work.id && (
-                                <div className="ps-popover ps-project-popover">
-                                  <button onClick={() => openWork(work.id)}>
-                                    <House size={16} /> Open
-                                  </button>
-                                  <button
-                                    className="danger"
-                                    onClick={() => {
-                                      setOpenMenu(null);
-                                      setPendingDelete(work);
-                                    }}
-                                  >
-                                    <Trash2 size={16} /> Archive
-                                  </button>
-                                </div>
-                              )}
                           </div>
                         )}
                       </div>
+                      {openMenu === "project" &&
+                        menuWorkId === work.id &&
+                        studioRoot.current &&
+                        createPortal(
+                          <div
+                            id="ps-project-menu"
+                            ref={projectMenuPopover}
+                            className="ps-popover ps-project-popover ps-project-popover-floating"
+                            style={{
+                              left: projectMenuPosition?.left ?? 0,
+                              top: projectMenuPosition?.top ?? 0,
+                              visibility: projectMenuPosition
+                                ? "visible"
+                                : "hidden",
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button onClick={() => openWork(work.id)}>
+                              <House size={16} /> Open
+                            </button>
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                setOpenMenu(null);
+                                setProjectMenuPosition(null);
+                                setPendingDelete(work);
+                              }}
+                            >
+                              <Trash2 size={16} /> Delete
+                            </button>
+                          </div>,
+                          studioRoot.current,
+                        )}
                       {open && (
                         <>
                           <nav
@@ -1082,7 +1165,7 @@ export default function Studio({ session }: { session: Session }) {
                               onClick={() => setPendingDelete(work)}
                             >
                               <Trash2 size={18} />
-                              Archive work
+                              Delete work
                             </button>
                           </div>
                         </>
@@ -1371,12 +1454,14 @@ export default function Studio({ session }: { session: Session }) {
                 key={activeWork.id}
                 work={activeWork}
                 sourceSelectionKey={`${storageKey}:sources:${activeWork.id}`}
+                preferences={preferences}
                 section={route.section}
                 onUpdated={refreshWorks}
                 onSave={saveText}
                 onOpenSources={() => openWork(activeWork.id, "citations")}
                 onOpenReview={() => openWork(activeWork.id)}
                 onOpenClaims={() => openWork(activeWork.id, "claims")}
+                onOpenPrivacy={() => go(`${appRoutes.settings}#privacy`)}
                 documentOptionsTarget={documentOptionsTarget}
               />
             </>
@@ -1532,7 +1617,7 @@ function DeleteWorkDialog({
         if (event.target === event.currentTarget) onCancel();
       }}
     >
-      <h2 id="delete-work-title">Archive work?</h2>
+      <h2 id="delete-work-title">Delete work?</h2>
       <p id="delete-work-description">
         “{work.title}” will be removed from your library. Existing reports are
         retained.
@@ -1542,7 +1627,7 @@ function DeleteWorkDialog({
           Keep work
         </button>
         <button className="ps-danger" onClick={onDelete}>
-          <Trash2 size={16} /> Archive work
+          <Trash2 size={16} /> Delete work
         </button>
       </div>
     </dialog>
@@ -1635,6 +1720,7 @@ function DocumentIllustration() {
 }
 
 type DashboardRun = {
+  input?: { mode?: "source_check" | "fact_check" | "discover" };
   id: string;
   status: string;
   invalidated: boolean;
@@ -1694,7 +1780,17 @@ function LibraryDashboard({
               findings.push(...page.items);
               if (page.items.length < 100) break;
             }
-            return { run, findings };
+            return {
+              run,
+              findings:
+                run.input?.mode === "source_check"
+                  ? findings.filter(
+                      (f) =>
+                        (f.citationChecks?.length ||
+                          parseCitationOccurrences(f.claim.text).length) > 0,
+                    )
+                  : findings,
+            };
           }),
         );
         if (disposed) return;

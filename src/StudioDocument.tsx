@@ -60,6 +60,19 @@ const wordCount = (text: string) =>
 const dismissKey = (finding: BackendFinding) =>
   `${finding.claim.text}\u0000${finding.fix?.original ?? ""}`;
 
+function locateOccurrences(content: string, start: number, end: number) {
+  if (start < 0 || end <= start || end > content.length) return [];
+  const target = content.slice(start, end);
+  const ranges: { start: number; end: number }[] = [];
+  for (
+    let match = content.indexOf(target);
+    match !== -1;
+    match = content.indexOf(target, match + 1)
+  )
+    ranges.push({ start: match, end: match + target.length });
+  return ranges;
+}
+
 export default function StudioDocument({
   content,
   findings,
@@ -76,7 +89,11 @@ export default function StudioDocument({
   researchResults = [],
   resultSettings,
   citationReview,
-  citationFocus,
+  citationIssueCount,
+  citationCounts,
+  citationDetails,
+  onCitationFinding,
+  documentFocus,
   documentActions,
   documentOptionsTarget,
   onEditorReady,
@@ -85,7 +102,6 @@ export default function StudioDocument({
   onAcceptAll,
   onCancel,
   hidden = false,
-  claimFocus,
 }: {
   content: string;
   findings: BackendFinding[];
@@ -121,7 +137,15 @@ export default function StudioDocument({
   }[];
   resultSettings?: string;
   citationReview?: ReactNode;
-  citationFocus?: { start: number; end: number; token: number };
+  citationIssueCount?: number;
+  citationCounts?: {
+    occurrences: number;
+    distinctCitedWorks: number;
+    bibliographyEntries: number;
+  };
+  citationDetails?: ReactNode;
+  onCitationFinding?: (id: string) => void;
+  documentFocus?: { start: number; end: number; token: number };
   documentActions?: ReactNode;
   documentOptionsTarget: HTMLElement | null;
   onEditorReady?: (ready: boolean) => void;
@@ -130,7 +154,6 @@ export default function StudioDocument({
   onAcceptAll: (findings: BackendFinding[]) => Promise<void>;
   onCancel: () => void;
   hidden?: boolean;
-  claimFocus?: { start: number; end: number; token: number };
 }) {
   const [draft, setDraft] = useState(content);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -155,39 +178,24 @@ export default function StudioDocument({
   useEffect(() => setSetupOpen(false), [run?.id, mode]);
   useEffect(() => setSelected(undefined), [run?.id]);
   useEffect(() => {
-    if (
-      !citationFocus ||
-      stale ||
-      !input.current ||
-      citationFocus.start < 0 ||
-      citationFocus.end < citationFocus.start ||
-      citationFocus.end > latest.current.length
-    )
-      return;
+    if (hidden || !documentFocus || !input.current) return;
+    const firstOccurrence = locateOccurrences(
+      latest.current,
+      documentFocus.start,
+      documentFocus.end,
+    )[0];
+    if (!firstOccurrence) return;
     input.current.focus({ preventScroll: true });
-    input.current.setSelectionRange(citationFocus.start, citationFocus.end);
-    input.current.scrollIntoView({
+    input.current.setSelectionRange(
+      firstOccurrence.start,
+      firstOccurrence.start,
+    );
+    const target = backdrop.current?.querySelector(".ps-locate-focus");
+    (target || input.current).scrollIntoView({
       block: "center",
       behavior: reducedMotion() ? "instant" : "smooth",
     });
-  }, [citationFocus, stale]);
-
-  useEffect(() => {
-    if (
-      hidden ||
-      !claimFocus ||
-      !input.current ||
-      claimFocus.start < 0 ||
-      claimFocus.end > latest.current.length
-    )
-      return;
-    input.current.focus({ preventScroll: true });
-    input.current.setSelectionRange(claimFocus.start, claimFocus.end);
-    input.current.scrollIntoView({
-      block: "center",
-      behavior: reducedMotion() ? "instant" : "smooth",
-    });
-  }, [claimFocus, hidden]);
+  }, [documentFocus, hidden]);
 
   const dirty = draft !== saved.current;
   const readOnly = active || locked;
@@ -258,22 +266,52 @@ export default function StudioDocument({
     dismissed.has(dismissKey(f)),
   ).length;
 
-  const fragments: ReactNode[] = [];
-  let cursor = 0;
+  const locatedRanges = useMemo(
+    () =>
+      documentFocus
+        ? locateOccurrences(draft, documentFocus.start, documentFocus.end)
+        : [],
+    [draft, documentFocus],
+  );
+  const fragmentBoundaries = new Set([0, draft.length]);
   for (const finding of highlights) {
-    fragments.push(draft.slice(cursor, finding.claim.start));
+    fragmentBoundaries.add(finding.claim.start);
+    fragmentBoundaries.add(finding.claim.end);
+  }
+  for (const range of locatedRanges) {
+    fragmentBoundaries.add(range.start);
+    fragmentBoundaries.add(range.end);
+  }
+  const positions = [...fragmentBoundaries].sort((a, b) => a - b);
+  const fragments: ReactNode[] = [];
+  for (let index = 0; index < positions.length - 1; index++) {
+    const start = positions[index];
+    const end = positions[index + 1];
+    if (start === end) continue;
+    const finding = highlights.find(
+      ({ claim }) => claim.start <= start && claim.end >= end,
+    );
+    const inLocatedRange = locatedRanges.some(
+      (range) => start >= range.start && end <= range.end,
+    );
+    if (!finding && !inLocatedRange) {
+      fragments.push(draft.slice(start, end));
+      continue;
+    }
     fragments.push(
       <mark
-        key={finding.id}
-        id={`ps-mark-${finding.id}`}
-        className={`ps-mark ${findingTone(finding)} ${selected === finding.id ? "is-selected" : ""}`}
+        key={`${start}:${end}`}
+        id={
+          finding && start === finding.claim.start
+            ? `ps-mark-${finding.id}`
+            : undefined
+        }
+        className={`ps-mark ${finding ? findingTone(finding) : ""} ${finding && selected === finding.id ? "is-selected" : ""} ${inLocatedRange ? "ps-locate-focus" : ""}`}
       >
-        {finding.claim.text}
+        {draft.slice(start, end)}
       </mark>,
     );
-    cursor = finding.claim.end;
   }
-  fragments.push(draft.slice(cursor));
 
   function selectAtCaret() {
     const area = input.current;
@@ -284,6 +322,7 @@ export default function StudioDocument({
     );
     if (!hit) return;
     setSelected(hit.id);
+    onCitationFinding?.(hit.id);
     if (findingTone(hit) === "supported" && filter === "review")
       setFilter("all");
     if (findingTone(hit) !== "supported" && filter === "supported")
@@ -319,6 +358,7 @@ export default function StudioDocument({
 
   const modeInfo = checkModes.find((item) => item.value === mode)!;
   const showSetup = !run || setupOpen;
+  const citationResults = mode !== "fact_check" && citationReview !== undefined;
 
   return (
     <div className="ps-workspace" hidden={hidden}>
@@ -402,10 +442,10 @@ export default function StudioDocument({
             </button>
           ))}
         </div>
-        {!showSetup && (
+        {!showSetup && !citationResults && (
           <p className="ps-review-mode-note">{modeInfo.description}</p>
         )}
-        {!showSetup && resultSettings && (
+        {!showSetup && !citationResults && resultSettings && (
           <p className="ps-review-muted">{resultSettings}</p>
         )}
 
@@ -447,20 +487,34 @@ export default function StudioDocument({
                 </button>
               </div>
             ) : (
-              <div className="ps-review-summary">
-                <p>
-                  <strong>{counts.review}</strong> to review
-                  <span aria-hidden="true"> · </span>
-                  <strong>{counts.supported}</strong> supported
-                  {counts.citationExempt > 0 && (
-                    <>
-                      <span aria-hidden="true"> · </span>
-                      <strong>{counts.citationExempt}</strong>{" "}
-                      {counts.citationExempt === 1 ? "needs" : "need"} no
-                      citation
-                    </>
-                  )}
-                </p>
+              <div
+                className={
+                  citationResults
+                    ? "ps-review-result-head"
+                    : "ps-review-summary"
+                }
+              >
+                {citationResults ? (
+                  <h3>
+                    {mode === "discover"
+                      ? "Citation suggestions"
+                      : "Citation check"}
+                  </h3>
+                ) : (
+                  <p>
+                    <strong>{counts.review}</strong> to review
+                    <span aria-hidden="true"> · </span>
+                    <strong>{counts.supported}</strong> supported
+                    {counts.citationExempt > 0 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <strong>{counts.citationExempt}</strong>{" "}
+                        {counts.citationExempt === 1 ? "needs" : "need"} no
+                        citation
+                      </>
+                    )}
+                  </p>
+                )}
                 <button
                   className="ps-review-link"
                   onClick={() => setSetupOpen(true)}
@@ -470,108 +524,147 @@ export default function StudioDocument({
                 </button>
               </div>
             )}
-            {typeof run.coverage?.completedClaims === "number" && (
-              <p className="ps-review-muted" role="status">
-                {run.coverage.completedClaims} of{" "}
-                {String(
-                  run.coverage.selectedClaims ?? run.coverage.totalClaims ?? 0,
-                )}{" "}
-                selected claims checked.
-                {Array.isArray(run.coverage.unprocessedSpans) &&
-                  run.coverage.unprocessedSpans.length > 0 &&
-                  ` ${run.coverage.unprocessedSpans.length} claims were left unchecked by the limit.`}
-              </p>
+            {citationResults && resultSettings && (
+              <p className="ps-review-muted">{resultSettings}</p>
             )}
-            {run.usage && run.usage.length > 0 && (
-              <details className="ps-research-details">
-                <summary>
-                  API usage ·{" "}
-                  {run.usage.reduce((n, item) => n + item.requests, 0)} requests
-                </summary>
-                <ul>
-                  {run.usage.map((item) => (
-                    <li key={`${item.provider}:${item.status}`}>
-                      {item.provider}: {item.requests} ·{" "}
-                      {item.status.replaceAll("_", " ")}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {Array.isArray(run.coverage?.sources) &&
-              run.coverage.sources.some(
-                (source) =>
-                  source.unreadablePages?.length || source.omittedPages?.length,
-              ) && (
-                <details className="ps-research-details" open>
-                  <summary>Source extraction gaps</summary>
-                  <ul>
-                    {run.coverage.sources
-                      .filter(
-                        (source) =>
-                          source.unreadablePages?.length ||
-                          source.omittedPages?.length,
-                      )
-                      .map((source) => (
-                        <li key={source.extractionId}>
-                          {sourceTitle(source.assetId) || "Selected source"}
-                          <p>
-                            {source.unreadablePages?.length > 0 &&
-                              `Unreadable physical pages: ${source.unreadablePages.join(", ")}. `}
-                            {source.omittedPages?.length > 0 &&
-                              `Omitted physical pages: ${source.omittedPages.join(", ")}.`}
-                          </p>
-                        </li>
-                      ))}
-                  </ul>
-                </details>
-              )}
-            {researchResults.some((item) => item.candidates.length > 0) && (
-              <details className="ps-research-details">
-                <summary>Retrieved sources and access gaps</summary>
-                <ul>
-                  {Array.from(
-                    new Map(
-                      researchResults
-                        .flatMap((item) => item.candidates)
-                        .map((candidate) => [
-                          candidate.doi || candidate.url,
-                          candidate,
-                        ]),
-                    ).values(),
-                  ).map((candidate) => (
-                    <li key={candidate.doi || candidate.url}>
-                      <a
-                        href={
-                          /^https:\/\//.test(candidate.url)
-                            ? candidate.url
-                            : undefined
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {candidate.title}
-                      </a>
-                      <p>
-                        {candidate.access?.replaceAll("_", " ") ||
-                          "No readable text"}{" "}
-                        · {candidate.eligibility}
-                        <br />
-                        {candidate.reason}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {Array.isArray(run.coverage?.skippedSpans) &&
-              run.coverage.skippedSpans.length > 0 && (
-                <p className="ps-review-muted" role="status">
-                  {run.coverage.skippedSpans.length} text segments skipped.
-                  Names, dates, headings, questions, preferences, and assignment
-                  instructions do not need an evidence check.
+            {citationResults &&
+              !active &&
+              (run.status !== "complete" ||
+                (Array.isArray(run.coverage?.unprocessedSpans) &&
+                  run.coverage.unprocessedSpans.length > 0)) && (
+                <p className="ps-review-incomplete" role="status">
+                  <CircleAlert size={16} />
+                  This check has gaps. Some claims or source text may not have
+                  been checked.
                 </p>
               )}
+            {mode !== "source_check" && (
+              <details
+                className={
+                  mode === "fact_check"
+                    ? "ps-review-run-data"
+                    : "ps-check-details"
+                }
+                open={
+                  mode === "fact_check" || !citationResults ? true : undefined
+                }
+              >
+                <summary hidden={!citationResults}>Check details</summary>
+                <div className="ps-check-details-body">
+                  {typeof run.coverage?.completedClaims === "number" && (
+                    <p className="ps-review-muted" role="status">
+                      {run.coverage.completedClaims} of{" "}
+                      {String(
+                        run.coverage.selectedClaims ??
+                          run.coverage.totalClaims ??
+                          0,
+                      )}{" "}
+                      selected claims checked.
+                      {Array.isArray(run.coverage.unprocessedSpans) &&
+                        run.coverage.unprocessedSpans.length > 0 &&
+                        ` ${run.coverage.unprocessedSpans.length} claims were left unchecked by the limit.`}
+                    </p>
+                  )}
+                  {run.usage && run.usage.length > 0 && (
+                    <details className="ps-research-details">
+                      <summary>
+                        API usage ·{" "}
+                        {run.usage.reduce((n, item) => n + item.requests, 0)}{" "}
+                        requests
+                      </summary>
+                      <ul>
+                        {run.usage.map((item) => (
+                          <li key={`${item.provider}:${item.status}`}>
+                            {item.provider}: {item.requests} ·{" "}
+                            {item.status.replaceAll("_", " ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  {Array.isArray(run.coverage?.sources) &&
+                    run.coverage.sources.some(
+                      (source) =>
+                        source.unreadablePages?.length ||
+                        source.omittedPages?.length,
+                    ) && (
+                      <details className="ps-research-details" open>
+                        <summary>Source extraction gaps</summary>
+                        <ul>
+                          {run.coverage.sources
+                            .filter(
+                              (source) =>
+                                source.unreadablePages?.length ||
+                                source.omittedPages?.length,
+                            )
+                            .map((source) => (
+                              <li key={source.extractionId}>
+                                {sourceTitle(source.assetId) ||
+                                  "Selected source"}
+                                <p>
+                                  {source.unreadablePages?.length > 0 &&
+                                    `Unreadable physical pages: ${source.unreadablePages.join(", ")}. `}
+                                  {source.omittedPages?.length > 0 &&
+                                    `Omitted physical pages: ${source.omittedPages.join(", ")}.`}
+                                </p>
+                              </li>
+                            ))}
+                        </ul>
+                      </details>
+                    )}
+                  {researchResults.some(
+                    (item) => item.candidates.length > 0,
+                  ) && (
+                    <details className="ps-research-details">
+                      <summary>Retrieved sources and access gaps</summary>
+                      <ul>
+                        {Array.from(
+                          new Map(
+                            researchResults
+                              .flatMap((item) => item.candidates)
+                              .map((candidate) => [
+                                candidate.doi || candidate.url,
+                                candidate,
+                              ]),
+                          ).values(),
+                        ).map((candidate) => (
+                          <li key={candidate.doi || candidate.url}>
+                            <a
+                              href={
+                                /^https:\/\//.test(candidate.url)
+                                  ? candidate.url
+                                  : undefined
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {candidate.title}
+                            </a>
+                            <p>
+                              {candidate.access?.replaceAll("_", " ") ||
+                                "No readable text"}{" "}
+                              · {candidate.eligibility}
+                              <br />
+                              {candidate.reason}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  {Array.isArray(run.coverage?.skippedSpans) &&
+                    run.coverage.skippedSpans.length > 0 && (
+                      <p className="ps-review-muted" role="status">
+                        {run.coverage.skippedSpans.length} text segments
+                        skipped. Names, dates, headings, questions, preferences,
+                        and assignment instructions do not need an evidence
+                        check.
+                      </p>
+                    )}
+                  {citationDetails}
+                </div>
+              </details>
+            )}
             {stale && !active && (
               <div className="ps-review-stale" role="status">
                 <CircleAlert size={16} />
@@ -593,8 +686,26 @@ export default function StudioDocument({
                 {run.error}
               </p>
             )}
-            {citationReview}
-            {findings.length > 0 && (
+            {citationResults && !active && (
+              <div className="ps-review-outcome">
+                <h3>
+                  {citationIssueCount === undefined
+                    ? "Review your findings"
+                    : citationIssueCount
+                      ? `${citationIssueCount} ${citationIssueCount === 1 ? "issue" : "issues"} to review`
+                      : "No issues found"}
+                </h3>
+                {citationCounts && (
+                  <p>
+                    {citationCounts.occurrences} in-text citations ·{" "}
+                    {citationCounts.distinctCitedWorks} cited works ·{" "}
+                    {citationCounts.bibliographyEntries} bibliography entries
+                  </p>
+                )}
+              </div>
+            )}
+            {citationResults && citationReview}
+            {!citationResults && findings.length > 0 && (
               <div className="ps-review-toolbar">
                 <div
                   className="ps-review-filter"
@@ -643,130 +754,144 @@ export default function StudioDocument({
                 Saving your edits before you can accept changes.
               </p>
             )}
-            <ol className="ps-changes">
-              {listed.map((finding) => {
-                const tone = findingTone(finding);
-                const open = selected === finding.id;
-                const isDismissed = dismissed.has(dismissKey(finding));
-                const assessment = findingAssessment(finding, mode);
-                return (
-                  <li
-                    key={finding.id}
-                    id={`ps-change-${finding.id}`}
-                    className={`ps-change ${tone} ${open ? "is-open" : ""} ${isDismissed ? "is-dismissed" : ""}`}
-                  >
-                    <button
-                      className="ps-change-head"
-                      aria-expanded={open}
-                      onClick={() => selectFinding(finding)}
+            {!citationResults && (
+              <ol className="ps-changes">
+                {listed.map((finding) => {
+                  const tone = findingTone(finding);
+                  const open = selected === finding.id;
+                  const isDismissed = dismissed.has(dismissKey(finding));
+                  const assessment = findingAssessment(finding, mode);
+                  return (
+                    <li
+                      key={finding.id}
+                      id={`ps-change-${finding.id}`}
+                      className={`ps-change ${tone} ${open ? "is-open" : ""} ${isDismissed ? "is-dismissed" : ""}`}
                     >
-                      <span className={`ps-change-tag ${tone}`}>
-                        {findingDetail(finding, mode)}
-                      </span>
-                      <span className="ps-change-claim">
-                        {finding.claim.text}
-                      </span>
-                    </button>
-                    {finding.fix && (
-                      <div className="ps-change-edit">
-                        <p className="ps-change-diff">
-                          <del>{finding.fix.original}</del>
-                          <ins>{finding.fix.replacement}</ins>
-                        </p>
-                        <div className="ps-change-actions">
-                          <button
-                            className="ps-change-accept"
-                            disabled={acceptBlocked || isDismissed}
-                            onClick={() => void accept(finding)}
-                          >
-                            {accepting === finding.id ? (
-                              <LoaderCircle size={15} className="ps-spin" />
-                            ) : (
-                              <Check size={15} />
-                            )}
-                            Accept
-                          </button>
-                          <button
-                            className="ps-change-dismiss"
-                            aria-label={
-                              isDismissed ? "Restore suggestion" : "Dismiss"
-                            }
-                            onClick={() =>
-                              setDismissed((current) => {
-                                const next = new Set(current);
-                                if (isDismissed)
-                                  next.delete(dismissKey(finding));
-                                else next.add(dismissKey(finding));
-                                return next;
-                              })
-                            }
-                          >
-                            {isDismissed ? (
-                              <RotateCcw size={15} />
-                            ) : (
-                              <X size={15} />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {open && (
-                      <div className="ps-change-detail">
-                        <p>{assessment.meaning}</p>
-                        <p className="ps-change-next">{assessment.next}</p>
-                        {finding.evidence.length === 0 ? (
-                          <p className="ps-change-muted">
-                            No readable source passage is attached to this
-                            finding.
+                      <button
+                        className="ps-change-head"
+                        aria-expanded={open}
+                        onClick={() => selectFinding(finding)}
+                      >
+                        <span className={`ps-change-tag ${tone}`}>
+                          {findingDetail(finding, mode)}
+                        </span>
+                        <span className="ps-change-claim">
+                          {finding.claim.text}
+                        </span>
+                      </button>
+                      {finding.fix && (
+                        <div className="ps-change-edit">
+                          <p className="ps-change-diff">
+                            <del>{finding.fix.original}</del>
+                            <ins>{finding.fix.replacement}</ins>
                           </p>
-                        ) : (
-                          finding.evidence.map((passage, index) => (
-                            <figure
-                              className="ps-change-passage"
-                              key={`${passage.id}:${index}`}
+                          <div className="ps-change-actions">
+                            <button
+                              className="ps-change-accept"
+                              disabled={acceptBlocked || isDismissed}
+                              onClick={() => void accept(finding)}
                             >
-                              <blockquote>{passage.text}</blockquote>
-                              <figcaption>
-                                {sourceTitle(passage.assetId) ||
-                                  "Source passage"}
-                                {" · "}
-                                {sourcePagination?.(passage.assetId) ===
-                                "unavailable"
-                                  ? "Retrieved text. Citation page unavailable"
-                                  : passage.labelStatus === "unknown"
-                                    ? `Physical page ${passage.pageIndex}. Printed page unconfirmed`
-                                    : `Page ${passage.pageLabel || passage.pageIndex}`}
-                                {" · "}
-                                {passage.support.replaceAll("_", " ")}
-                              </figcaption>
-                            </figure>
-                          ))
-                        )}
-                        <details>
-                          <summary>How Proof checked this</summary>
-                          <p className="ps-change-muted">
-                            {citationLabel(finding.citation)}
-                          </p>
-                          {finding.explanation.map((text, index) => (
-                            <p key={index}>{text}</p>
-                          ))}
-                        </details>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-            {!active && findings.length === 0 && !run.error && (
-              <p className="ps-review-muted">
-                {run.carried && !stale
-                  ? "You have handled every finding from this check. Run a new check to review the edited text."
-                  : run.coverage?.totalClaims === 0
-                    ? "No candidate claims found. Skipped text has not been fact-checked."
-                    : "No findings were returned. This does not verify the text."}
-              </p>
+                              {accepting === finding.id ? (
+                                <LoaderCircle size={15} className="ps-spin" />
+                              ) : (
+                                <Check size={15} />
+                              )}
+                              Accept
+                            </button>
+                            <button
+                              className="ps-change-dismiss"
+                              aria-label={
+                                isDismissed ? "Restore suggestion" : "Dismiss"
+                              }
+                              onClick={() =>
+                                setDismissed((current) => {
+                                  const next = new Set(current);
+                                  if (isDismissed)
+                                    next.delete(dismissKey(finding));
+                                  else next.add(dismissKey(finding));
+                                  return next;
+                                })
+                              }
+                            >
+                              {isDismissed ? (
+                                <RotateCcw size={15} />
+                              ) : (
+                                <X size={15} />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {open && (
+                        <div className="ps-change-detail">
+                          <p>{assessment.meaning}</p>
+                          <p className="ps-change-next">{assessment.next}</p>
+                          {finding.evidence.length === 0 ? (
+                            <p className="ps-change-muted">
+                              No readable source passage is attached to this
+                              finding.
+                            </p>
+                          ) : (
+                            finding.evidence.map((passage, index) => (
+                              <figure
+                                className="ps-change-passage"
+                                key={`${passage.id}:${index}`}
+                              >
+                                <blockquote>
+                                  {passage.excerpt || passage.text}
+                                </blockquote>
+                                <figcaption>
+                                  {sourceTitle(passage.assetId) ||
+                                    "Source passage"}
+                                  {" · "}
+                                  {passage.sourceAccess === "abstract"
+                                    ? "Checked against abstract · "
+                                    : passage.sourceAccess === "full_text"
+                                      ? "Checked against full text · "
+                                      : passage.sourceAccess === "partial_text"
+                                        ? "Partial source text available · "
+                                        : ""}
+                                  {sourcePagination?.(passage.assetId) ===
+                                  "unavailable"
+                                    ? "Retrieved text. Citation page unavailable"
+                                    : passage.labelStatus === "unknown"
+                                      ? `Physical page ${passage.pageIndex}. Printed page unconfirmed`
+                                      : `Page ${passage.pageLabel || passage.pageIndex}`}
+                                  {" · "}
+                                  {passage.support.replaceAll("_", " ")}
+                                </figcaption>
+                              </figure>
+                            ))
+                          )}
+                          <details>
+                            <summary>How Proof checked this</summary>
+                            <p className="ps-change-muted">
+                              {citationLabel(finding.citation)}
+                            </p>
+                            {finding.explanation.map((text, index) => (
+                              <p key={index}>{text}</p>
+                            ))}
+                          </details>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             )}
-            {findings.length > 0 && listed.length === 0 && (
+            {!citationResults &&
+              !active &&
+              findings.length === 0 &&
+              !run.error && (
+                <p className="ps-review-muted">
+                  {run.carried && !stale
+                    ? "You have handled every finding from this check. Run a new check to review the edited text."
+                    : run.coverage?.totalClaims === 0
+                      ? "No candidate claims found. Skipped text has not been fact-checked."
+                      : "No findings were returned. This does not verify the text."}
+                </p>
+              )}
+            {!citationResults && findings.length > 0 && listed.length === 0 && (
               <p className="ps-review-muted">
                 {filter === "review"
                   ? "Nothing left to review in this check."

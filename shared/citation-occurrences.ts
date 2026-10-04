@@ -6,6 +6,7 @@ import type {
 export interface CitationOccurrenceItem {
   raw: string;
   author?: string;
+  authors?: string[];
   title?: string;
   locator?: string;
   year?: string;
@@ -26,9 +27,10 @@ const normalize = (text: string) =>
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase()
+    .replace(/&/g, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
-function authorKey(metadata: ReferenceMetadata) {
+function authorKeys(metadata: ReferenceMetadata) {
   const authors = (metadata.authors ?? [])
     .map((author) => {
       if (typeof author !== "string")
@@ -39,7 +41,36 @@ function authorKey(metadata: ReferenceMetadata) {
         : author.trim();
     })
     .filter(Boolean);
-  return authors.length > 2 ? `${authors[0]} et al.` : authors.join(" and ");
+  return authors.length > 2
+    ? [
+        `${authors[0]} et al.`,
+        `${authors.slice(0, -1).join(", ")}, and ${authors.at(-1)}`,
+      ]
+    : [authors.join(" and ")];
+}
+const authorKey = (metadata: ReferenceMetadata) => authorKeys(metadata)[0];
+function immediateNarrativeAuthor(
+  prefix: string,
+  references: CitationReference[],
+) {
+  // Prefer explicit bibliography names (including organizations and compound
+  // surnames), but require them immediately before the year.
+  const known = references
+    .flatMap((reference) => authorKeys(reference.metadata))
+    .map((author) =>
+      new RegExp(
+        `(?<![\\p{L}])(${author.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ and /g, " (?:and|&) ")})\\s*$`,
+        "u",
+      ).exec(prefix),
+    )
+    .filter((match): match is RegExpExecArray => !!match)
+    .sort((a, b) => b[1].length - a[1].length)[0];
+  return (
+    known ||
+    /(?<![\p{L}])((?:(?:de|van|von|der|den|da|di)\s+)*\p{Lu}[\p{L}'’-]+(?:,\s*(?:(?:and|&)\s+)?\p{Lu}[\p{L}'’-]+|\s+(?:and|&)\s+\p{Lu}[\p{L}'’-]+)*(?:\s+et al\.)?)\s*$/u.exec(
+      prefix,
+    )
+  );
 }
 function titleMatches(title: string, metadata: ReferenceMetadata) {
   const cited = normalize(title);
@@ -54,7 +85,8 @@ function titleMatches(title: string, metadata: ReferenceMetadata) {
   );
 }
 function sameAuthor(author: string, metadata: ReferenceMetadata) {
-  if (normalize(author) === normalize(authorKey(metadata))) return true;
+  if (authorKeys(metadata).some((key) => normalize(author) === normalize(key)))
+    return true;
   if (metadata.authors?.length !== 1) return false;
   const first = metadata.authors[0];
   if (typeof first === "string" || !first.family || !first.given) return false;
@@ -80,10 +112,12 @@ function narrativeCandidates(prefix: string, references: CitationReference[]) {
   }
   const normalized = ` ${normalize(current)} `;
   const mentions = references.flatMap((reference) => {
-    const key = normalize(authorKey(reference.metadata));
-    if (!key) return [];
-    const index = normalized.lastIndexOf(` ${key} `);
-    return index >= 0 ? [{ reference, index }] : [];
+    return authorKeys(reference.metadata).flatMap((author) => {
+      const key = normalize(author);
+      if (!key) return [];
+      const index = normalized.lastIndexOf(` ${key} `);
+      return index >= 0 ? [{ reference, index }] : [];
+    });
   });
   const latest = Math.max(-1, ...mentions.map((mention) => mention.index));
   return mentions
@@ -102,7 +136,8 @@ export function parseCitationOccurrences(
   const body = text.slice(0, bibliography?.index ?? text.length);
   const occurrences: CitationOccurrence[] = [];
   for (const match of body.matchAll(/\(([^()\n]{1,500})\)/g)) {
-    const start = match.index!;
+    const parenthesisStart = match.index!;
+    let start = parenthesisStart;
     let form: CitationOccurrence["form"] = "parenthetical";
     const items: CitationOccurrenceItem[] = [];
     for (const part of match[1].split(";")) {
@@ -141,21 +176,29 @@ export function parseCitationOccurrences(
           (!yearMatch || String(reference.metadata.year) === yearMatch[1]),
       );
       if (!author && !quoted && (locator || yearMatch)) {
-        candidates = narrativeCandidates(
-          body.slice(0, start),
-          references,
+        const immediate = yearMatch
+          ? immediateNarrativeAuthor(
+              body.slice(0, parenthesisStart),
+              references,
+            )
+          : undefined;
+        candidates = (
+          yearMatch
+            ? references.filter(
+                (reference) =>
+                  !!immediate && sameAuthor(immediate[1], reference.metadata),
+              )
+            : narrativeCandidates(body.slice(0, parenthesisStart), references)
         ).filter(
           (reference) =>
             !yearMatch || String(reference.metadata.year) === yearMatch[1],
         );
         if (!candidates.length) {
           if (!yearMatch) continue;
-          author =
-            /([\p{Lu}][\p{L}'’-]+(?:\s+et al\.)?)\s*$/u.exec(
-              body.slice(0, start),
-            )?.[1] || "";
+          author = immediate?.[1] || "";
           if (!author) continue;
-        } else author = authorKey(candidates[0].metadata);
+        } else author = immediate?.[1] || authorKey(candidates[0].metadata);
+        if (immediate) start = immediate.index;
         form = "narrative";
       } else if (
         !candidates.length &&
@@ -169,22 +212,32 @@ export function parseCitationOccurrences(
         !candidates.length &&
         !quoted &&
         author &&
-        !/^(?:(?:de|van|von|der|den|da|di)\s+)*[\p{Lu}][\p{L}\p{N}.'’-]*(?:\s+(?:and|of|the|de|van|von|der|den|da|di|et al\.|[\p{Lu}][\p{L}\p{N}.'’-]*))*$/u.test(
+        !/^(?:(?:de|van|von|der|den|da|di)\s+)*[\p{Lu}][\p{L}\p{N}.'’-]*(?:,?\s+(?:&|and|of|the|de|van|von|der|den|da|di|et al\.|[\p{Lu}][\p{L}\p{N}.'’-]*))*$/u.test(
           author,
         )
       )
         continue;
+      const sourceIds = [
+        ...new Set(candidates.map((reference) => reference.id)),
+      ];
       items.push({
         raw,
         author: author || undefined,
+        authors:
+          author && !titleOnly
+            ? author
+                .replace(/\s+et al\.$/i, "")
+                .split(/,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+/)
+                .filter(Boolean)
+            : undefined,
         title: quoted?.[1],
         locator,
         year: yearMatch?.[1],
-        sourceIds: candidates.map((reference) => reference.id),
+        sourceIds,
         status:
-          candidates.length === 1
+          sourceIds.length === 1
             ? "matched"
-            : candidates.length
+            : sourceIds.length
               ? "ambiguous"
               : "unmatched",
       });
@@ -193,8 +246,8 @@ export function parseCitationOccurrences(
       occurrences.push({
         id: `citation-${start}`,
         start,
-        end: start + match[0].length,
-        raw: match[0],
+        end: parenthesisStart + match[0].length,
+        raw: body.slice(start, parenthesisStart + match[0].length),
         form,
         items,
       });
@@ -214,6 +267,7 @@ export function parseCitationOccurrences(
           ?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
           .toLowerCase() === raw.toLowerCase(),
     );
+    const sourceIds = [...new Set(candidates.map((reference) => reference.id))];
     occurrences.push({
       id: `citation-${match.index}`,
       start: match.index!,
@@ -223,11 +277,11 @@ export function parseCitationOccurrences(
       items: [
         {
           raw,
-          sourceIds: candidates.map((reference) => reference.id),
+          sourceIds,
           status:
-            candidates.length === 1
+            sourceIds.length === 1
               ? "matched"
-              : candidates.length
+              : sourceIds.length
                 ? "ambiguous"
                 : "unmatched",
         },

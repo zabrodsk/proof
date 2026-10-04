@@ -1,5 +1,21 @@
 import type { Page } from "@playwright/test";
 
+// Review fixtures grant permission without discarding their current check setup.
+// Onboarding and the actual Settings controls are covered in privacy-settings.spec.ts.
+export async function enableAiProcessing(page: Page) {
+  await page.evaluate(() => {
+    const key = "proof.preferences.v1:browser-e2e";
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...saved, privacyReviewed: true, aiProcessing: true }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("proof:studio-preferences-changed", { detail: { key } }),
+    );
+  });
+}
+
 async function openSection(page: Page, section: "claims" | "dashboard") {
   await page.locator(".ps-page-heading").waitFor({ state: "visible" });
   const path = new URL(page.url()).pathname;
@@ -25,6 +41,7 @@ export async function openReview(page: Page) {
 }
 
 export async function showSources(page: Page) {
+  await page.locator(".ps-setup").waitFor({ state: "visible" });
   const summary = page
     .locator(".ps-setup-options > summary")
     .filter({ hasText: "My sources and bibliography" });
@@ -47,4 +64,15 @@ export async function showMoreOptions(page: Page) {
     .filter({ hasText: "More options" });
   if ((await summary.locator("..").getAttribute("open")) === null)
     await summary.click();
+}
+
+export async function showCheckDetails(page: Page) {
+  const factCheck = page
+    .getByRole("group", { name: "Check type" })
+    .getByRole("button", { name: "Fact-check", exact: true });
+  if ((await factCheck.getAttribute("aria-pressed")) === "true") return;
+  const details = page.locator(".ps-check-details, .ps-review-run-data");
+  await details.waitFor({ state: "visible", timeout: 60_000 });
+  if ((await details.getAttribute("open")) === null)
+    await details.locator(":scope > summary").click();
 }

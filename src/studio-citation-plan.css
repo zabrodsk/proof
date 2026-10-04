@@ -1,0 +1,270 @@
+.ps-plan {
+  min-width: 0;
+  color: var(--ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ps-plan p {
+  margin: 0;
+}
+
+.ps-plan-intro,
+.ps-plan-empty,
+.ps-plan-status {
+  padding: 16px 0 12px;
+  color: var(--muted);
+}
+
+.ps-plan-selection-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ps-plan-select-toggle {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--forest);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ps-plan-select-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ps-plan-status {
+  color: var(--ink);
+}
+
+.ps-plan .ps-plan-operation {
+  padding: 16px 0;
+  border-top: 0;
+}
+
+.ps-plan .ps-plan-operation + .ps-plan-operation {
+  border-top: 1px solid var(--line);
+}
+
+.ps-plan-operation-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ps-plan .ps-plan-checkbox {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--forest);
+  cursor: pointer;
+}
+
+.ps-plan-checkbox:disabled {
+  cursor: not-allowed;
+}
+
+.ps-plan-operation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+}
+
+.ps-plan-operation-toggle > svg {
+  flex: 0 0 auto;
+}
+
+.ps-plan-operation-label {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ps-plan-operation-label strong {
+  font-size: 14px;
+}
+
+.ps-plan-location,
+.ps-plan-rationale,
+.ps-plan-saved,
+.ps-plan-action-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ps-plan-saved {
+  flex-shrink: 0;
+}
+
+.ps-plan-operation-detail {
+  padding-top: 18px;
+  padding-left: 30px;
+  overflow-wrap: anywhere;
+}
+
+.ps-plan-diff {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.ps-plan-diff-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ps-plan-diff mark {
+  padding: 1px 2px;
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--proof-selection);
+}
+
+.ps-plan .ps-plan-evidence {
+  margin-top: 14px;
+}
+
+.ps-plan .ps-plan-evidence summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ps-plan-evidence summary::-webkit-details-marker {
+  display: none;
+}
+
+.ps-plan-evidence summary > svg {
+  flex: 0 0 auto;
+}
+
+.ps-plan-evidence[open] summary > svg {
+  transform: rotate(90deg);
+}
+
+.ps-plan-evidence-content {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.ps-plan-evidence figure,
+.ps-plan-evidence blockquote {
+  margin: 0;
+}
+
+.ps-plan-evidence blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+
+.ps-plan-evidence figcaption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ps-plan-preview {
+  padding: 8px 0 16px;
+}
+
+.ps-plan-preview > summary {
+  display: list-item;
+  width: fit-content;
+  color: var(--forest);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ps-plan-preview[open] > summary {
+  margin-bottom: 12px;
+}
+
+.ps-plan-preview pre {
+  max-height: 55vh;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ps-plan-scroll {
+  max-height: min(55vh, 600px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+
+.ps-plan-footer {
+  display: grid;
+  gap: 6px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+  background: var(--white);
+}
+
+.ps-plan-selection {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ps-plan-error {
+  color: var(--red);
+  overflow-wrap: anywhere;
+}
+
+.ps-plan-apply {
+  justify-content: center;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.ps-plan :is(summary, pre):focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .ps-plan-operation-detail {
+    padding-left: 0;
+  }
+}

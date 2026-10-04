@@ -172,6 +172,11 @@
   background: color-mix(in srgb, var(--review-grey) 16%, transparent);
 }
 
+.ps-mark.ps-locate-focus {
+  background: var(--proof-selection);
+  text-decoration: none;
+}
+
 /* Review panel */
 
 .ps-review {
@@ -582,6 +587,40 @@
 .ps-setup-source small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.ps-setup-processing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ps-setup-source-link {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ps-setup-source-link:hover {
+  text-decoration: underline;
+}
+
+.ps-setup-source-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .ps-setup-source.is-waiting {

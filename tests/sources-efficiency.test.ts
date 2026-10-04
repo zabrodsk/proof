@@ -3,6 +3,46 @@ import assert from "node:assert/strict";
 import { resolveScholarly } from "../server/scholarly.js";
 import { resolveDOI } from "../server/sources.js";
 
+test("a matched OpenAlex record supplies an abstract when Europe PMC has no usable text", async () => {
+  const doi = "10.1234/openalex-abstract";
+  const stub = mock.method(globalThis, "fetch", async (input: string | URL) => {
+    const url = String(input);
+    if (url.startsWith("https://api.crossref.org/works/"))
+      return Response.json({
+        message: { DOI: doi, type: "journal-article", title: ["Memory study"] },
+      });
+    if (url.includes("europepmc/webservices/rest/search"))
+      return Response.json({ resultList: { result: [] } });
+    if (url.startsWith("https://api.openalex.org/works/"))
+      return Response.json({
+        doi: `https://doi.org/${doi}`,
+        abstract_inverted_index: {
+          Future: [0],
+          access: [1],
+          reduces: [2],
+          recall: [3],
+          and: [4],
+          improves: [5],
+          memory: [6],
+          for: [7],
+          "location.": [8],
+        },
+        locations: [],
+      });
+    throw Error("Unexpected provider");
+  });
+  try {
+    const source = await resolveDOI(doi, true);
+    assert.equal(source.access, "abstract");
+    assert.deepEqual(source.passages, [
+      "Future access reduces recall and improves memory for location.",
+    ]);
+    assert.match(source.provider, /OpenAlex/);
+  } finally {
+    stub.mock.restore();
+  }
+});
+
 test("academic eligibility rejects before full-text retrieval without poisoning the compatibility cache", async () => {
   const doi = "10.1234/source-efficiency";
   let registry = 0,

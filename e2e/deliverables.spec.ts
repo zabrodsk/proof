@@ -1,4 +1,10 @@
-import { openClaims, openReview, showSources } from "./work-pages";
+import { enableAiProcessing } from "./work-pages";
+import {
+  showCheckDetails,
+  openClaims,
+  openReview,
+  showSources,
+} from "./work-pages";
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 async function draft(request: APIRequestContext, text: string) {
@@ -9,9 +15,7 @@ async function draft(request: APIRequestContext, text: string) {
   return r.json();
 }
 async function consent(page: any) {
-  await page
-    .getByRole("checkbox", { name: "Allow AI providers", exact: false })
-    .check();
+  await enableAiProcessing(page);
 }
 async function selectSource(page: any) {
   await showSources(page);
@@ -40,6 +44,7 @@ test("claim preview controls the actual checked spans and skips a punctuated nam
   await selectSource(page);
   await consent(page);
   await page.locator(".ps-setup-start").click();
+  await showCheckDetails(page);
   await expect(
     page.getByText("1 of 1 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -64,17 +69,18 @@ test("numeric correction has exact evidence, changes only the approved claim, an
   await consent(page);
   await page.locator(".ps-setup-start").click();
   const card = page
-    .locator(".ps-changes > li")
+    .locator(".ps-citation-issue")
     .filter({ hasText: "120 adults" });
+  await card.locator(".ps-citation-issue-toggle").click();
   await expect(
-    card.getByRole("button", { name: "Accept", exact: true }),
+    card.getByRole("button", { name: "Apply wording correction", exact: true }),
   ).toBeEnabled();
-  await card.locator(".ps-change-head").click();
-  await expect(card.locator("blockquote")).toContainText(
+  await card.getByText("Evidence and source details", { exact: true }).click();
+  await expect(card.locator(".ps-change-passage blockquote")).toContainText(
     "The trial included 218 adults.",
   );
   await expect(
-    card.getByText("Retrieved text. Citation page unavailable", {
+    card.getByText("Citation page unavailable", {
       exact: false,
     }),
   ).toBeVisible();
@@ -90,7 +96,9 @@ test("numeric correction has exact evidence, changes only the approved claim, an
     await request.get(`/api/v1/passages/${numeric.evidence[0].id}`)
   ).json();
   expect(passage.text).toBe(numeric.evidence[0].text);
-  await card.getByRole("button", { name: "Accept", exact: true }).click();
+  await card
+    .getByRole("button", { name: "Apply wording correction", exact: true })
+    .click();
   const updated = text.replace("120", "218");
   await expect(
     page.getByRole("textbox", { name: "Document text" }),
@@ -125,6 +133,7 @@ test("research exposes inaccessible and retracted candidates, recorded usage, an
     .click();
   await consent(page);
   await page.locator(".ps-setup-start").click();
+  await showCheckDetails(page);
   await expect(
     page.getByText("2 of 2 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -184,6 +193,7 @@ test("a supplied source that covers a public claim prevents all external searche
   await selectSource(page);
   await consent(page);
   await page.locator(".ps-setup-start").click();
+  await showCheckDetails(page);
   await expect(
     page.getByText("1 of 1 selected claims checked.", { exact: false }),
   ).toBeVisible();
@@ -219,8 +229,9 @@ test("starting a check waits for delayed autosave and uses the new version", asy
   await page.getByRole("textbox", { name: "Document text" }).blur();
   await expect(start).toBeEnabled();
   await start.click();
+  await page.locator(".ps-citation-issue-toggle").first().click();
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true }),
+    page.getByRole("button", { name: "Apply wording correction", exact: true }),
   ).toBeVisible();
   const run = (
     await (await request.get(`/api/v1/documents/${doc.id}/runs`)).json()

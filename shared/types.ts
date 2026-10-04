@@ -10,7 +10,12 @@ export type Status =
   | "uncertain";
 export type Mode = "audit" | "strict";
 export type Access =
-  "full_text" | "abstract" | "metadata" | "unavailable" | "uploaded";
+  | "full_text"
+  | "partial_text"
+  | "abstract"
+  | "metadata"
+  | "unavailable"
+  | "uploaded";
 export interface Source {
   id: string;
   title: string;
@@ -94,6 +99,7 @@ export const labels: Record<Status, string> = {
 };
 export const accessLabels: Record<Access, string> = {
   full_text: "Full text retrieved",
+  partial_text: "Partial source text available",
   abstract: "Abstract only",
   metadata: "Metadata only",
   unavailable: "Unavailable",

@@ -78,7 +78,12 @@ function resolved(doi: string): Source {
     id: randomUUID(),
     title: "Verified study",
     authors: ["Jane Smith"],
+    authorDetails: [{ family: "Smith", given: "Jane" }],
     year: "2024",
+    journal: "Evidence Journal",
+    volume: "4",
+    issue: "2",
+    pages: "21-28",
     doi,
     url: `https://doi.org/${doi}`,
     access: "full_text",
@@ -178,6 +183,25 @@ test("retrieved references are indexed, reused across documents, and attached to
         a.metadata.importedDocumentIds.includes(nextDocument),
     ),
   );
+  const article = assets.find((a) => a.metadata.doi === "10.1234/study");
+  assert.deepEqual(article.metadata.authorDetails, [
+    { family: "Smith", given: "Jane" },
+  ]);
+  const articleReference = (
+    await db.query(
+      "SELECT parsed FROM reference_entries WHERE workspace_id=$1 AND asset_id=$2 LIMIT 1",
+      [ws, article.id],
+    )
+  ).rows[0];
+  for (const metadata of [article.metadata, articleReference.parsed]) {
+    assert.equal(metadata.containerTitle, "Evidence Journal");
+    assert.equal(metadata.volume, "4");
+    assert.equal(metadata.issue, "2");
+    assert.equal(metadata.pages, "21-28");
+  }
+  assert.deepEqual(articleReference.parsed.authorDetails, [
+    { family: "Smith", given: "Jane" },
+  ]);
   assert.ok(
     (
       await db.query("SELECT text FROM source_passages WHERE workspace_id=$1", [

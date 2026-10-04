@@ -114,7 +114,7 @@ export interface FrozenReference {
   asset_id?: string | null;
   assetId?: string | null;
 }
-const researchVersion = `research-3:${versions.policy}:${versions.parser}`;
+const researchVersion = `research-4:${versions.policy}:${versions.parser}`;
 
 export function neutralResearchQuery(query: string) {
   // Strip a request to confirm a conclusion, but retain every word of the claim,
@@ -424,7 +424,7 @@ async function sourceSnapshot(
 ): Promise<{ selection: Selection; snapshot: FrozenSource } | undefined> {
   if (
     !source.passages.length ||
-    !["full_text", "abstract"].includes(source.access) ||
+    !["full_text", "partial_text", "abstract"].includes(source.access) ||
     (!source.doi && !source.evidencePolicy)
   )
     return;
@@ -473,7 +473,11 @@ async function sourceSnapshot(
     referenceFingerprint,
     contentFingerprint: checksum(body),
     extractionCompleteness:
-      source.access === "full_text" ? "complete" : "abstract_only",
+      source.access === "full_text"
+        ? "complete"
+        : source.access === "abstract"
+          ? "abstract_only"
+          : "partial",
     notice: source.notice,
   };
   // Preserve original PDFs and their printed page labels. Text-only retrievals stay text snapshots.
@@ -593,6 +597,7 @@ async function resolveCandidate(
     previous?.metadata.retrievedAt || previous?.created_at || "",
   );
   if (
+    previous?.access !== "full_text" ||
     !previous?.metadata.textFingerprint ||
     !Number.isFinite(retrievedAt) ||
     Date.now() - retrievedAt > 24 * 60 * 60 * 1000
@@ -1168,7 +1173,15 @@ export async function resolveSelectedReferences(
   };
   if (!cached)
     for (const entry of entries) {
-      if (entry.asset_id || entry.assetId) continue;
+      const assetId = entry.asset_id || entry.assetId;
+      if (assetId) {
+        // Indexed abstracts and unavailable placeholders still need full-text retrieval.
+        const readable = await db.query(
+          "SELECT id FROM source_assets WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL AND status='ready' AND access IN ('uploaded','full_text') AND EXISTS (SELECT 1 FROM extractions e WHERE e.workspace_id=source_assets.workspace_id AND e.asset_id=source_assets.id AND e.parser_version=$3 AND e.status='complete')",
+          [ws, assetId, versions.parser],
+        );
+        if (readable.rows.length) continue;
+      }
       // A DOI explicitly present in the supplied reference, or one unambiguous/confirmed
       // match, is the only identity allowed. Never search around an ambiguous entry.
       const selected =

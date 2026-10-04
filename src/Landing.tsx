@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import "@fontsource/newsreader/700.css";
 import "./landing.css";
+import "./landing-hero.css";
 import "./landing-motion.css";
 import { useLandingMotion } from "./landing-motion";
 import LandingConnections from "./LandingConnections";
+import LandingHero from "./LandingHero";
 import { InkFrame } from "./Drawn";
 
 const documentTypes = [
@@ -78,23 +80,6 @@ function SchoolLogoRow() {
         ))}
       </div>
     </section>
-  );
-}
-
-function HeroArtwork() {
-  return (
-    <div
-      className="lp-art"
-      aria-label="Illustration of Proof matching a draft citation to its source"
-    >
-      <img
-        className="lp-art-scene"
-        src="/images/hero-citations-transparent-v2.png"
-        alt=""
-        width="1024"
-        height="1024"
-      />
-    </div>
   );
 }
 
@@ -462,25 +447,7 @@ export default function Landing() {
         )}
       </header>
       <main id="main">
-        <section className="lp-hero">
-          <div className="lp-container lp-hero-grid">
-            <HeroArtwork />
-            <div className="lp-hero-copy">
-              <h1>
-                <span className="lp-hero-kicker">Trust your</span>
-                <span className="lp-hero-highlight">citations</span>
-              </h1>
-              <p className="lp-hero-description">
-                Proof checks your cited sources, verifies claims, and helps you
-                build stronger, more credible academic writing.
-              </p>
-              <a className="lp-hero-cta" href={"/app"}>
-                Get started
-                <ArrowRight size={18} />
-              </a>
-            </div>
-          </div>
-        </section>
+        <LandingHero appHref="/app" />
         <SchoolLogoRow />
         <section
           className="lp-used-for lp-container"

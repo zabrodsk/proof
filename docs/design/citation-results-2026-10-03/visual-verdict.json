@@ -1,0 +1,12 @@
+{
+  "score": 91,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [
+    "All three mode controls are retained above the results, as explicitly requested; the reference images omit them.",
+    "The existing work header and navigation remain in place. The reference uses different surrounding chrome and sample text.",
+    "Works Cited uses the saved complete entry text for editing rather than inferred author/year fields; matched source metadata is shown only when available."
+  ],
+  "suggestions": [],
+  "reasoning": "The implemented card retains the reference's outcome-first hierarchy, flat Issues/Changes lists, green actions, and contextual disclosures. The inventories use the same list/detail structure; the Changes footer remains outside the scrollable suggestions so it cannot cover rows."
+}

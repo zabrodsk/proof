@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import type { ClaimReviewRow } from "./studio-claims";
 import type { CheckMode } from "./StudioDocument";
@@ -36,9 +36,19 @@ export default function StudioClaims({
   selectedCount: number;
 }) {
   const [filter, setFilter] = useState<
-    "all" | "review" | "supported" | "need_citation" | "general_fact" | "unsure"
-  >("all");
+    | "cited"
+    | "all"
+    | "review"
+    | "supported"
+    | "no_citation"
+    | "general_fact"
+    | "unsure"
+  >(mode === "source_check" ? "cited" : "all");
+  useEffect(() => {
+    setFilter(mode === "source_check" ? "cited" : "all");
+  }, [mode]);
   const [expanded, setExpanded] = useState<number>();
+  const citedOnly = mode === "source_check";
   const visible = rows.filter(
     (row) =>
       row.text.toLowerCase().includes(search.trim().toLowerCase()) &&
@@ -46,13 +56,15 @@ export default function StudioClaims({
         ? row.unsure
         : !row.unsure &&
           (filter === "all" ||
+            (filter === "cited" && row.hasCitation) ||
             (filter === "review" &&
+              (!citedOnly || row.hasCitation) &&
               (!row.finding || findingTone(row.finding) !== "supported")) ||
             (filter === "supported" &&
+              (!citedOnly || row.hasCitation) &&
               !!row.finding &&
               findingTone(row.finding) === "supported") ||
-            (filter === "need_citation" &&
-              row.citationRequirement === "required") ||
+            (filter === "no_citation" && !row.hasCitation) ||
             (filter === "general_fact" &&
               row.citationRequirement === "common_knowledge"))),
   );
@@ -78,14 +90,19 @@ export default function StudioClaims({
           />
         </label>
       </div>
-      <p className="ps-review-muted">Select claims for the next check.</p>
+      <p className="ps-review-muted">
+        {citedOnly
+          ? "Only claims with a citation are checked. Uncited claims are excluded from issues and results."
+          : "Select claims for the next check."}
+      </p>
       <div className="ps-review-filter" role="group" aria-label="Filter claims">
         {(
           [
+            ["cited", "Cited claims"],
             ["all", "All claims"],
             ["review", "To review"],
             ["supported", "Supported"],
-            ["need_citation", "Need Citation"],
+            ["no_citation", "No citation"],
             ["general_fact", "General fact"],
             ["unsure", "Unsure"],
           ] as const
@@ -104,7 +121,8 @@ export default function StudioClaims({
         aria-label="Claims with findings"
       >
         {visible.map((row) => {
-          const finding = row.finding;
+          const unchecked = citedOnly && !row.hasCitation;
+          const finding = unchecked ? undefined : row.finding;
           const open = expanded === row.start;
           const tone = finding ? findingTone(finding) : "unchecked";
           return (
@@ -116,6 +134,8 @@ export default function StudioClaims({
               <div className="ps-claim-result-finding">
                 {row.unsure ? (
                   <p className="ps-review-muted">Not included in the check.</p>
+                ) : unchecked ? (
+                  <p className="ps-review-muted">No citation · Not checked</p>
                 ) : finding ? (
                   <>
                     <button
@@ -130,9 +150,6 @@ export default function StudioClaims({
                         {open ? "Hide finding" : "View finding"}
                       </span>
                     </button>
-                    <p className="ps-review-muted">
-                      {findingAssessment(finding, mode).meaning}
-                    </p>
                     {open && (
                       <div className="ps-change-detail">
                         <p>{findingAssessment(finding, mode).next}</p>
@@ -148,10 +165,19 @@ export default function StudioClaims({
                               className="ps-change-passage"
                               key={`${passage.id}:${index}`}
                             >
-                              <blockquote>{passage.text}</blockquote>
+                              <blockquote>
+                                {passage.excerpt || passage.text}
+                              </blockquote>
                               <figcaption>
                                 {sourceTitle(passage.assetId) ||
                                   "Source passage"}
+                                {passage.sourceAccess === "abstract"
+                                  ? " · Checked against abstract"
+                                  : passage.sourceAccess === "full_text"
+                                    ? " · Checked against full text"
+                                    : passage.sourceAccess === "partial_text"
+                                      ? " · Partial source text available"
+                                      : ""}
                               </figcaption>
                             </figure>
                           ))
@@ -183,7 +209,7 @@ export default function StudioClaims({
                 {!row.unsure && (
                   <button
                     className="ps-review-link"
-                    aria-label={`Locate claim: ${row.text}`}
+                    aria-label={`Open claim in review: ${row.text}`}
                     disabled={locateDisabled}
                     onClick={() => onLocate(row)}
                   >
