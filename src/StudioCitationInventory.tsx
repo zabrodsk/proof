@@ -266,12 +266,31 @@ export default function StudioCitationInventory(
           locatorLabel(item) === "Check locator"))
     );
   });
+  const citationGroups = new Map<string, Occurrence[]>();
+  for (const occurrence of occurrences) {
+    const key = occurrence.text.trim().replace(/\s+/g, " ");
+    const group = citationGroups.get(key);
+    if (group) group.push(occurrence);
+    else citationGroups.set(key, [occurrence]);
+  }
+  const filteredGroups = [...citationGroups.values()].filter((group) =>
+    group.some((item) => filteredOccurrences.includes(item)),
+  );
+  const selectedGroup = selectedOccurrence
+    ? [...citationGroups.values()].find((group) =>
+        group.includes(selectedOccurrence),
+      )
+    : undefined;
+  const groupLabel = (
+    group: Occurrence[],
+    label: (item: Occurrence) => string,
+  ) => [...new Set(group.map(label))].join(" · ");
   const unmatchedIssues = (plan?.audit?.bibliographyIssues || []).filter(
     (issue) => !entryRows.some((row) => row.issues.includes(issue)),
   );
   const counts = {
     sources: sourceCount,
-    "in-text": plan?.audit ? occurrences.length : undefined,
+    "in-text": plan?.audit ? citationGroups.size : undefined,
     "works-cited": plan ? entryRows.length : undefined,
   };
   const labels = {
@@ -572,53 +591,67 @@ export default function StudioCitationInventory(
                           <span>Locator</span>
                         </div>
                         <ul className="ps-inventory-list">
-                          {filteredOccurrences.map((item) => (
-                            <li key={item.id}>
-                              <button
-                                type="button"
-                                className={`ps-inventory-row ps-inventory-citation-grid${selectedOccurrence?.id === item.id ? " is-selected" : ""}`}
-                                aria-expanded={
-                                  selectedOccurrence?.id === item.id
-                                }
-                                aria-controls={`${id}-detail`}
-                                onClick={(event) =>
-                                  select(
-                                    { kind: "occurrence", id: item.id },
-                                    event.currentTarget,
-                                  )
-                                }
-                              >
-                                <span className="ps-inventory-row-identity">
-                                  <strong>{item.text}</strong>
-                                </span>
-                                <span>
-                                  <span className="ps-inventory-mobile-label">
-                                    Source match
+                          {filteredGroups.map((group) => {
+                            const item = group.find((occurrence) =>
+                              filteredOccurrences.includes(occurrence),
+                            )!;
+                            const selected = Boolean(
+                              selectedOccurrence &&
+                              group.includes(selectedOccurrence),
+                            );
+                            return (
+                              <li key={item.id}>
+                                <button
+                                  type="button"
+                                  className={`ps-inventory-row ps-inventory-citation-grid${selected ? " is-selected" : ""}`}
+                                  aria-expanded={selected}
+                                  aria-controls={`${id}-detail`}
+                                  onClick={(event) =>
+                                    select(
+                                      { kind: "occurrence", id: item.id },
+                                      event.currentTarget,
+                                    )
+                                  }
+                                >
+                                  <span className="ps-inventory-row-identity">
+                                    <strong>{item.text}</strong>
+                                    {group.length > 1 && (
+                                      <span>{group.length} occurrences</span>
+                                    )}
                                   </span>
-                                  {sourceLabels[item.status]}
-                                </span>
-                                <span>
-                                  <span className="ps-inventory-mobile-label">
-                                    Evidence
-                                  </span>
-                                  {evidenceLabel(item)}
-                                </span>
-                                <span>
-                                  <span className="ps-inventory-mobile-label">
-                                    Locator
-                                  </span>
-                                  {item.locator && (
-                                    <span className="ps-inventory-locator">
-                                      {item.locator}
+                                  <span>
+                                    <span className="ps-inventory-mobile-label">
+                                      Source match
                                     </span>
-                                  )}
-                                  {locatorLabel(item)}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
+                                    {groupLabel(
+                                      group,
+                                      (occurrence) =>
+                                        sourceLabels[occurrence.status],
+                                    )}
+                                  </span>
+                                  <span>
+                                    <span className="ps-inventory-mobile-label">
+                                      Evidence
+                                    </span>
+                                    {groupLabel(group, evidenceLabel)}
+                                  </span>
+                                  <span>
+                                    <span className="ps-inventory-mobile-label">
+                                      Locator
+                                    </span>
+                                    {item.locator && (
+                                      <span className="ps-inventory-locator">
+                                        {item.locator}
+                                      </span>
+                                    )}
+                                    {groupLabel(group, locatorLabel)}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
                         </ul>
-                        {!filteredOccurrences.length && (
+                        {!filteredGroups.length && (
                           <p className="ps-inventory-empty">
                             {occurrences.length
                               ? "No citations match these filters."
@@ -626,8 +659,9 @@ export default function StudioCitationInventory(
                           </p>
                         )}
                         <p className="ps-inventory-total">
-                          {occurrences.length} in-text citation
-                          {occurrences.length === 1 ? "" : "s"}
+                          {citationGroups.size} unique in-text citation
+                          {citationGroups.size === 1 ? "" : "s"} ·{" "}
+                          {occurrences.length} occurrences
                         </p>
                       </>
                     )}
@@ -778,6 +812,31 @@ export default function StudioCitationInventory(
                     selectedOccurrence && (
                       <>
                         <h3>{selectedOccurrence.text}</h3>
+                        {selectedGroup && selectedGroup.length > 1 && (
+                          <label>
+                            Occurrence
+                            <select
+                              aria-label="Occurrence"
+                              value={selectedOccurrence.id}
+                              onChange={(event) =>
+                                onSelection({
+                                  kind: "occurrence",
+                                  id: event.target.value,
+                                })
+                              }
+                            >
+                              {selectedGroup.map((occurrence, index) => (
+                                <option
+                                  key={occurrence.id}
+                                  value={occurrence.id}
+                                >
+                                  {index + 1} of {selectedGroup.length} ·{" "}
+                                  {evidenceLabel(occurrence)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         <dl className="ps-inventory-assessments">
                           <dt>Source match</dt>
                           <dd>{sourceLabels[selectedOccurrence.status]}</dd>

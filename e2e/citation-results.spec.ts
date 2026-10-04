@@ -199,8 +199,13 @@ test("locating any repeated in-text citation highlights every occurrence", async
   const occurrences = page
     .locator(".ps-inventory-row")
     .filter({ hasText: "(Missing 4)" });
-  await expect(occurrences).toHaveCount(3);
-  await occurrences.last().click();
+  await expect(occurrences).toHaveCount(1);
+  await expect(occurrences).toContainText("3 occurrences");
+  await expect(page.locator(".ps-inventory-row")).toHaveCount(2);
+  await occurrences.click();
+  await page
+    .getByLabel("Occurrence", { exact: true })
+    .selectOption({ index: 2 });
   await page.getByRole("button", { name: "Locate in draft" }).click();
 
   const documentEditor = page.getByLabel("Document text");
