@@ -1,5 +1,8 @@
+import { selectClaims } from "./claims.js";
 import type { Claim, Source } from "../shared/types.js";
 import { mlaAuthorKey, mlaFromSource } from "../shared/mla.js";
+import { parseCitationOccurrences } from "../shared/citation-occurrences.js";
+import type { CitationReference } from "../shared/citation-format.js";
 export const DOI_PATTERN = /10\.\d{4,9}\/[\w.();/:+-]+/gi;
 export function dois(text: string): string[] {
   return [
@@ -26,68 +29,47 @@ export function referenceLines(text: string) {
         );
 }
 export function citations(text: string, sources: Source[] = []): string[] {
-  const authorKeys = sources
-    .map((s) => mlaAuthorKey(mlaFromSource(s)).toLowerCase())
-    .filter(Boolean);
-  const parens = [...text.matchAll(/\(([^()\n]{2,180})\)/g)]
-    .filter(
-      (m) =>
-        /[A-ZÀ-Ž][a-zà-ž-]+/.test(m[1]) &&
-        (/\b(?:19|20)\d{2}[a-z]?\b/.test(m[1]) ||
-          /\b\d{1,4}(?:[–-]\d+)?$/.test(m[1]) ||
-          authorKeys.includes(m[1].trim().toLowerCase())),
-    )
-    .flatMap((m) => m[1].split(/;\s*/));
-  const narrative = [
-    ...text.matchAll(
-      /\b([A-ZÀ-Ž][a-zà-ž-]+(?:\s+et al\.)?)\s*\(((?:19|20)\d{2})\)/g,
+  const references: CitationReference[] = sources.map((source) => ({
+    id: source.id,
+    metadata: {
+      title: source.title,
+      year: source.year,
+      doi: source.doi,
+      authors: source.authorDetails?.length
+        ? source.authorDetails.map((author) =>
+            author.name
+              ? { literal: author.name }
+              : { family: author.family, given: author.given },
+          )
+        : source.authors,
+    },
+  }));
+  return [
+    ...new Set(
+      parseCitationOccurrences(text, references).flatMap((occurrence) =>
+        occurrence.items.map((item) =>
+          occurrence.form === "narrative" && item.author
+            ? `${item.author} ${item.raw}`
+            : item.raw,
+        ),
+      ),
     ),
-  ].map((m) => `${m[1]} ${m[2]}`);
-  return [...new Set([...parens, ...narrative, ...dois(text)])];
+  ];
 }
 export function extractClaims(
   text: string,
   strict = false,
   sources: Source[] = [],
 ): Claim[] {
-  const end = bodyEnd(text);
-  const body = end < 0 ? text : text.slice(0, end);
   const claims: Claim[] = [];
-  // Keep citation abbreviations and decimals from becoming sentence boundaries.
-  for (const line of body.matchAll(/[^\n]+/g)) {
-    const original = line[0];
-    const protectedText = original
-      .replace(/[.!?](?=["”]?\s*\([^()]+\))/g, "∯")
-      .replace(/(?:https?:\/\/|10\.\d{4,9}\/)[^\s)]+/g, (s) =>
-        s.replace(/\.(?!$)/g, "∯"),
-      )
-      .replace(/\bet al\./g, "et al∯")
-      .replace(
-        /\b(?:Dr|Mr|Mrs|Prof|vs|e\.g|i\.e)\./g,
-        (s) => s.slice(0, -1) + "∯",
-      )
-      .replace(/(\d)\.(?=\d)/g, "$1∯");
-    const chunks = protectedText.matchAll(/[^.!?]+(?:[.!?]+["”]?|$)/g);
-    for (const chunk of chunks) {
-      const leading = chunk[0].length - chunk[0].trimStart().length;
-      const start = line.index! + chunk.index! + leading;
-      const end = line.index! + chunk.index! + chunk[0].trimEnd().length;
-      const sentence = text.slice(start, end);
-      if (sentence.split(/\s+/).length < 5 || !sentence.trim()) continue;
-      const refs = citations(sentence, sources);
-      const factual =
-        /\b(is|are|was|were|cause[sd]?|improv\w+|reduc\w+|increas\w+|show\w+|found|find\w+|report\w+|affect\w+|associate\w+|lead\w+|result\w+|include\w+|prove\w+)\b/i.test(
-          sentence,
-        ) && !sentence.endsWith("?");
-      if (refs.length || (strict && factual))
-        claims.push({
-          id: `claim-${start}`,
-          text: sentence,
-          start,
-          end,
-          citations: refs,
-        });
-    }
+  for (const sentence of selectClaims(text).candidates) {
+    const refs = citations(sentence.text, sources);
+    if (refs.length || strict)
+      claims.push({
+        ...sentence,
+        id: `claim-${sentence.start}`,
+        citations: refs,
+      });
   }
   return claims;
 }

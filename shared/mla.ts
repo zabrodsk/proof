@@ -1,4 +1,9 @@
 import type { Source } from "./types";
+import {
+  citationHtmlToMarkdown,
+  formatCitation,
+  type ReferenceMetadata,
+} from "./citation-format.js";
 
 export type MlaSource = {
   authors: string; // One author per line: Family, Given. Organizations stay intact.
@@ -75,11 +80,7 @@ export function mlaFromSource(source: Source): MlaSource {
       ? source.authorDetails
           .map((a) => a.name || [a.family, a.given].filter(Boolean).join(", "))
           .join("\n")
-      : source.authors
-          .map((a) =>
-            a.includes(",") ? a : a.trim().replace(/^(.+)\s+(\S+)$/, "$2, $1"),
-          )
-          .join("\n"),
+      : source.authors.map((a) => a.trim()).join("\n"),
     title: mlaTitle(source.title),
     journal: source.journal || "",
     year: source.year,
@@ -99,43 +100,30 @@ export function formatMla(
   locator = "",
   distinguishTitle = false,
 ) {
-  const authors = source.authors.split("\n").map(clean).filter(Boolean);
-  const normalName = (name: string) =>
-    name.includes(",")
-      ? name
-          .split(",")
-          .map((s) => s.trim())
-          .reverse()
-          .join(" ")
-      : name;
-  const author =
-    authors.length > 2
-      ? `${authors[0]}, et al.`
-      : authors.length === 2
-        ? `${authors[0]}, and ${normalName(authors[1]).replace(/\.$/, "")}.`
-        : authors.length
-          ? `${authors[0].replace(/\.$/, "")}.`
-          : "";
-  const title = clean(source.title).replace(/^["“]|["”]$/g, "");
-  const quoted = `"${title}${/[.!?]$/.test(title) ? "" : "."}"`;
-  const details = [
-    source.journal && `*${clean(source.journal).replace(/\*/g, "")}*`,
-    source.volume && `vol. ${clean(source.volume).replace(/^vol\.\s*/i, "")}`,
-    source.issue && `no. ${clean(source.issue).replace(/^no\.\s*/i, "")}`,
-    clean(source.year),
-  ];
+  const value = clean(locator).replace(/^pp?\.\s*/i, "");
+  const result = formatCitation(mlaMetadata(source), {
+    distinguishTitle,
+    locator: value ? { kind: "page", value, verified: true } : undefined,
+  });
+  return {
+    entry: citationHtmlToMarkdown(result.html).replace(/[–]/g, "-"),
+    inText: citationHtmlToMarkdown(result.citationHtml).replace(/[–]/g, "-"),
+  };
+}
+export function mlaMetadata(source: MlaSource): ReferenceMetadata {
   const pages = clean(source.pages).replace(/^pp?\.\s*/i, "");
-  // An electronic article identifier is not a printed page range.
-  if (/^\d+(?:\s*[-–]\s*\d+|\+)?$/.test(pages))
-    details.push(`${/[-–+]/.test(pages) ? "pp." : "p."} ${pages}`);
-  const doi = citationDois(source.doi)[0];
-  if (doi) details.push(`https://doi.org/${doi}`);
-  const entry = [author, quoted, details.filter(Boolean).join(", ") + "."]
-    .filter(Boolean)
-    .join(" ");
-  const key = mlaAuthorKey(source) || `"${title.replace(/[.!?]$/, "")}"`;
-  const inText = `(${key}${distinguishTitle && authors.length ? `, "${title.replace(/[.!?]$/, "")}"` : ""}${clean(locator) ? " " + clean(locator).replace(/^pp?\.\s*/i, "") : ""})`;
-  return { entry, inText };
+  return {
+    type: "article-journal",
+    title: clean(source.title).replace(/^["“]|["”]$/g, ""),
+    authors: source.authors.split("\n").map(clean).filter(Boolean),
+    containerTitle: clean(source.journal).replace(/\*/g, ""),
+    volume: clean(source.volume).replace(/^vol\.\s*/i, ""),
+    issue: clean(source.issue).replace(/^no\.\s*/i, ""),
+    year: source.year,
+    // Electronic article identifiers are not printed page ranges.
+    pages: /^\d+(?:\s*[-–]\s*\d+|\+)?$/.test(pages) ? pages : undefined,
+    doi: citationDois(source.doi)[0],
+  };
 }
 export function mlaWarnings(source: MlaSource) {
   return [
@@ -152,7 +140,9 @@ export function mlaWarnings(source: MlaSource) {
 }
 export function bibliography(text: string) {
   const heading =
-    /^([ \t]*)(works cited|references|bibliography)[ \t]*$/im.exec(text);
+    /^([ \t]*)(?:#{1,6}[ \t]+)?(?:\*\*|__)?(works cited|references|bibliography)(?:\*\*|__)?[ \t]*$/im.exec(
+      text,
+    );
   if (!heading)
     return {
       heading: undefined,

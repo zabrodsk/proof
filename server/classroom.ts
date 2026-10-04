@@ -1,3 +1,5 @@
+import { documentSentences as allSentences, skipReason } from "./claims.js";
+export { documentSentences as allSentences } from "./claims.js";
 import type { Finding } from "../shared/types.js";
 import { Router } from "express";
 import multer from "multer";
@@ -14,8 +16,12 @@ import {
   bibliography,
   mlaAuthorKey,
   mlaFromSource,
+  mlaMetadata,
   citationDois,
 } from "../shared/mla.js";
+import { parseCitationOccurrences } from "../shared/citation-occurrences.js";
+import { assignmentProfiles } from "../shared/citation-profiles.js";
+import { citationWorkIdentity } from "../shared/citation-format.js";
 import {
   classMla,
   locatorPages,
@@ -79,90 +85,18 @@ const upload = multer({
   },
 });
 
-export function allSentences(text: string) {
-  const body = text.slice(0, bibliography(text).heading?.start ?? text.length);
-  const sentences: { id: string; text: string; start: number; end: number }[] =
-    [];
-  for (const line of body.matchAll(/[^\r\n]+/g)) {
-    const protectedText = line[0]
-      .replace(/[.!?](?=["”]?\s*\([^()]+\))/g, "∯")
-      .replace(/\([^()]*\)/g, (s) => s.replace(/[.!?]/g, "∯"))
-      .replace(
-        /\bet al\.|\b(?:Dr|Mr|Mrs|Prof|vs)\.|\b[A-Z]\.(?=\s*[A-Z])/g,
-        (s) => s.replace(/\./g, "∯"),
-      )
-      .replace(/(\d)\.(?=\d)/g, "$1∯");
-    for (const part of protectedText.matchAll(/[^.!?]+(?:[.!?]+["”]?|$)/g)) {
-      const start =
-        line.index! + part.index! + part[0].length - part[0].trimStart().length;
-      const end = line.index! + part.index! + part[0].trimEnd().length;
-      if (end > start)
-        sentences.push({
-          id: `sentence-${start}`,
-          text: text.slice(start, end),
-          start,
-          end,
-        });
-    }
-  }
-  return sentences;
-}
-
 export function citationRefs(text: string, papers: ClassPaper[]) {
-  return [...text.matchAll(/\(([^()\n]+)\)/g)]
-    .flatMap((match) =>
-      match[1].split(";").map((part) => {
-        const citation = part.trim();
-        const locator =
-          citation.match(
-            /\s(\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+(?:\s*[-–]\s*\d+)?)*)$/,
-          )?.[1] || (/^\d+(?:[-–]\d+)?$/.test(citation) ? citation : undefined);
-        const author = locator
-          ? citation.slice(0, citation.length - locator.length).trim()
-          : citation;
-        const candidates = papers.filter((p) => {
-          const key = mlaAuthorKey(p.mla);
-          if (!author) {
-            const words = (value: string) =>
-              " " +
-              value
-                .normalize("NFD")
-                .replace(/\p{M}/gu, "")
-                .toLowerCase()
-                .replace(/[^\p{L}\p{N}]+/gu, " ")
-                .trim() +
-              " ";
-            return words(text.slice(0, match.index)).includes(words(key));
-          }
-          return (
-            norm(author) === norm(key) ||
-            (norm(author).startsWith(norm(key)) &&
-              /["“]/.test(author) &&
-              norm(author).includes(norm(p.mla.title).slice(0, 20)))
-          );
-        });
-        // Pure measurements/sample sizes are not citations. Unmatched author-page
-        // strings remain visible for manual resolution.
-        if (
-          !candidates.length &&
-          (!locator || !/[\p{L}]/u.test(author) || /^\s*[nN]\s*=/.test(author))
-        )
-          return undefined;
-        return {
-          citation,
-          locator,
-          sourceId: candidates.length === 1 ? candidates[0].id : undefined,
-        };
-      }),
-    )
-    .filter(
-      (
-        v,
-      ): v is {
-        citation: string;
-        locator: string | undefined;
-        sourceId: string | undefined;
-      } => !!v,
+  return parseCitationOccurrences(
+    text,
+    papers.map((paper) => ({ id: paper.id, metadata: mlaMetadata(paper.mla) })),
+  )
+    .filter((occurrence) => occurrence.form !== "doi")
+    .flatMap((occurrence) =>
+      occurrence.items.map((item) => ({
+        citation: item.raw,
+        locator: item.locator,
+        sourceId: item.status === "matched" ? item.sourceIds[0] : undefined,
+      })),
     );
 }
 
@@ -339,16 +273,40 @@ export function assignmentChecks(
   const words = (body.match(/\S+/g) || []).length;
   const refs = citationRefs(body, papers);
   const distinct = new Set(refs.map((r) => r.sourceId).filter(Boolean));
-  const verifiedArticleDois = new Set(
+  const verifiedArticles = new Set(
     papers
       .filter(
         (p) =>
           distinct.has(p.id) &&
           p.metadata.publicationType === "Journal article" &&
           p.metadata.scholarly?.eligible === true &&
-          !p.checks.some((c) => c.label === "Source retrieval"),
+          p.pages.length > 0 &&
+          (pageRange(p.metadata.pages || p.mla.pages)?.[1] ?? 0) -
+            (pageRange(p.metadata.pages || p.mla.pages)?.[0] ?? 0) +
+            1 >=
+            assignmentProfiles.draft.minimumArticlePages &&
+          !p.checks.some(
+            (c) =>
+              c.label === "Source retrieval" ||
+              (["PDF identity", "PDF completeness"].includes(c.label) &&
+                c.status === "issue"),
+          ),
       )
-      .map((p) => p.metadata.doi?.toLowerCase())
+      .map((p) =>
+        citationWorkIdentity({
+          ...mlaMetadata(p.mla),
+          title: p.metadata.title,
+          year: p.metadata.year,
+          doi: p.metadata.doi,
+          authors: p.metadata.authorDetails?.length
+            ? p.metadata.authorDetails.map((author) =>
+                author.name
+                  ? { literal: author.name }
+                  : { family: author.family, given: author.given },
+              )
+            : p.metadata.authors,
+        }),
+      )
       .filter(Boolean),
   );
   const checks: Check[] = [];
@@ -356,22 +314,24 @@ export function assignmentChecks(
     checks.push(
       check(
         "600-word exploratory draft",
-        words === 600 ? "pass" : "issue",
-        `${words} words before the bibliography, including any title. The assignment requests 600.`,
+        words === assignmentProfiles.draft.words ? "pass" : "issue",
+        `${words} words before the bibliography. This configured count includes the title; the teacher did not define whether it counts. The target is ${assignmentProfiles.draft.words}. Review the separate body/title counts.`,
       ),
     );
     checks.push(
       check(
         "Five in-text citations",
-        refs.length >= 5 ? "pass" : "issue",
+        refs.length >= assignmentProfiles.draft.citations ? "pass" : "issue",
         `${refs.length} recognized citation occurrences. The assignment requests five.`,
       ),
     );
     checks.push(
       check(
         "Three different academic articles",
-        verifiedArticleDois.size >= 3 ? "pass" : "issue",
-        `${verifiedArticleDois.size} articles with confirmed journal peer-review policies and readable full text are matched to citations. Study quality still needs manual review.`,
+        verifiedArticles.size >= assignmentProfiles.draft.academicArticles
+          ? "pass"
+          : "issue",
+        `${verifiedArticles.size} distinct articles of at least ${assignmentProfiles.draft.minimumArticlePages} pages with confirmed journal peer-review policies and readable full text are matched to citations. Works without a DOI count when identity is established. Study quality still needs manual review.`,
       ),
     );
     checks.push(
@@ -397,7 +357,10 @@ export function assignmentChecks(
     checks.push(
       check(
         "Four bibliography entries",
-        bib.entries.length === 4 ? "pass" : "issue",
+        bib.entries.length ===
+          assignmentProfiles.bibliography.bibliographyEntries
+          ? "pass"
+          : "issue",
         `${bib.entries.length} entries found. This is the separate four-source assignment in the slides.`,
       ),
     );
@@ -491,7 +454,34 @@ export function assignmentChecks(
       "Write in the assigned Google Doc. The assignment requires evidence of at least four hours of editing. Proof cannot certify editing time or authorship.",
     ),
   );
-  return { checks, words, citationCount: refs.length };
+  const firstLine = body.trimStart().split(/\r?\n/, 1)[0] || "";
+  const possibleTitle =
+    firstLine && !/[.!?]$/.test(firstLine) && body.trimStart().includes("\n")
+      ? firstLine
+      : "";
+  const titleWords = (possibleTitle.match(/\S+/g) || []).length;
+  if (assignment === "draft")
+    checks.push(
+      check(
+        "Body and title word counts",
+        "manual",
+        `${words - titleWords} body words and ${titleWords} possible title words, ${words} combined. Plain text cannot confirm a title; the configured convention is body-and-title. Confirm the title and counting convention in the assigned document.`,
+      ),
+    );
+  return {
+    checks,
+    words,
+    citationCount: refs.length,
+    wordCounts: {
+      body: words - titleWords,
+      title: titleWords,
+      bibliography: (
+        text.slice(bib.heading?.end ?? text.length).match(/\S+/g) || []
+      ).length,
+      combined: words,
+      convention: assignmentProfiles.draft.wordCountConvention,
+    },
+  };
 }
 
 const roles = {
@@ -655,7 +645,12 @@ export async function reviewClass(
   assignment: "draft" | "bibliography",
   progress: (s: string) => void = () => {},
 ): Promise<ClassReport> {
-  const segments = allSentences(text);
+  const allSegments = allSentences(text);
+  const segments = allSegments.filter((s) => {
+    const reason = skipReason(s.text);
+    // Language review still covers questions and assignment instructions.
+    return reason !== "metadata" && reason !== "heading";
+  });
   if (segments.length > 1000 || text.length > 100000)
     throw new Error(
       "This review supports up to 1,000 sentences and 100,000 characters. Review a shorter section.",
@@ -675,7 +670,7 @@ export async function reviewClass(
       ];
     }
   }
-  const { checks, words, citationCount } = assignmentChecks(
+  const { checks, words, citationCount, wordCounts } = assignmentChecks(
     text,
     papers,
     assignment,
@@ -820,8 +815,10 @@ export async function reviewClass(
     papers,
     words,
     citationCount,
+    wordCounts,
     coverage: {
       total: assignment === "draft" ? segments.length : 0,
+      skipped: allSegments.length - segments.length,
       completed: sentences.filter((s) => s.completed).length,
       evidenceChecked: sentences
         .flatMap((s) => s.citations)

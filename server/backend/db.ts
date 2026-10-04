@@ -48,10 +48,15 @@ export async function migrate(db: Database) {
     new URL("../../migrations/002_integrations.sql", import.meta.url),
     "utf8",
   );
+  const citations = await readFile(
+    new URL("../../migrations/003_citation_plans.sql", import.meta.url),
+    "utf8",
+  );
   await db.transaction(async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock(90731001)");
     await tx.query(sql);
     await tx.query(connectors);
+    await tx.query(citations);
   });
 }
 export async function workspace(db: Sql, owner: string): Promise<string> {

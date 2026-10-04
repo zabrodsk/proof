@@ -1,6 +1,8 @@
+import { retrieveNamedReference } from "./reference-retrieval.js";
 import { randomUUID } from "node:crypto";
 import type { Eligibility, Selection } from "../../shared/backend.js";
 import type { Source } from "../../shared/types.js";
+import { evidenceRoute } from "../../shared/claims.js";
 import { dois } from "../parse.js";
 import { normalizedTitle, resolveScholarly } from "../scholarly.js";
 import { resolveDOI } from "../sources.js";
@@ -12,8 +14,46 @@ import {
   ingestAsset,
   validateSelection,
 } from "./library.js";
-import { exaSearch, providerContext, providerFetch } from "./providers.js";
+import {
+  coalesceRunRequest,
+  exaSearch,
+  providerContext,
+  providerFetch,
+} from "./providers.js";
 import type { BlobStore } from "./storage.js";
+import { remoteFile } from "../remote.js";
+import { pageText } from "../evidence.js";
+import { entirePassages } from "../scholarly.js";
+import { extractFile } from "./extraction.js";
+export const authoritativeDomains = [
+  "nasa.gov",
+  "noaa.gov",
+  "cdc.gov",
+  "nih.gov",
+  "gov.uk",
+  "europa.eu",
+  "who.int",
+  "un.org",
+  "oecd.org",
+  "worldbank.org",
+  "unesco.org",
+] as const;
+export function authoritativeUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      authoritativeDomains.some(
+        (domain) =>
+          url.hostname === domain || url.hostname.endsWith(`.${domain}`),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 export interface ResearchCandidate {
   title: string;
@@ -30,6 +70,8 @@ export interface ResearchCandidate {
   searchIntents: string[];
   resolved?: boolean;
   sourceSnapshot?: FrozenSource;
+  referenceMetadata?: FrozenReference["parsed"];
+  identityWarnings?: string[];
 }
 export interface FrozenSource {
   metadata: Record<string, any>;
@@ -44,25 +86,35 @@ export interface ResearchResult {
   sourceSnapshots?: Record<string, FrozenSource>;
 }
 interface ResearchState extends ResearchResult {
+  kind?: "candidate_resolution";
   version: string;
   searches: {
     query: string;
     intent: string;
     complete: boolean;
+    retrievedAt?: string;
     candidates: ResearchCandidate[];
   }[];
   complete: boolean;
 }
 export interface FrozenReference {
   id: string;
-  parsed?: { doi?: string; title?: string };
+  parsed?: {
+    doi?: string;
+    title?: string;
+    authors?: string[];
+    authorDetails?: any[];
+    year?: string;
+    containerTitle?: string;
+    url?: string;
+  };
   candidates?: { doi?: string; title?: string }[];
   confirmedCandidate?: { doi?: string; title?: string };
   status?: string;
   asset_id?: string | null;
   assetId?: string | null;
 }
-const researchVersion = `research-1:${versions.policy}:${versions.parser}`;
+const researchVersion = `research-3:${versions.policy}:${versions.parser}`;
 
 export function neutralResearchQuery(query: string) {
   // Strip a request to confirm a conclusion, but retain every word of the claim,
@@ -81,6 +133,7 @@ export function neutralResearchQuery(query: string) {
 export function researchQueries(
   query: string,
   mode: "discover" | "fact_check",
+  route: "academic" | "authoritative" | "public" = "academic",
 ) {
   const neutral = neutralResearchQuery(query);
   return [
@@ -88,7 +141,10 @@ export function researchQueries(
     ...(mode === "fact_check"
       ? [
           {
-            query: `${neutral} limitations conflicting evidence null results population conditions systematic review`,
+            query:
+              route === "public"
+                ? `${neutral} limitations conflicting evidence corrections disputed reports`
+                : `${neutral} limitations conflicting evidence null results population conditions systematic review`,
             intent: "qualifications_and_conflicts",
           },
         ]
@@ -107,8 +163,6 @@ function canonicalUrl(value: string) {
     url.hash = "";
     for (const key of [...url.searchParams.keys()])
       if (/^(utm_|fbclid$|gclid$)/i.test(key)) url.searchParams.delete(key);
-    url.hostname = url.hostname.replace(/^www\./, "");
-    url.pathname = url.pathname.replace(/\/$/, "");
     url.searchParams.sort();
     return url.href;
   } catch {
@@ -123,8 +177,18 @@ export function deduplicateCandidates(candidates: ResearchCandidate[]) {
     if (!doi && !url) continue;
     const previous = output.find(
       (other) =>
-        (doi && dois(other.doi || other.url)[0] === doi) ||
-        (url && canonicalUrl(other.url) === url),
+        !(
+          other.referenceEntryId &&
+          candidate.referenceEntryId &&
+          other.referenceEntryId !== candidate.referenceEntryId
+        ) &&
+        !(
+          other.assetId &&
+          candidate.assetId &&
+          other.assetId !== candidate.assetId
+        ) &&
+        ((doi && dois(other.doi || other.url)[0] === doi) ||
+          (url && canonicalUrl(other.url) === url)),
     );
     if (previous) {
       previous.searchIntents = [
@@ -199,6 +263,50 @@ async function loadState(
   await validateSelection(db, ws, state.selections);
   return state;
 }
+async function previousSearches(
+  db: Database,
+  ws: string,
+  runId: string,
+  key: string,
+) {
+  // Only public discovery results are reusable. Never carry claims, verdicts,
+  // source eligibility or tenant-owned selections into a different run.
+  const { rows } = await db.query(
+    `SELECT r.data FROM research_results r JOIN runs parent ON parent.id=r.run_id AND parent.workspace_id=r.workspace_id
+     WHERE r.workspace_id=$1 AND r.run_id<>$2 AND r.query_key=$3
+     AND parent.invalidated=false AND parent.cancel_requested=false
+     AND parent.created_at > now()-interval '5 minutes'
+     ORDER BY parent.created_at DESC LIMIT 1`,
+    [ws, runId, key],
+  );
+  const old = rows[0]?.data as ResearchState | undefined;
+  if (old?.version !== researchVersion || old.kind === "candidate_resolution")
+    return;
+  if (
+    !old.searches.every(
+      (search) =>
+        search.complete &&
+        Number.isFinite(Date.parse(search.retrievedAt || "")) &&
+        Date.now() - Date.parse(search.retrievedAt!) < 5 * 60 * 1000,
+    )
+  )
+    return;
+  return old.searches.map((search) => ({
+    query: search.query,
+    intent: search.intent,
+    retrievedAt: search.retrievedAt,
+    complete: true,
+    candidates: search.candidates.map((candidate) => ({
+      title: candidate.title,
+      url: candidate.url,
+      ...(candidate.doi ? { doi: candidate.doi } : {}),
+      status: "promising" as const,
+      eligibility: "unknown" as const,
+      searchIntents: [search.intent],
+    })),
+  }));
+}
+
 function result(state: ResearchState): ResearchResult {
   return {
     selections: state.selections,
@@ -220,14 +328,16 @@ async function existingSnapshot(
   ws: string,
   doi: string,
   academic: boolean,
+  textFingerprint?: string,
 ) {
   const { rows } = await db.query(
     `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
     LEFT JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$3 AND e.status IN ('complete','partial')
     WHERE a.workspace_id=$1 AND lower(a.metadata->>'doi')=$2 AND a.deleted_at IS NULL
-    AND a.metadata->>'assetKind'='retrieved_text_snapshot'
-    AND ($4::boolean=false OR a.eligibility='eligible') ORDER BY a.created_at DESC LIMIT 1`,
-    [ws, doi, versions.parser, academic],
+    AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
+    AND ($4::boolean=false OR a.eligibility='eligible')
+    AND ($5::text IS NULL OR a.metadata->>'textFingerprint'=$5) ORDER BY a.created_at DESC LIMIT 1`,
+    [ws, doi, versions.parser, academic, textFingerprint || null],
   );
   return rows[0];
 }
@@ -309,22 +419,41 @@ async function sourceSnapshot(
   runId: string,
   source: Source,
   academic: boolean,
+  original?: { buffer: Buffer; type: string },
+  referenceFingerprint?: string,
 ): Promise<{ selection: Selection; snapshot: FrozenSource } | undefined> {
   if (
     !source.passages.length ||
     !["full_text", "abstract"].includes(source.access) ||
-    !source.doi
+    (!source.doi && !source.evidencePolicy)
   )
     return;
   if (academic && !source.scholarly?.eligible) return;
-  const doi = dois(source.doi)[0];
-  if (!doi) return;
-  const body = Buffer.from(source.passages.join("\n\n"), "utf8");
+  const doi = dois(source.doi || "")[0];
+  if (!doi && !source.evidencePolicy) return;
+  const body =
+    original?.buffer || Buffer.from(source.passages.join("\n\n"), "utf8");
+  const textFingerprint = checksum(
+    JSON.stringify({
+      content: checksum(body),
+      url: source.scholarly?.fullTextUrl || source.url,
+      access: source.access,
+      parser: versions.parser,
+    }),
+  );
   const metadata = {
     title: source.title,
     authors: source.authors,
+    authorDetails: source.authorDetails,
     year: source.year,
+    journal: source.journal,
+    volume: source.volume,
+    issue: source.issue,
+    pages: source.pages,
+    issns: source.issns,
+    publicationType: source.publicationType,
     doi,
+    evidencePolicy: source.evidencePolicy,
     url: source.url,
     scholarly: source.scholarly,
     publicationWarning: !!source.publicationWarning,
@@ -336,18 +465,33 @@ async function sourceSnapshot(
     provider: source.provider,
     retrievedAt: source.retrievedAt,
     retrievedByRunId: runId,
-    assetKind: "retrieved_text_snapshot",
-    originalFormat: source.scholarly?.format,
+    assetKind: original ? "retrieved_original_pdf" : "retrieved_text_snapshot",
+    originalFormat: original ? "PDF" : source.scholarly?.format,
     fullTextUrl: source.scholarly?.fullTextUrl,
-    pagination: "unavailable",
+    pagination: original ? "original_pdf" : "unavailable",
+    textFingerprint,
+    referenceFingerprint,
+    contentFingerprint: checksum(body),
+    extractionCompleteness:
+      source.access === "full_text" ? "complete" : "abstract_only",
     notice: source.notice,
   };
-  // The saved original is a retrieved text snapshot, never a fabricated original PDF.
+  // Preserve original PDFs and their printed page labels. Text-only retrievals stay text snapshots.
   const saved = await db.transaction(async (tx) => {
     await active(tx, ws, runId, true);
     // Serialize identity reuse within this workspace, including concurrent claims.
     await tx.query("SELECT id FROM workspaces WHERE id=$1 FOR UPDATE", [ws]);
-    const old = await existingSnapshot(tx, ws, doi, academic);
+    const old = doi
+      ? await existingSnapshot(tx, ws, doi, academic, textFingerprint)
+      : (
+          await tx.query(
+            `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
+        LEFT JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$4 AND e.status IN ('complete','partial')
+        WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
+        AND a.metadata->>'url'=$2 AND a.metadata->>'textFingerprint'=$3 ORDER BY a.created_at DESC LIMIT 1`,
+            [ws, source.url, textFingerprint, versions.parser],
+          )
+        ).rows[0];
     if (old)
       return {
         id: old.id as string,
@@ -362,11 +506,15 @@ async function sourceSnapshot(
       tx,
       ws,
       metadata,
-      "retrieved-source.txt",
-      "text/plain",
+      original ? "retrieved-source.pdf" : "retrieved-source.txt",
+      original ? "application/pdf" : "text/plain",
       body.length,
     );
-    await blobs.put(created.key, body, "text/plain");
+    await blobs.put(
+      created.key,
+      body,
+      original ? "application/pdf" : "text/plain",
+    );
     await tx.query(
       "UPDATE source_assets SET access=$3,eligibility=$4 WHERE workspace_id=$1 AND id=$2",
       [ws, created.id, source.access, eligibility(source)],
@@ -439,6 +587,17 @@ async function resolveCandidate(
   }
   candidate.doi = doi;
   let previous = await existingSnapshot(db, ws, doi, false);
+  // Registry checks and text freshness are separate. An expired or legacy
+  // snapshot must not masquerade as the current edition of a mutable source.
+  const retrievedAt = Date.parse(
+    previous?.metadata.retrievedAt || previous?.created_at || "",
+  );
+  if (
+    !previous?.metadata.textFingerprint ||
+    !Number.isFinite(retrievedAt) ||
+    Date.now() - retrievedAt > 24 * 60 * 60 * 1000
+  )
+    previous = undefined;
   if (previous)
     previous = await refreshPublicationStatus(db, ws, runId, previous, doi);
   if (previous?.metadata.publicationWarning) {
@@ -499,9 +658,140 @@ async function resolveCandidate(
         "Readable evidence is unavailable.",
     ...(selection || {}),
     ...(saved ? { sourceSnapshot: saved.snapshot } : {}),
-    resolved: true,
+    resolved: !source.scholarly?.retryable,
   });
   return selection;
+}
+async function resolvedCandidate(
+  db: Database,
+  blobs: BlobStore,
+  ws: string,
+  runId: string,
+  candidate: ResearchCandidate,
+  academic: boolean,
+  identify: boolean,
+) {
+  const input = await active(db, ws, runId);
+  const resolutionKey = checksum(
+    JSON.stringify({
+      version: researchVersion,
+      resolution:
+        dois(candidate.doi || candidate.url)[0] || canonicalUrl(candidate.url),
+      academic,
+      identify,
+      sourcePolicy: input.sourcePolicy,
+      externalAccess: input.externalAccess,
+    }),
+  );
+  return coalesceRunRequest(`resolution:${resolutionKey}`, async () => {
+    const prior = await loadState(db, ws, runId, resolutionKey);
+    if (prior?.complete && prior.kind === "candidate_resolution") return prior;
+    const copy = structuredClone(candidate);
+    let selection: Selection | undefined;
+    if (copy.referenceMetadata && !copy.doi && !academic) {
+      const referenceFingerprint = checksum(
+        JSON.stringify(copy.referenceMetadata),
+      );
+      const previous = (
+        await db.query(
+          `SELECT a.id,a.metadata,a.eligibility,a.access,e.id AS extraction_id FROM source_assets a
+        JOIN extractions e ON e.asset_id=a.id AND e.workspace_id=a.workspace_id AND e.parser_version=$3 AND e.status='complete'
+        WHERE a.workspace_id=$1 AND a.deleted_at IS NULL AND a.status='ready' AND a.access='full_text'
+          AND a.metadata->>'assetKind' IN ('retrieved_text_snapshot','retrieved_original_pdf')
+          AND a.metadata->>'referenceFingerprint'=$2 AND a.metadata->>'textFingerprint' IS NOT NULL
+          AND a.created_at > now() - interval '24 hours' ORDER BY a.created_at DESC LIMIT 1`,
+          [ws, referenceFingerprint, versions.parser],
+        )
+      ).rows[0];
+      if (previous) {
+        selection = {
+          assetId: previous.id,
+          extractionId: previous.extraction_id,
+          pageRanges: [],
+        };
+        Object.assign(copy, {
+          ...selection,
+          url: previous.metadata.url,
+          access: previous.access,
+          sourceSnapshot: {
+            metadata: previous.metadata,
+            eligibility: previous.eligibility,
+            access: previous.access,
+          },
+          resolved: true,
+          reason:
+            "A recent exact-reference source snapshot was reused within this workspace.",
+        });
+      } else {
+        const retrieved = await retrieveNamedReference(copy.referenceMetadata);
+        const saved = await sourceSnapshot(
+          db,
+          blobs,
+          ws,
+          runId,
+          retrieved.source,
+          false,
+          retrieved.file,
+          referenceFingerprint,
+        );
+        selection = saved?.selection;
+        Object.assign(copy, {
+          url: retrieved.source.url,
+          access: retrieved.source.access,
+          ...(selection || {}),
+          sourceSnapshot: saved?.snapshot,
+          resolved: true,
+          reason: retrieved.source.notice,
+          identityWarnings: retrieved.identityWarnings,
+        });
+      }
+    } else
+      selection = await resolveCandidate(
+        db,
+        blobs,
+        ws,
+        runId,
+        copy,
+        academic,
+        identify,
+      );
+    if (copy.referenceMetadata && copy.sourceSnapshot) {
+      const original = copy.referenceMetadata;
+      const actual = copy.sourceSnapshot.metadata as any;
+      const warnings = [...(copy.identityWarnings || [])];
+      if (
+        original.title &&
+        actual.title &&
+        normalizedTitle(original.title) !== normalizedTitle(actual.title)
+      )
+        warnings.push(
+          "The selected DOI identifies a different title than the uploaded reference. Review the reference metadata.",
+        );
+      const expectedFamily = original.authorDetails?.[0]?.family;
+      const actualFamily = actual.authorDetails?.[0]?.family;
+      if (
+        expectedFamily &&
+        actualFamily &&
+        normalizedTitle(expectedFamily) !== normalizedTitle(actualFamily)
+      )
+        warnings.push(
+          `The uploaded reference names ${expectedFamily}; the original source names ${actualFamily}. Review the author spelling.`,
+        );
+      copy.identityWarnings = [...new Set(warnings)];
+    }
+    const resolution: ResearchState = {
+      version: researchVersion,
+      kind: "candidate_resolution",
+      complete: !!copy.resolved,
+      searches: [],
+      candidates: [copy],
+      selections: selection ? [selection] : [],
+      notices: [],
+    };
+    if (copy.resolved)
+      await checkpoint(db, ws, runId, resolutionKey, resolution);
+    return resolution;
+  });
 }
 async function resolveCandidates(
   db: Database,
@@ -516,7 +806,7 @@ async function resolveCandidates(
   for (const candidate of state.candidates) {
     if (candidate.resolved) continue;
     try {
-      const selection = await resolveCandidate(
+      const resolved = await resolvedCandidate(
         db,
         blobs,
         ws,
@@ -525,18 +815,20 @@ async function resolveCandidates(
         academic,
         identify,
       );
-      if (
-        selection &&
-        !state.selections.some((s) => s.assetId === selection.assetId)
-      )
-        state.selections.push(selection);
+      const { searchIntents, referenceEntryId } = candidate;
+      Object.assign(candidate, resolved.candidates[0], {
+        searchIntents,
+        ...(referenceEntryId ? { referenceEntryId } : {}),
+      });
+      for (const selection of resolved.selections)
+        if (!state.selections.some((s) => s.assetId === selection.assetId))
+          state.selections.push(selection);
     } catch (error) {
-      await active(db, ws, runId); // Cancellation/deletion must escape instead of becoming a source notice.
+      await active(db, ws, runId);
       if (error instanceof HttpError) throw error;
       candidate.reason =
         error instanceof Error ? error.message : "Source retrieval failed.";
       state.notices.push(`${candidate.title}: ${candidate.reason}`);
-      // Keep unresolved on transient failure so a resumed stage can retry it.
     }
     await checkpoint(db, ws, runId, key, state);
   }
@@ -556,6 +848,8 @@ export async function research(
   query: string,
   mode: "discover" | "fact_check",
   maxCandidates: number,
+  route: "academic" | "authoritative" | "public" = "academic",
+  dependencies: { download: typeof remoteFile } = { download: remoteFile },
 ): Promise<ResearchResult> {
   const input = await active(db, ws, runId);
   if (
@@ -565,10 +859,25 @@ export async function research(
   )
     throw new HttpError(403, "This run does not permit independent research.");
   requireProviderContext(ws, runId);
+  if (input.sourcePolicy === "academic" && route !== "academic")
+    throw new HttpError(403, "Academic-only runs cannot use public discovery.");
+  if (route === "public" && input.sourcePolicy !== "public")
+    throw new HttpError(
+      403,
+      "This run does not permit all-source public discovery.",
+    );
+  const natural = evidenceRoute(query);
+  if (natural === "private" || natural === "primary_text")
+    throw new HttpError(
+      403,
+      "Private and original-work claims require supplied evidence.",
+    );
+  if (natural === "academic" && route !== "academic")
+    throw new HttpError(403, "Scientific claims require academic discovery.");
   const maximum = Math.min(20, Math.max(1, Math.floor(maxCandidates)));
   if (!Number.isFinite(maximum))
     throw new HttpError(400, "A finite candidate limit is required.");
-  const searches = researchQueries(query, mode);
+  const searches = researchQueries(query, mode, route);
   if (!searches[0].query)
     throw new HttpError(400, "A research query is required.");
   const key = checksum(
@@ -577,21 +886,42 @@ export async function research(
       mode,
       query: searches[0].query,
       maximum,
+      route,
+      sourcePolicy: input.sourcePolicy,
+      externalAccess: input.externalAccess,
     }),
   );
-  const state = (await loadState(db, ws, runId, key)) || {
+  const cached = await loadState(db, ws, runId, key);
+  const reusable = cached
+    ? undefined
+    : await previousSearches(db, ws, runId, key);
+  const state: ResearchState = cached || {
     version: researchVersion,
     selections: [],
     candidates: [],
-    notices: [],
+    notices: reusable
+      ? [
+          "Recent search results were reused within this workspace and source scope. Source content and eligibility are checked again for this run.",
+        ]
+      : [],
     complete: false,
-    searches: searches.map((s) => ({ ...s, complete: false, candidates: [] })),
+    searches:
+      reusable ||
+      searches.map((s) => ({ ...s, complete: false, candidates: [] })),
   };
   if (state.complete) return result(state);
   for (const search of state.searches) {
     if (search.complete) continue;
     try {
-      const hits = await exaSearch(search.query, maximum);
+      const hits = await exaSearch(
+        search.query,
+        maximum,
+        route === "authoritative"
+          ? { domains: authoritativeDomains }
+          : route === "public"
+            ? { scope: "public" }
+            : { scope: "academic" },
+      );
       search.candidates = hits.map(
         (hit: { title: string; url: string; doi?: string }) => ({
           title: hit.title,
@@ -603,6 +933,7 @@ export async function research(
         }),
       );
       search.complete = true;
+      search.retrievedAt = new Date().toISOString();
     } catch (error) {
       await active(db, ws, runId);
       if (error instanceof HttpError) throw error;
@@ -636,6 +967,162 @@ export async function research(
       ),
   );
   await checkpoint(db, ws, runId, key, state);
+  if (route === "authoritative" || route === "public") {
+    for (const candidate of state.candidates) {
+      if (candidate.resolved) continue;
+      if (route === "public" && dois(candidate.doi || candidate.url)[0]) {
+        try {
+          const resolved = await resolvedCandidate(
+            db,
+            blobs,
+            ws,
+            runId,
+            candidate,
+            true,
+            false,
+          );
+          const intents = candidate.searchIntents;
+          Object.assign(candidate, resolved.candidates[0], {
+            searchIntents: intents,
+          });
+          for (const selection of resolved.selections)
+            if (!state.selections.some((s) => s.assetId === selection.assetId))
+              state.selections.push(selection);
+        } catch (error) {
+          await active(db, ws, runId);
+          if (error instanceof HttpError) throw error;
+          candidate.reason =
+            error instanceof Error ? error.message : "Source retrieval failed.";
+          state.notices.push(`${candidate.title}: ${candidate.reason}`);
+        }
+        await checkpoint(db, ws, runId, key, state);
+        continue;
+      }
+      const resolutionKey = checksum(
+        JSON.stringify({
+          version: researchVersion,
+          publicSource: canonicalUrl(candidate.url),
+          route,
+          sourcePolicy: input.sourcePolicy,
+          externalAccess: input.externalAccess,
+        }),
+      );
+      if (route === "authoritative" && !authoritativeUrl(candidate.url)) {
+        candidate.resolved = true;
+        candidate.reason =
+          "This URL is outside the supported authoritative source domains.";
+        continue;
+      }
+      try {
+        const resolution = await coalesceRunRequest(
+          `public-resolution:${resolutionKey}`,
+          async () => {
+            const prior = await loadState(db, ws, runId, resolutionKey);
+            if (prior?.complete && prior.kind === "candidate_resolution")
+              return prior;
+            const copy = structuredClone(candidate);
+            const downloaded = await dependencies.download(copy.url);
+            if (route === "authoritative" && !authoritativeUrl(downloaded.url))
+              throw new Error(
+                "The source redirected outside its authoritative domain.",
+              );
+            const raw = downloaded.buffer.toString("utf8");
+            let text = /text\/html|application\/xhtml\+xml/i.test(
+              downloaded.type,
+            )
+              ? pageText(raw)
+              : /^text\/plain/i.test(downloaded.type)
+                ? raw
+                : "";
+            if (
+              downloaded.buffer.subarray(0, 1024).toString().includes("%PDF-")
+            ) {
+              const parsed = await extractFile(
+                downloaded.buffer,
+                "public-source.pdf",
+              );
+              if (
+                parsed.coverage.unreadablePages.length ||
+                parsed.coverage.omittedPages.length
+              )
+                throw new Error(
+                  "The public PDF has unreadable pages. Upload the original to review its extraction coverage.",
+                );
+              text = parsed.pages.map((page) => page.text).join("\n\n");
+            }
+            if (text.length < 200 || text.length > 150_000)
+              throw new Error(
+                "Readable source text is unavailable or exceeds the check limit. Upload the original document.",
+              );
+            const source: Source = {
+              id: randomUUID(),
+              title: copy.title,
+              authors: [],
+              year: "",
+              url: downloaded.url,
+              access: "full_text",
+              passages: entirePassages(text),
+              provider:
+                route === "authoritative"
+                  ? "Authoritative public source"
+                  : "Public web source",
+              evidencePolicy:
+                route === "authoritative" ? "authoritative" : "public",
+              retrievedAt: new Date().toISOString(),
+            };
+            const saved = await sourceSnapshot(
+              db,
+              blobs,
+              ws,
+              runId,
+              source,
+              false,
+            );
+            await active(db, ws, runId);
+            Object.assign(copy, {
+              url: source.url,
+              ...saved?.selection,
+              sourceSnapshot: saved?.snapshot,
+              access: source.access,
+              resolved: true,
+              reason:
+                "Original source text is available for passage assessment. Academic peer review is not claimed.",
+            });
+            const resolved: ResearchState = {
+              version: researchVersion,
+              kind: "candidate_resolution",
+              complete: true,
+              searches: [],
+              candidates: [copy],
+              selections: saved ? [saved.selection] : [],
+              notices: [],
+            };
+            await checkpoint(db, ws, runId, resolutionKey, resolved);
+            return resolved;
+          },
+        );
+        const intents = candidate.searchIntents;
+        Object.assign(candidate, resolution.candidates[0], {
+          searchIntents: intents,
+        });
+        for (const selection of resolution.selections)
+          if (!state.selections.some((s) => s.assetId === selection.assetId))
+            state.selections.push(selection);
+      } catch (error) {
+        await active(db, ws, runId);
+        if (error instanceof HttpError) throw error;
+        candidate.reason =
+          error instanceof Error ? error.message : "Source retrieval failed.";
+        state.notices.push(`${candidate.title}: ${candidate.reason}`);
+      }
+      await checkpoint(db, ws, runId, key, state);
+    }
+    state.complete =
+      state.searches.every((s) => s.complete) &&
+      state.candidates.every((c) => c.resolved);
+    await checkpoint(db, ws, runId, key, state);
+    return result(state);
+  }
   return resolveCandidates(db, blobs, ws, runId, key, state, true, true);
 }
 
@@ -695,7 +1182,10 @@ export async function resolveSelectedReferences(
           selected?.doi ||
           "",
       )[0];
-      if (!doi || (entry.status === "ambiguous" && !entry.confirmedCandidate)) {
+      if (
+        (entry.status === "ambiguous" && !entry.confirmedCandidate) ||
+        (!doi && !entry.parsed?.title)
+      ) {
         state.notices.push(
           `Reference ${entry.id} needs an unambiguous DOI or a selected upload.`,
         );
@@ -708,9 +1198,13 @@ export async function resolveSelectedReferences(
         continue;
       }
       state.candidates.push({
-        title: selected?.title || entry.parsed?.title || doi,
+        title: selected?.title || entry.parsed?.title || doi!,
         doi,
-        url: `https://doi.org/${doi}`,
+        referenceMetadata: entry.parsed,
+        url: doi
+          ? `https://doi.org/${doi}`
+          : entry.parsed?.url ||
+            `https://example.invalid/unresolved-reference/${entry.id}`,
         referenceEntryId: entry.id,
         status: "promising",
         eligibility: "unknown",

@@ -105,7 +105,7 @@ test("public mode independently searches every sentence and ignores supplied sou
 test("provider failure preserves failed sentence and continues to final sentence", async () => {
   let count = 0;
   const r = await checkEvidence(
-    "One statement about sleep. Another statement about sleep.",
+    "Sleep improves attention. Sleep affects reading scores.",
     "public",
     [],
     () => {},
@@ -124,7 +124,7 @@ test("provider failure preserves failed sentence and continues to final sentence
 });
 test("empty search and unavailable source remain incomplete", async () => {
   const r = await checkEvidence(
-    "A claim without readable evidence.",
+    "The treatment reduced symptoms.",
     "public",
     [],
     () => {},
@@ -140,7 +140,7 @@ test("empty search and unavailable source remain incomplete", async () => {
   );
   assert.equal(r.completed, 0);
   const missing = await checkEvidence(
-    "A claim without readable evidence.",
+    "The treatment reduced symptoms.",
     "supplied",
     [{ label: "broken", url: "https://example.com" }],
     () => {},
@@ -182,7 +182,7 @@ test("five concurrent long checks preserve 100 sentences each through the last o
     assert.equal(r.rows.at(-1)?.end, text.length);
   }
   assert.throws(
-    () => evidenceSentences(text + "\nOne more statement."),
+    () => evidenceSentences(text + "\nThe trial included 120 adults."),
     /100 sentences/,
   );
 });
@@ -249,7 +249,7 @@ test("evidence jobs enforce five-user capacity, ownership and one running job pe
       method: "POST",
       headers: { "Content-Type": "application/json", "x-fixture-owner": owner },
       body: JSON.stringify({
-        text: "A sentence to check with public research.",
+        text: "The trial included 120 adults.",
         mode: "public",
       }),
     });

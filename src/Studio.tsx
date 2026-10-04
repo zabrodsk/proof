@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { BackendFinding } from "../shared/backend";
 import { findingTone, findingLabel } from "./studio-document";
+import { track } from "./analytics";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,6 +15,7 @@ import {
   House,
   Info,
   LayoutGrid,
+  ListChecks,
   Link2,
   Menu,
   MoreHorizontal,
@@ -38,7 +40,12 @@ import "./studio.css";
 import "./mcp-connect.css";
 import StudioAnalysis from "./StudioAnalysis";
 import StudioSettings from "./StudioSettings";
-import { appRoutes } from "./app-navigation";
+import {
+  appRoutes,
+  parseWorkRoute as parseRoute,
+  workPath,
+  type WorkSection,
+} from "./app-navigation";
 import { useStudioPreferences } from "./studio-preferences";
 import NewStudioWork from "./NewStudioWork";
 import StudioWorkIcon from "./StudioWorkIcon";
@@ -46,46 +53,25 @@ import {
   api,
   signOut,
   canUseLocalDrafts,
+  migrateLocalDrafts,
   serverWork,
   type Session,
   type StudioWork,
   type WorkIconName,
 } from "./studio-api";
 
-type Section = "dashboard" | "analysis" | "citations";
+type Section = WorkSection;
 type Work = StudioWork;
 type Route = { workId: string | null; section: Section };
 type Menu = "profile" | "help" | "project" | "document" | null;
 
-const sectionOrder: Section[] = ["dashboard", "analysis", "citations"];
+const sectionOrder: Section[] = ["dashboard", "claims", "citations"];
 
 function matchingWorks(works: Work[], query: string) {
   const normalized = query.trim().toLowerCase();
   return normalized
     ? works.filter((work) => work.title.toLowerCase().includes(normalized))
     : works;
-}
-
-function parseRoute(pathname: string): Route {
-  const match = pathname.match(
-    /^\/app\/works\/([^/]+)(?:\/(analysis|citations))?\/?$/,
-  );
-  if (!match) return { workId: null, section: "dashboard" };
-  return {
-    workId: (() => {
-      try {
-        return decodeURIComponent(match[1]);
-      } catch {
-        return null;
-      }
-    })(),
-    section: match[2] === "citations" ? "citations" : "dashboard",
-  };
-}
-
-function workPath(id: string, section: Section = "dashboard") {
-  if (section !== "citations") return `/app/works/${id}`;
-  return `/app/works/${id}/${section}`;
 }
 
 export default function Studio({ session }: { session: Session }) {
@@ -146,6 +132,9 @@ export default function Studio({ session }: { session: Session }) {
         await api("/api/v1/capabilities");
         backendAvailable = true;
         if (cancelled) return;
+        if (import.meta.env.DEV && !session.hosted)
+          await migrateLocalDrafts(localStorage, storageKey);
+        if (cancelled) return;
         await refreshWorks();
         setPersistent(true);
         setReady(true);
@@ -159,12 +148,18 @@ export default function Studio({ session }: { session: Session }) {
             const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
             if (Array.isArray(saved))
               setWorks(
-                saved.filter(
-                  (item) =>
-                    typeof item?.id === "string" &&
-                    typeof item.title === "string" &&
-                    typeof item.content === "string",
-                ).map((item) => ({ ...item, title: readableDocumentTitle(item.title) })),
+                saved
+                  .filter(
+                    (item) =>
+                      typeof item?.id === "string" &&
+                      typeof item.title === "string" &&
+                      typeof item.content === "string",
+                  )
+                  .map((item) => ({
+                    ...item,
+                    documentVersionId: undefined,
+                    title: readableDocumentTitle(item.title),
+                  })),
               );
           } catch {
             setError("Could not read this browser's saved drafts.");
@@ -196,6 +191,10 @@ export default function Studio({ session }: { session: Session }) {
   const [modal, setModal] = useState<"new" | "document" | null>(null);
   const [newWorkMode, setNewWorkMode] = useState<"upload" | "paste">("upload");
   const [draft, setDraft] = useState("");
+  const [importedDocument, setImportedDocument] = useState(false);
+  const [retrieveImportedSources, setRetrieveImportedSources] = useState(true);
+  const [documentOptionsTarget, setDocumentOptionsTarget] =
+    useState<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<Menu>(null);
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -410,7 +409,11 @@ export default function Studio({ session }: { session: Session }) {
       return;
     }
     const page =
-      route.section === "citations" ? "Sources & citations" : "Review";
+      route.section === "citations"
+        ? "Sources & citations"
+        : route.section === "claims"
+          ? "Claims"
+          : "Review";
     document.title = `Proof · ${page} · ${activeWork.title}`;
   }, [focused, route.section, activeWork?.title, isSettings]);
 
@@ -435,7 +438,12 @@ export default function Studio({ session }: { session: Session }) {
     setRailQuery("");
   };
 
-  const addWork = (title: string, text: string, icon: WorkIconName) => {
+  const addWork = (
+    title: string,
+    text: string,
+    icon: WorkIconName,
+    retrieveSources: boolean,
+  ) => {
     if (!title || busy) return;
     void action(async () => {
       const work: Work = {
@@ -450,7 +458,7 @@ export default function Studio({ session }: { session: Session }) {
       if (persistent) {
         const result = await api<{ id: string; documentVersionId: string }>(
           "/api/v1/documents",
-          { title, text: text || " " },
+          { title, text: text || " ", retrieveSources },
         );
         work.id = result.id;
         work.documentVersionId = result.documentVersionId;
@@ -465,18 +473,24 @@ export default function Studio({ session }: { session: Session }) {
         // Icon preferences are optional. Document saving has already succeeded.
       }
       setWorks((current) => [work, ...current]);
+      track("document_created", { word_count: work.words });
       setModal(null);
       openWork(work.id);
     });
   };
-  const saveText = async (text: string) => {
+  const saveText = async (text: string, importSources = false) => {
     if (!activeWork) return undefined;
     let documentVersionId = activeWork.documentVersionId;
     let runId: string | undefined;
     if (persistent) {
       const result = await api<{ id: string; runId?: string }>(
         `/api/v1/documents/${activeWork.id}/versions`,
-        { text: text || " ", expectedVersionId: documentVersionId },
+        {
+          text: text || " ",
+          expectedVersionId: documentVersionId,
+          importSources,
+          retrieveSources: importSources && retrieveImportedSources,
+        },
       );
       documentVersionId = result.id;
       runId = result.runId;
@@ -499,7 +513,7 @@ export default function Studio({ session }: { session: Session }) {
   const saveDocument = () => {
     if (!activeWork || busy) return;
     void action(async () => {
-      await saveText(draft);
+      await saveText(draft, importedDocument);
       setModal(null);
     });
   };
@@ -519,6 +533,8 @@ export default function Studio({ session }: { session: Session }) {
   const openDocument = () => {
     if (!activeWork) return;
     setDraft(activeWork.content);
+    setImportedDocument(false);
+    setRetrieveImportedSources(true);
     setOpenMenu(null);
     setModal("document");
   };
@@ -801,6 +817,15 @@ export default function Studio({ session }: { session: Session }) {
                   <House size={21} />
                 </button>
                 <button
+                  className={`ps-rail-button ${route.section === "claims" ? "active" : ""}`}
+                  aria-label="Claims"
+                  data-sidebar-tooltip="Claims"
+                  aria-current={route.section === "claims" ? "page" : undefined}
+                  onClick={() => openWork(activeWork.id, "claims")}
+                >
+                  <ListChecks size={21} />
+                </button>
+                <button
                   className={`ps-rail-button ${route.section === "citations" ? "active" : ""}`}
                   aria-label="Sources & citations"
                   data-sidebar-tooltip="Sources & citations"
@@ -1033,6 +1058,15 @@ export default function Studio({ session }: { session: Session }) {
                               icon={<House size={18} />}
                             >
                               Review
+                            </SubLink>
+                            <SubLink
+                              current={route.section}
+                              section="claims"
+                              href={workPath(work.id, "claims")}
+                              onClick={() => openWork(work.id, "claims")}
+                              icon={<ListChecks size={18} />}
+                            >
+                              Claims
                             </SubLink>
                             <SubLink
                               current={route.section}
@@ -1287,7 +1321,9 @@ export default function Studio({ session }: { session: Session }) {
                   <div className="ps-type">
                     {route.section === "citations"
                       ? "Sources & citations"
-                      : "Review"}
+                      : route.section === "claims"
+                        ? "Claims"
+                        : "Review"}
                   </div>
                   <h1>{activeWork.title}</h1>
                   <div className="ps-meta">Last edited {activeWork.edited}</div>
@@ -1300,30 +1336,35 @@ export default function Studio({ session }: { session: Session }) {
                     <button
                       className="ps-outline ps-square"
                       aria-label="More document options"
+                      aria-expanded={openMenu === "document"}
+                      aria-controls="studio-document-options"
                       onClick={() =>
                         setOpenMenu(openMenu === "document" ? null : "document")
                       }
                     >
                       <MoreHorizontal size={20} />
                     </button>
-                    {openMenu === "document" && (
-                      <div className="ps-popover ps-document-popover">
-                        <button onClick={openDocument}>
-                          <FileUp size={16} /> Import from a file
+                    <div
+                      className="ps-popover ps-document-popover"
+                      id="studio-document-options"
+                      hidden={openMenu !== "document"}
+                    >
+                      <button onClick={openDocument}>
+                        <FileUp size={16} /> Import from a file
+                      </button>
+                      {route.section !== "dashboard" ? (
+                        <button onClick={() => openWork(activeWork.id)}>
+                          <House size={16} /> Back to review
                         </button>
-                        {route.section === "citations" ? (
-                          <button onClick={() => openWork(activeWork.id)}>
-                            <House size={16} /> Back to review
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => openWork(activeWork.id, "citations")}
-                          >
-                            <Link2 size={16} /> Sources & citations
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      ) : (
+                        <button
+                          onClick={() => openWork(activeWork.id, "citations")}
+                        >
+                          <Link2 size={16} /> Sources & citations
+                        </button>
+                      )}
+                      <div ref={setDocumentOptionsTarget} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1331,10 +1372,14 @@ export default function Studio({ session }: { session: Session }) {
               <StudioAnalysis
                 key={activeWork.id}
                 work={activeWork}
+                sourceSelectionKey={`${storageKey}:sources:${activeWork.id}`}
                 section={route.section}
                 onUpdated={refreshWorks}
                 onSave={saveText}
                 onOpenSources={() => openWork(activeWork.id, "citations")}
+                onOpenReview={() => openWork(activeWork.id)}
+                onOpenClaims={() => openWork(activeWork.id, "claims")}
+                documentOptionsTarget={documentOptionsTarget}
               />
             </>
           )}
@@ -1413,10 +1458,26 @@ export default function Studio({ session }: { session: Session }) {
                       if (!response.ok)
                         throw Error(result.error || "Import failed.");
                       setDraft(result.text);
+                      setImportedDocument(true);
                     });
                   }}
                 />
               </label>
+              {importedDocument && (
+                <label className="ps-setup-consent">
+                  <input
+                    type="checkbox"
+                    checked={retrieveImportedSources}
+                    onChange={(event) =>
+                      setRetrieveImportedSources(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Allow external lookup and retrieval of source text.
+                    References are automatically added to Your sources.
+                  </span>
+                </label>
+              )}
               <textarea
                 className="ps-editor"
                 aria-label="Document content"
@@ -1508,8 +1569,8 @@ function SubLink({
   return (
     <a
       href={href}
-      className={current === section || (section === "dashboard" && current === "analysis") ? "active" : ""}
-      aria-current={current === section || (section === "dashboard" && current === "analysis") ? "page" : undefined}
+      className={current === section ? "active" : ""}
+      aria-current={current === section ? "page" : undefined}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;
@@ -1724,7 +1785,7 @@ function LibraryDashboard({
           </div>
           <button
             className="ps-featured-action"
-            onClick={() => onOpen(featured.id, "analysis")}
+            onClick={() => onOpen(featured.id, "dashboard")}
           >
             {featuredSummary?.run ? "Continue analysis" : "Start analysis"}{" "}
             <ArrowRight size={19} />
@@ -1782,7 +1843,7 @@ function LibraryDashboard({
           <div className="ps-home-panel-heading">
             <h2>Needs your attention</h2>
             {attention[0] && (
-              <button onClick={() => onOpen(attention[0].work.id, "analysis")}>
+              <button onClick={() => onOpen(attention[0].work.id, "dashboard")}>
                 View analysis <ArrowRight size={19} />
               </button>
             )}
@@ -1797,7 +1858,7 @@ function LibraryDashboard({
                 <button
                   className="ps-attention-row"
                   key={`${work.id}:${finding.id}`}
-                  onClick={() => onOpen(work.id, "analysis")}
+                  onClick={() => onOpen(work.id, "dashboard")}
                 >
                   <DashboardIcon
                     kind={
@@ -1886,7 +1947,7 @@ function LibraryDashboard({
             </span>
           </button>
           <button
-            onClick={() => featured && onOpen(featured.id, "analysis")}
+            onClick={() => featured && onOpen(featured.id, "dashboard")}
             disabled={!featured}
           >
             <span>

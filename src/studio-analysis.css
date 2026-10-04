@@ -4,6 +4,9 @@
   align-items: start;
   gap: 24px;
 }
+.ps-analysis-citations {
+  align-items: stretch;
+}
 .ps-analysis-layout .ps-live-panel {
   padding: 26px;
   border-radius: 14px;
@@ -142,6 +145,17 @@
   max-height: 445px;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+.ps-analysis-citations > .ps-live-panel {
+  height: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ps-analysis-citations .ps-analysis-source-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 560px;
 }
 .ps-analysis-source {
   margin: 0;
@@ -478,7 +492,8 @@
   border-radius: 8px;
 }
 .ps-analysis-bibliography .ps-editor {
-  min-height: 240px;
+  height: min(32vh, 300px);
+  min-height: 200px;
   margin-top: 0;
   font-size: 13px;
   line-height: 1.7;
@@ -509,11 +524,31 @@
   color: var(--muted);
   font-size: 10px;
 }
+.ps-analysis-citation-scroll {
+  flex: 1;
+  min-height: 240px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+.ps-analysis-citation-scroll:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
 .ps-analysis-citation {
   display: flex;
   gap: 12px;
-  padding: 18px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
+}
+.ps-analysis-bibliography > .ps-analysis-citation-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 .ps-analysis-citation > div {
   min-width: 0;
@@ -527,7 +562,7 @@
 .ps-analysis-layout .ps-analysis-reference-text {
   margin: 0 0 10px;
   font:
-    400 17px/1.65 "Newsreader",
+    400 15px/1.45 "Newsreader",
     Georgia,
     serif;
   overflow-wrap: anywhere;
@@ -537,7 +572,7 @@
   padding: 7px 10px;
   font-size: 11px;
   min-height: 0;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 .ps-analysis-busy {
   margin: 0;
@@ -561,6 +596,19 @@
   }
   .ps-analysis-layout .ps-live-panel {
     padding: 22px;
+  }
+  .ps-analysis-citations > .ps-live-panel {
+    height: auto;
+    min-height: 0;
+  }
+  .ps-analysis-citations .ps-analysis-source-list {
+    max-height: 300px;
+  }
+  .ps-analysis-bibliography > .ps-analysis-citation-list {
+    display: block;
+  }
+  .ps-analysis-citation-scroll {
+    max-height: min(420px, 55vh);
   }
   .ps-analysis-source-list {
     max-height: 300px;
@@ -764,4 +812,45 @@
   .ps-live-overview .ps-issue-copy {
     flex-basis: calc(100% - 40px);
   }
+}
+
+.ps-claim-preview {
+  border-top: 1px solid var(--line, #d6dfd4);
+  padding-top: 16px;
+  max-height: 380px;
+  overflow: auto;
+}
+.ps-claim-preview summary,
+.ps-research-details summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.ps-claim-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.ps-claim-option input {
+  margin-top: 5px;
+  flex: none;
+}
+.ps-claim-option small {
+  display: block;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.ps-research-details {
+  margin: 14px 0;
+  font-size: 13px;
+}
+.ps-research-details ul {
+  padding-left: 18px;
+}
+.ps-research-details li {
+  margin: 12px 0;
+}
+.ps-research-details p {
+  margin: 5px 0;
 }

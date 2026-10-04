@@ -4,11 +4,20 @@ import { z } from "zod";
 import { runInput, sourceMetadata } from "../../shared/backend.js";
 import { type Database, workspace, enqueue, event } from "./db.js";
 import type { BlobStore } from "./storage.js";
+import { uploadedBibliography } from "./references.js";
 import { createAsset, asset, deleteAsset } from "./library.js";
 import { createRun, ownedRun, applyFix } from "./service.js";
+import { carryForward, editRegion } from "./carry-forward.js";
 import { HttpError, limits, notFound } from "./config.js";
 import { formatReference } from "./citations.js";
 import { providerKey } from "./providers.js";
+import { queueDocumentSources } from "./document-sources.js";
+import {
+  citationPlan,
+  applyCitationPlan,
+  applyVerifiedFixes,
+  documentExport,
+} from "./citation-plans.js";
 const uuid = (value: unknown) => z.string().uuid().parse(value);
 const page = (value: unknown, fallback: number, max: number) =>
   value === undefined
@@ -69,6 +78,23 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     );
     res.json({ items: result.rows });
   });
+  r.get("/documents/:id/export", async (req, res) => {
+    const format = z.enum(["html", "text"]).parse(req.query.format || "text");
+    const result = await documentExport(
+      db,
+      res.locals.workspace,
+      uuid(req.params.id),
+      req.query.versionId ? uuid(req.query.versionId) : undefined,
+    );
+    res.set(
+      "Content-Disposition",
+      `attachment; filename="proof-document.${format === "html" ? "html" : "txt"}"`,
+    );
+    res.set("Cache-Control", "private, no-store");
+    res
+      .type(format === "html" ? "text/html" : "text/plain")
+      .send(result[format]);
+  });
   r.get("/documents/:id/bibliography", async (req, res) => {
     const ws = res.locals.workspace,
       id = uuid(req.params.id);
@@ -84,38 +110,64 @@ export function backendRouter(db: Database, blobs: BlobStore) {
     res.json({ item: result.rows[0] || null });
   });
   r.post("/documents", async (req, res) => {
-    const { title, text } = z
+    const { title, text, localDraftId, retrieveSources } = z
       .object({
         title: z.string().min(1).max(300),
         text: z.string().min(1).max(limits.draftCharacters),
+        localDraftId: z.string().uuid().optional(),
+        retrieveSources: z.boolean().default(false),
       })
       .parse(req.body);
+    if (
+      localDraftId &&
+      (process.env.PROOF_HOSTED === "true" ||
+        process.env.NODE_ENV === "production")
+    )
+      throw new HttpError(
+        400,
+        "Browser draft migration is only available in local development.",
+      );
     const ws = res.locals.workspace,
-      id = randomUUID(),
+      id = localDraftId || randomUUID(),
       version = randomUUID();
-    await db.transaction(async (tx) => {
-      await tx.query(
-        "INSERT INTO documents(id,workspace_id,title,current_version_id) VALUES($1,$2,$3,$4)",
+    const documentVersionId = await db.transaction(async (tx) => {
+      const inserted = await tx.query(
+        "INSERT INTO documents(id,workspace_id,title,current_version_id) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING RETURNING id",
         [id, ws, title, version],
       );
+      if (!inserted.rows.length) {
+        const existing = (
+          await tx.query(
+            "SELECT current_version_id FROM documents WHERE workspace_id=$1 AND id=$2",
+            [ws, id],
+          )
+        ).rows[0];
+        if (!existing)
+          throw new HttpError(409, "The browser draft ID is already in use.");
+        return existing.current_version_id;
+      }
       await tx.query(
         "INSERT INTO document_versions(id,workspace_id,document_id,text) VALUES($1,$2,$3,$4)",
         [version, ws, id, text],
       );
+      await queueDocumentSources(tx, ws, id, text, retrieveSources);
+      return version;
     });
-    res.status(201).json({ id, documentVersionId: version });
+    res.status(201).json({ id, documentVersionId });
   });
   r.post("/documents/:id/versions", async (req, res) => {
     const ws = res.locals.workspace,
       id = uuid(req.params.id),
       version = randomUUID();
-    const { text, expectedVersionId } = z
+    const { text, expectedVersionId, importSources, retrieveSources } = z
       .object({
         text: z.string().min(1).max(limits.draftCharacters),
         expectedVersionId: z.string().uuid(),
+        importSources: z.boolean().default(false),
+        retrieveSources: z.boolean().default(false),
       })
       .parse(req.body);
-    await db.transaction(async (tx) => {
+    const runId = await db.transaction(async (tx) => {
       const d = (
         await tx.query(
           "SELECT current_version_id FROM documents WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
@@ -125,6 +177,12 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       if (!d) throw notFound();
       if (d.current_version_id !== expectedVersionId)
         throw new HttpError(409, "The draft has changed.");
+      const previous = (
+        await tx.query(
+          "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",
+          [ws, expectedVersionId],
+        )
+      ).rows[0];
       await tx.query(
         "INSERT INTO document_versions(id,workspace_id,document_id,text) VALUES($1,$2,$3,$4)",
         [version, ws, id, text],
@@ -133,12 +191,25 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
         [ws, id, version],
       );
+      if (importSources)
+        await queueDocumentSources(tx, ws, id, text, retrieveSources);
+      const carried = previous
+        ? await carryForward(
+            tx,
+            ws,
+            { versionId: expectedVersionId, text: previous.text },
+            { versionId: version, text },
+            editRegion(previous.text, text),
+            { kind: "edit" },
+          )
+        : undefined;
       await tx.query(
         "UPDATE runs SET invalidated=true WHERE workspace_id=$1 AND document_version_id=$2",
         [ws, expectedVersionId],
       );
+      return carried;
     });
-    res.status(201).json({ id: version });
+    res.status(201).json({ id: version, runId });
   });
   r.post("/uploads", async (req, res) => {
     const v = z
@@ -237,7 +308,24 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         page(req.query.offset, 0, 1_000_000),
       ],
     );
-    res.json({ items: rows.rows });
+    const items = await Promise.all(
+      rows.rows.map(async (source) => {
+        const entries =
+          source.access === "uploaded" && source.extraction_id
+            ? await uploadedBibliography(
+                db,
+                res.locals.workspace,
+                source.extraction_id,
+              )
+            : undefined;
+        return {
+          ...source,
+          contentKind: entries ? "bibliography" : "source",
+          referenceCount: entries?.length,
+        };
+      }),
+    );
+    res.json({ items });
   });
   r.get("/sources/:id/usage", async (req, res) => {
     const ws = res.locals.workspace,
@@ -495,17 +583,20 @@ export function backendRouter(db: Database, blobs: BlobStore) {
       )
     ).rows.flatMap((r) => r.data.evidence || []);
     res.json({
-      items: rows.map((r) => ({
-        ...r.data,
-        candidates: r.data.candidates.map((c: any) => ({
-          ...c,
-          status: assessed.some(
-            (e: any) => e.assetId === c.assetId && e.support !== "not_verified",
-          )
-            ? "checked_evidence"
-            : "promising",
+      items: rows
+        .filter((r) => r.data.kind !== "candidate_resolution")
+        .map((r) => ({
+          ...r.data,
+          candidates: r.data.candidates.map((c: any) => ({
+            ...c,
+            status: assessed.some(
+              (e: any) =>
+                e.assetId === c.assetId && e.support !== "not_verified",
+            )
+              ? "checked_evidence"
+              : "promising",
+          })),
         })),
-      })),
     });
   });
   r.get("/runs/:id/findings", async (req, res) => {
@@ -597,6 +688,51 @@ export function backendRouter(db: Database, blobs: BlobStore) {
         uuid(req.params.id),
         v.documentVersionId,
         v.findingId,
+      ),
+    );
+  });
+  r.post("/documents/:id/apply-fixes", async (req, res) => {
+    const value = z
+      .strictObject({
+        approved: z.literal(true),
+        documentVersionId: z.string().uuid(),
+        findingIds: z.array(z.string().uuid()).min(1).max(100),
+      })
+      .parse(req.body);
+    res.json(
+      await applyVerifiedFixes(
+        db,
+        res.locals.workspace,
+        uuid(req.params.id),
+        value.documentVersionId,
+        value.findingIds,
+        req.get("Idempotency-Key") || "",
+      ),
+    );
+  });
+  r.get("/runs/:id/citation-plan", async (req, res) => {
+    res.json(await citationPlan(db, res.locals.workspace, uuid(req.params.id)));
+  });
+  r.post("/runs/:id/citation-plan", async (req, res) => {
+    res.json(await citationPlan(db, res.locals.workspace, uuid(req.params.id)));
+  });
+  r.post("/documents/:id/citation-plans/:planId/apply", async (req, res) => {
+    const value = z
+      .strictObject({
+        approved: z.literal(true),
+        documentVersionId: z.string().uuid(),
+        operationIds: z.array(z.string().uuid()).min(1).max(200),
+      })
+      .parse(req.body);
+    res.json(
+      await applyCitationPlan(
+        db,
+        res.locals.workspace,
+        uuid(req.params.id),
+        uuid(req.params.planId),
+        value.documentVersionId,
+        value.operationIds,
+        req.get("Idempotency-Key") || "",
       ),
     );
   });

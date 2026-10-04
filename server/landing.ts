@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWaitlistRouter } from "./waitlist.js";
 import { publicPages } from "./public-pages.js";
+import { analyticsRouter } from "./analytics.js";
 
 const app = express();
 const appUrl = new URL(
@@ -28,6 +29,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "8kb" }));
+app.use(analyticsRouter());
 app.use(publicPages());
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get(["/app", "/app/{*path}"], (req, res) => {

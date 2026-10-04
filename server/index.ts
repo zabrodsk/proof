@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { apiKey } from "./judge.js";
 import { resolveDOI, saveSource, splitPassages } from "./sources.js";
-import { parseDocument } from "./documents.js";
+import { parseDocument, uploadFilename } from "./documents.js";
 import { auditDocument } from "./audit.js";
 import { createWaitlistRouter } from "./waitlist.js";
 import { installAccess } from "./access.js";
@@ -23,7 +23,9 @@ import { integrationApi, integrationErrors } from "./integrations/http.js";
 import { storage } from "./backend/storage.js";
 import { compatibilityRouter } from "./backend/compatibility.js";
 import { backendRouter } from "./backend/router.js";
+import { startWorker } from "./backend/queue.js";
 import { publicPages } from "./public-pages.js";
+import { analyticsRouter } from "./analytics.js";
 const app = express();
 const hosted = process.env.PROOF_HOSTED === "true";
 if (hosted) app.set("trust proxy", 1);
@@ -61,13 +63,24 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "18mb" }));
+app.use(analyticsRouter());
 let integrations: IntegrationService | undefined;
 let oauth: OAuthVerifier | undefined;
+let localWorker: Awaited<ReturnType<typeof startWorker>> | undefined;
+const embedded =
+  !process.env.DATABASE_URL && process.env.PROOF_LOCAL_BACKEND === "true";
+if (embedded && (hosted || process.env.NODE_ENV === "production"))
+  throw new Error(
+    "The embedded workspace is only available in local development.",
+  );
 if (
   process.env.DATABASE_URL ||
+  embedded ||
   process.env.PROOF_INTEGRATIONS_ENABLED === "true"
 ) {
-  const db = database();
+  const db = embedded
+    ? await (await import("./backend/local.js")).localDatabase()
+    : database();
   await migrate(db);
   integrations = new IntegrationService(
     new IntegrationStore(db, storage()),
@@ -76,6 +89,12 @@ if (
       "",
     ),
   );
+  if (embedded) {
+    localWorker = await startWorker(db, integrations.store.blobs, {
+      backend: "pglite",
+    });
+    console.log("Proof local workspace and durable worker are ready.");
+  }
   if (
     process.env.PROOF_INTEGRATIONS_ENABLED === "true" &&
     process.env.PROOF_MCP_ENABLED === "true"
@@ -136,9 +155,10 @@ app.post("/api/sources/resolve", async (req, res) => {
 });
 app.post("/api/documents/import", upload.single("file"), async (req, res) => {
   if (!req.file) throw new Error("Choose a document to import.");
+  const filename = uploadFilename(req.file.originalname);
   res.json({
-    text: await parseDocument(req.file.buffer, req.file.originalname),
-    title: req.file.originalname.replace(/\.[^.]+$/, ""),
+    text: await parseDocument(req.file.buffer, filename),
+    title: filename.replace(/\.[^.]+$/, ""),
   });
 });
 app.post("/api/sources/upload", upload.single("file"), async (req, res) => {
@@ -274,7 +294,7 @@ app.use(
     });
   },
 );
-app.listen(
+const server = app.listen(
   port,
   process.env.PROOF_BIND_HOST || (hosted ? "0.0.0.0" : "127.0.0.1"),
   (error?: Error) => {
@@ -286,3 +306,21 @@ app.listen(
     console.log(`Proof is ready at http://127.0.0.1:${port}`);
   },
 );
+if (localWorker && integrations) {
+  let stopping = false;
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.once(signal, async () => {
+      if (stopping) return;
+      stopping = true;
+      server.close();
+      server.closeAllConnections();
+      try {
+        await localWorker!.stop();
+        await integrations!.store.db.close();
+        process.exit(0);
+      } catch {
+        console.error("Local workspace shutdown failed.");
+        process.exit(1);
+      }
+    });
+}

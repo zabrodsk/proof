@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { dois } from "../parse.js";
-import type { Database } from "./db.js";
+import type { Database, Sql } from "./db.js";
 import { limits, notFound } from "./config.js";
 import { providerFetch } from "./providers.js";
+import { sourceLinks } from "../../shared/document-sources.js";
 export const normalize = (s: string) =>
   s
     .normalize("NFD")
@@ -12,15 +13,37 @@ export const normalize = (s: string) =>
 export function reconstructReferences(text: string) {
   const entries: string[] = [];
   let current = "";
+  let separated = false;
   for (const line of text.split(/[\n\f]/)) {
     const clean = line.trim();
-    if (!clean || /^(works cited|references|bibliography|\d+)$/i.test(clean))
+    if (!clean) {
+      separated = true;
       continue;
-    const start = /^(?:[A-ZÀ-Ž][\p{L}'’-]+,\s+[^\d]|[—-]{3}\.)/u.test(clean);
-    if (start && current) {
+    }
+    if (/^(works cited|references|bibliography|\d+)$/i.test(clean)) continue;
+    const start =
+      (/^https?:\/\//i.test(clean) && /^https?:\/\//i.test(current.trim())) ||
+      /^(?:\[\d+\]|\d+\.)\s+/.test(clean) ||
+      /^(?:[A-ZÀ-Ž][\p{L}'’-]+,\s+[^\d]|[—-]{3}\.)/u.test(clean) ||
+      /^[\p{Lu}][^.]{2,100}\.\s+["“][^"”]+["”]/u.test(clean) ||
+      /^[\p{Lu}][^.]{2,100}\.\s+.{3,}\.\s+(?:.*\b)?(?:1[5-9]|20)\d{2}\b/u.test(
+        clean,
+      );
+    const insideQuotedTitle = (current.match(/["“”]/g)?.length || 0) % 2 === 1;
+    const publicationContinuation =
+      /^[^,]+,\s*(?:vol\.|no\.|pp?\.|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d)/i.test(
+        clean,
+      );
+    if (
+      (start || separated) &&
+      current &&
+      !insideQuotedTitle &&
+      !publicationContinuation
+    ) {
       entries.push(current);
       current = "";
     }
+    separated = false;
     current += (current ? "\n" : "") + line;
   }
   if (current) entries.push(current);
@@ -30,22 +53,95 @@ export function reconstructReferences(text: string) {
   }));
 }
 export function parseReference(original: string) {
-  const text = original.replace(/\s+/g, " ");
-  const quoted = text.match(/["“]([^"”]+)["”]/)?.[1];
-  const author = text.split(".")[0]?.trim() || "";
-  const title = quoted || text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
+  const text = original
+    .replace(/^\s*(?:\[\d+\]|\d+\.)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const quote = /["“]([^"”]+)["”]/.exec(text);
+  // A period in an author's initial is not the end of the author field.
+  const author = quote
+    ? text
+        .slice(0, quote.index)
+        .replace(/(?<!\b[A-Z])\.\s*$/u, "")
+        .trim()
+    : text.split(".")[0]?.trim() || "";
+  const title =
+    quote?.[1] ||
+    text.match(/\((?:1[5-9]|20)\d{2}[a-z]?\)\.\s+(.+?)\.\s/)?.[1] ||
+    text.match(/^[^.]+\.\s+(.+?)\.\s/)?.[1];
+  const authors = author
+    ? author.split(/,?\s+and\s+/).map((s) => s.trim().replace(/,$/, ""))
+    : [];
+  const authorDetails = authors.map((name, index) => {
+    if (name.includes(",")) {
+      const [family, ...given] = name.split(",");
+      return { family: family.trim(), given: given.join(",").trim() };
+    }
+    // MLA's subsequent author is in given-family order. Preserve ambiguous
+    // multiword family names as literals instead of inventing a boundary.
+    const pair =
+      index > 0 && /^(\p{Lu}[\p{L}'’-]+)\s+(\p{Lu}[\p{L}'’-]+)$/u.exec(name);
+    return pair ? { given: pair[1], family: pair[2] } : { literal: name };
+  });
+  const tail = quote
+    ? text.slice(quote.index + quote[0].length).replace(/^\.?\s*/, "")
+    : "";
+  const url =
+    sourceLinks(text)[0] ||
+    text
+      .match(/(?:https?:\/\/|(?:[\w-]+\.)+(?:com|org|edu)\/)[^\s]+/)?.[0]
+      ?.replace(/[.,;]+$/, "");
   return {
     title,
-    authors: author ? [author] : [],
-    year: text.match(/\b(?:1[5-9]|20)\d{2}\b/)?.[0],
+    authors,
+    authorDetails,
+    year: (quote ? tail : text).match(/\b(?:1[5-9]|20)\d{2}\b/)?.[0],
     doi: dois(text)[0],
     isbn: text
       .match(/\b(?:97[89][ -]?)?\d[\d -]{8,15}[\dX]\b/)?.[0]
       ?.replace(/[ -]/g, ""),
     edition: text.match(/\b\d+(?:st|nd|rd|th) ed\./i)?.[0],
-    type: quoted ? "article-journal" : "book",
+    type: quote ? "article-journal" : "book",
+    ...(quote
+      ? {
+          containerTitle: tail.split(/,|\./)[0]?.trim(),
+          volume: tail.match(/\bvol\.\s*(\d+)/i)?.[1],
+          issue: tail.match(/\bno\.\s*(\d+)/i)?.[1],
+          pages: tail.match(/\bpp?\.\s*(\d+(?:[–-]\d+)?)/i)?.[1],
+        }
+      : {}),
+    ...(url ? { url: url.startsWith("http") ? url : `https://${url}` } : {}),
   };
 }
+
+/** A reference list identifies works; it is never source evidence. */
+export function bibliographyIntake(text: string) {
+  const heading = /^\s*(?:works cited|references|bibliography)\s*$/im.exec(
+    text,
+  );
+  if (!heading || text.slice(0, heading.index).trim()) return undefined;
+  const entries = reconstructReferences(text.slice(heading.index));
+  if (
+    !entries.length ||
+    entries.some((e) => !e.parsed.title || !e.parsed.authors.length)
+  )
+    return undefined;
+  return entries;
+}
+export async function uploadedBibliography(
+  db: Sql,
+  ws: string,
+  extractionId: string,
+) {
+  const pages = (
+    await db.query(
+      "SELECT text FROM source_pages WHERE workspace_id=$1 AND extraction_id=$2 ORDER BY page_index",
+      [ws, extractionId],
+    )
+  ).rows;
+  return bibliographyIntake(pages.map((p) => p.text).join("\n"));
+}
+
 export async function importReferences(
   db: Database,
   ws: string,
@@ -77,7 +173,30 @@ export async function importReferences(
     const { original, parsed } = entries[ordinal];
     const candidates: any[] = [];
     let status = "unidentified";
-    if (external && parsed.isbn && !parsed.doi) {
+    const uploads = await db.query(
+      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
+      [ws],
+    );
+    const matches = uploads.rows.filter(
+      (a) =>
+        (!parsed.isbn ||
+          normalize(a.metadata.isbn || "") === normalize(parsed.isbn)) &&
+        (!parsed.doi ||
+          normalize(a.metadata.doi || "") === normalize(parsed.doi)) &&
+        normalize(a.metadata.title || "") ===
+          normalize(parsed.title || "MISSING") &&
+        (!parsed.edition ||
+          normalize(a.metadata.edition || "") === normalize(parsed.edition)) &&
+        (!parsed.year || a.metadata.year === parsed.year) &&
+        parsed.authors.some((author) =>
+          (a.metadata.authors || []).some(
+            (other: string) =>
+              normalize(author).includes(normalize(other)) ||
+              normalize(other).includes(normalize(author.split(",")[0])),
+          ),
+        ),
+    );
+    if (external && !matches.length && parsed.isbn && !parsed.doi) {
       try {
         const book = await resolveIsbn(parsed.isbn);
         if (book) {
@@ -93,7 +212,12 @@ export async function importReferences(
         status = "unidentified";
       }
     }
-    if (external && !parsed.isbn && (parsed.doi || parsed.title))
+    if (
+      external &&
+      !matches.length &&
+      !parsed.isbn &&
+      (parsed.doi || parsed.title)
+    )
       try {
         const url = parsed.doi
           ? `https://api.crossref.org/works/${encodeURIComponent(parsed.doi)}`
@@ -136,29 +260,6 @@ export async function importReferences(
       } catch {
         status = "unidentified";
       }
-    const uploads = await db.query(
-      "SELECT id,metadata FROM source_assets WHERE workspace_id=$1 AND deleted_at IS NULL AND status='ready'",
-      [ws],
-    );
-    const matches = uploads.rows.filter(
-      (a) =>
-        (!parsed.isbn ||
-          normalize(a.metadata.isbn || "") === normalize(parsed.isbn)) &&
-        (!parsed.doi ||
-          normalize(a.metadata.doi || "") === normalize(parsed.doi)) &&
-        normalize(a.metadata.title || "") ===
-          normalize(parsed.title || "MISSING") &&
-        (!parsed.edition ||
-          normalize(a.metadata.edition || "") === normalize(parsed.edition)) &&
-        (!parsed.year || a.metadata.year === parsed.year) &&
-        parsed.authors.some((author) =>
-          (a.metadata.authors || []).some(
-            (other: string) =>
-              normalize(author).includes(normalize(other)) ||
-              normalize(other).includes(normalize(author.split(",")[0])),
-          ),
-        ),
-    );
     if (matches.length > 1) status = "ambiguous";
     else if (matches.length === 1) status = "matched_ready";
     await db.query(

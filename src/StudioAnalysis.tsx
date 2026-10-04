@@ -1,26 +1,49 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { track } from "./analytics";
 import {
   ArrowRight,
   BookOpen,
   Check,
+  ChevronDown,
   CircleAlert,
   CircleHelp,
   Clipboard,
+  Download,
   FileText,
   Library,
   LoaderCircle,
   Search,
   Upload,
 } from "lucide-react";
-import { sourceCheckScope } from "./studio-document";
+import { selectClaims } from "../shared/claims";
+import {
+  approvedClaimSpans,
+  claimReviewRows,
+  currentCitationOverrides,
+  type CitationOverrides,
+  type CitationRequirement,
+} from "./studio-claims";
+import { documentDownloadName, sourceCheckScope } from "./studio-document";
 import "./studio-analysis.css";
 import StudioDocument, { type CheckMode } from "./StudioDocument";
+import StudioClaims from "./StudioClaims";
 import type { BackendFinding, RunInput } from "../shared/backend";
+import type { CitationPlan } from "../shared/citation-plan";
+import StudioCitationPlan from "./StudioCitationPlan";
+import StudioCitationAudit from "./StudioCitationAudit";
 import { api, ApiError, type StudioWork } from "./studio-api";
 
 type Source = {
+  contentKind?: "bibliography" | "source";
+  referenceCount?: number;
   id: string;
-  metadata: { title: string };
+  metadata: {
+    title: string;
+    pagination?: string;
+    originalFormat?: string;
+    importedDocumentIds?: string[];
+    importNotice?: string;
+  };
   status: string;
   access: string;
   eligibility: string;
@@ -34,7 +57,18 @@ type Run = {
   invalidated: boolean;
   document_version_id: string;
   error?: string;
-  input?: { mode?: CheckMode };
+  input?: {
+    mode?: CheckMode;
+    sourcePolicy?: RunInput["sourcePolicy"];
+    citationProfile?: "mla9" | "classroom";
+    citationOutput?: "audit" | "generate";
+    assignmentProfile?: "draft" | "bibliography";
+    claimSpans?: RunInput["claimSpans"];
+    selectedSources?: RunInput["selectedSources"];
+    externalAccess?: RunInput["externalAccess"];
+  };
+  config?: { bibliographyAssets?: string[] };
+  usage?: { provider: string; status: string; requests: number }[];
   coverage: Record<string, unknown>;
 };
 type Citation = {
@@ -50,24 +84,75 @@ const importPending = (status: string) =>
 
 export default function StudioAnalysis({
   work,
+  sourceSelectionKey,
   section,
   onUpdated,
   onSave,
   onOpenSources,
+  onOpenReview,
+  onOpenClaims,
+  documentOptionsTarget,
 }: {
   work: StudioWork;
+  sourceSelectionKey: string;
   section: string;
   onUpdated: () => Promise<void>;
   onSave: (text: string) => Promise<{ runId?: string } | undefined>;
   onOpenSources: () => void;
+  onOpenReview: () => void;
+  onOpenClaims: () => void;
+  documentOptionsTarget: HTMLElement | null;
 }) {
   const [sourceSearch, setSourceSearch] = useState("");
   const [copiedId, setCopiedId] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [excludedSourceIds, setExcludedSourceIds] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(sourceSelectionKey) || "[]",
+      );
+      return Array.isArray(saved)
+        ? saved.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const selected = sources
+    .filter((source) => !excludedSourceIds.includes(source.id))
+    .map((source) => source.id);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        sourceSelectionKey,
+        JSON.stringify(excludedSourceIds),
+      );
+    } catch {
+      // Source choices still work for this session if browser storage is unavailable.
+    }
+  }, [sourceSelectionKey, excludedSourceIds]);
   const [mode, setMode] = useState<CheckMode>("source_check");
+  const [citationProfile, setCitationProfile] = useState<"mla9" | "classroom">(
+    "mla9",
+  );
+  const [assignmentProfile, setAssignmentProfile] = useState<
+    "" | "draft" | "bibliography"
+  >("");
+  const [factScope, setFactScope] = useState<"public" | "academic">("public");
+  const [discoveryScope, setDiscoveryScope] = useState<"public" | "academic">(
+    "academic",
+  );
+  const [resolveReferences, setResolveReferences] = useState(true);
   const [permission, setPermission] = useState(false);
   const [run, setRun] = useState<Run>();
+  const [citationPlan, setCitationPlan] = useState<CitationPlan>();
+  const [citationFocus, setCitationFocus] = useState<{
+    start: number;
+    end: number;
+    token: number;
+  }>();
+  const [planError, setPlanError] = useState("");
   const [findings, setFindings] = useState<BackendFinding[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -76,7 +161,53 @@ export default function StudioAnalysis({
   const [importStatus, setImportStatus] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
   const [history, setHistory] = useState<Run[]>([]);
+  const [editorReady, setEditorReady] = useState(true);
+  const [claimFocus, setClaimFocus] = useState<{
+    start: number;
+    end: number;
+    token: number;
+  }>();
+  const [excludedClaims, setExcludedClaims] = useState<Set<number>>(new Set());
+  const [includedSkipped, setIncludedSkipped] = useState<Set<number>>(
+    new Set(),
+  );
+  const [citationOverrides, setCitationOverrides] = useState<CitationOverrides>(
+    () => ({ content: work.content, choices: new Map() }),
+  );
+  const currentOverrides = currentCitationOverrides(
+    citationOverrides,
+    work.content,
+  );
+  const [researchResults, setResearchResults] = useState<
+    {
+      candidates: {
+        title: string;
+        url: string;
+        doi?: string;
+        access?: string;
+        eligibility: string;
+        reason?: string;
+        assetId?: string;
+      }[];
+      notices?: string[];
+    }[]
+  >([]);
+  const [claimSearch, setClaimSearch] = useState("");
+  const preview = useMemo(() => selectClaims(work.content), [work.content]);
+  const approvedClaims = [
+    ...preview.candidates.filter((c) => !excludedClaims.has(c.start)),
+    ...preview.skipped.filter((c) => includedSkipped.has(c.start)),
+  ].sort((a, b) => a.start - b.start);
+  useEffect(() => {
+    setClaimFocus(undefined);
+    setClaimSearch("");
+    setExcludedClaims(new Set());
+    setIncludedSkipped(new Set());
+    setCitationOverrides({ content: work.content, choices: new Map() });
+  }, [work.content]);
   const modeRef = useRef(mode);
+  const initializedRun = useRef(false);
+  const mutationKeys = useRef(new Map<string, string>());
   modeRef.current = mode;
   const active = !!run && ["queued", "running"].includes(run.status);
   const stale =
@@ -124,6 +255,74 @@ export default function StudioAnalysis({
         if (disposed) return;
         setSources(all);
         setHistory(runs.items);
+        if (!initializedRun.current) {
+          const recent =
+            runs.items.find(
+              (item) =>
+                !item.invalidated &&
+                item.document_version_id === work.documentVersionId,
+            ) || runs.items[0];
+          if (recent) {
+            setResolveReferences(
+              recent.input?.externalAccess !== "none" ||
+                !recent.config?.bibliographyAssets,
+            );
+            const recentMode = runMode(recent);
+            modeRef.current = recentMode;
+            setMode(recentMode);
+            setCitationProfile(
+              recentMode === "source_check" &&
+                recent.input?.citationProfile === "classroom"
+                ? "classroom"
+                : "mla9",
+            );
+            setAssignmentProfile(
+              recent.input?.citationProfile === "classroom"
+                ? recent.input.assignmentProfile || ""
+                : "",
+            );
+            if (recent.document_version_id === work.documentVersionId) {
+              if (recent.input?.claimSpans) {
+                const selectedSpans = recent.input.claimSpans;
+                const wasSelected = (claim: { start: number; end: number }) =>
+                  selectedSpans.some(
+                    (span) =>
+                      span.start === claim.start && span.end === claim.end,
+                  );
+                setExcludedClaims(
+                  new Set(
+                    preview.candidates
+                      .filter((claim) => !wasSelected(claim))
+                      .map((claim) => claim.start),
+                  ),
+                );
+                setIncludedSkipped(
+                  new Set(
+                    preview.skipped
+                      .filter(wasSelected)
+                      .map((claim) => claim.start),
+                  ),
+                );
+              }
+              const choices = new Map<number, CitationRequirement>();
+              for (const span of recent.input?.claimSpans || []) {
+                if (span.citationRequirement !== undefined)
+                  choices.set(span.start, span.citationRequirement);
+              }
+              setCitationOverrides({ content: work.content, choices });
+            }
+            if (
+              recent.input?.sourcePolicy === "academic" ||
+              recent.input?.sourcePolicy === "public"
+            ) {
+              if (recentMode === "fact_check")
+                setFactScope(recent.input.sourcePolicy);
+              if (recentMode === "discover")
+                setDiscoveryScope(recent.input.sourcePolicy);
+            }
+          }
+          initializedRun.current = true;
+        }
         setRun(
           (current) =>
             current ||
@@ -140,6 +339,34 @@ export default function StudioAnalysis({
       clearInterval(timer);
     };
   }, [work.id, work.documentVersionId]);
+  useEffect(() => {
+    setCitationPlan(undefined);
+    setCitationFocus(undefined);
+    setPlanError("");
+    if (
+      !run ||
+      runMode(run) === "fact_check" ||
+      ["queued", "running"].includes(run.status) ||
+      (runMode(run) === "discover" && run.input?.citationOutput !== "generate")
+    )
+      return;
+    let disposed = false;
+    void api<CitationPlan | { item?: CitationPlan }>(
+      `/api/v1/runs/${run.id}/citation-plan`,
+    )
+      .then((result) => {
+        if (!disposed)
+          setCitationPlan(
+            "item" in result ? result.item : (result as CitationPlan),
+          );
+      })
+      .catch((e) => {
+        if (!disposed) setPlanError((e as Error).message);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [run?.id, run?.status, run?.input?.citationOutput]);
   useEffect(() => {
     if (!run?.id) return;
     let disposed = false;
@@ -158,6 +385,13 @@ export default function StudioAnalysis({
         if (disposed) return;
         setRun(next);
         setFindings(rows);
+        if (next.input?.mode !== "source_check") {
+          const research = await api<{ items: typeof researchResults }>(
+            `/api/v1/runs/${run.id}/research`,
+          );
+          if (!disposed) setResearchResults(research.items);
+        }
+        if (!["queued", "running"].includes(next.status)) return;
         timer = setTimeout(
           () => void refresh(),
           ["queued", "running"].includes(next.status) ? 2000 : 5000,
@@ -178,6 +412,7 @@ export default function StudioAnalysis({
       }
     };
     setFindings([]);
+    setResearchResults([]);
     void refresh();
     return () => {
       disposed = true;
@@ -188,13 +423,18 @@ export default function StudioAnalysis({
     if (!work.documentVersionId) return;
     let disposed = false;
     void api<{
-      item?: { id: string; status: string; input: { text?: string } };
+      item?: {
+        id: string;
+        status: string;
+        input: { text?: string; externalAccess?: boolean };
+      };
     }>(`/api/v1/documents/${work.id}/bibliography`)
       .then((result) => {
         if (disposed || !result.item) return;
         setBibliography(result.item.input.text || "");
         setReferenceId(result.item.id);
         setImportStatus(result.item.status);
+        setResolveReferences(result.item.input.externalAccess === true);
       })
       .catch((e) => {
         if (!disposed) setError(e.message);
@@ -202,7 +442,7 @@ export default function StudioAnalysis({
     return () => {
       disposed = true;
     };
-  }, [work.id]);
+  }, [work.id, work.documentVersionId]);
   useEffect(() => {
     if (!referenceId) return;
     let disposed = false;
@@ -246,12 +486,78 @@ export default function StudioAnalysis({
     setHistory((current) => [next, ...current]);
     setRun(next);
   }
-  async function applyFix(findingId: string, documentVersionId: string) {
+  async function applyFixes(findingIds: string[], documentVersionId: string) {
+    const identity = `fixes:${documentVersionId}:${[...findingIds].sort().join(",")}`;
+    const idempotencyKey =
+      mutationKeys.current.get(identity) || crypto.randomUUID();
+    mutationKeys.current.set(identity, idempotencyKey);
     const result = await api<{ id: string; runId?: string }>(
-      `/api/v1/documents/${work.id}/apply-fix`,
-      { approved: true, documentVersionId, findingId },
+      `/api/v1/documents/${work.id}/apply-fixes`,
+      { approved: true, documentVersionId, findingIds },
+      "POST",
+      { idempotencyKey },
     );
+    track("corrections_applied", { correction_count: findingIds.length });
     return result;
+  }
+  async function applyCitationPlan(operationIds: string[]) {
+    if (!citationPlan || !work.documentVersionId) return;
+    await action("Applying citations", async () => {
+      const identity = `citations:${citationPlan.id}:${work.documentVersionId}:${[...operationIds].sort().join(",")}`;
+      const idempotencyKey =
+        mutationKeys.current.get(identity) || crypto.randomUUID();
+      mutationKeys.current.set(identity, idempotencyKey);
+      const result = await api<{ id: string; runId?: string }>(
+        `/api/v1/documents/${work.id}/citation-plans/${citationPlan.id}/apply`,
+        {
+          approved: true,
+          documentVersionId: work.documentVersionId,
+          operationIds,
+        },
+        "POST",
+        { idempotencyKey },
+      );
+      setCitationPlan(
+        await api<CitationPlan>(
+          `/api/v1/runs/${citationPlan.runId}/citation-plan`,
+        ),
+      );
+      await onUpdated();
+      await openRun(result.runId);
+    });
+  }
+  async function downloadDocument(format: "txt" | "html") {
+    await action("Preparing document", async () => {
+      let text = work.content;
+      if (format === "html") {
+        const response = await fetch(
+          `/api/v1/documents/${work.id}/export?format=html&versionId=${encodeURIComponent(work.documentVersionId!)}`,
+          { credentials: "same-origin" },
+        );
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(
+            result.error ||
+              result.message ||
+              "Could not export the saved document.",
+          );
+        }
+        text = await response.text();
+      }
+      const blob = new Blob([text], {
+        type:
+          format === "html"
+            ? "text/html;charset=utf-8"
+            : "text/plain;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = documentDownloadName(work.title, format);
+      link.click();
+      track("document_exported", { format });
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }).catch(() => {});
   }
   async function uploadSource(file: File) {
     await action("Uploading source...", async () => {
@@ -282,7 +588,8 @@ export default function StudioAnalysis({
       });
       if (!response.ok) throw Error("Source upload failed. Please retry.");
       await api(`/api/v1/uploads/${intent.id}/complete`, {});
-      setSelected((ids) => [...new Set([...ids, intent.id])]);
+      track("source_uploaded", { media_type: mediaType });
+      setExcludedSourceIds((ids) => ids.filter((id) => id !== intent.id));
       await loadSources();
     }).catch(() => {});
   }
@@ -298,6 +605,12 @@ export default function StudioAnalysis({
     source.metadata.title.toLowerCase().includes(sourceSearch.toLowerCase()),
   );
   const importing = importPending(importStatus);
+  const selectedBibliographies = selectedReady.filter(
+    (s) => s.contentKind === "bibliography",
+  );
+  const hasBibliography =
+    selectedBibliographies.length > 0 ||
+    (!!referenceId && importStatus === "complete");
   const bibliographyReady = !!referenceId && importStatus === "complete";
   const uploadInput = (
     <input
@@ -330,12 +643,137 @@ export default function StudioAnalysis({
 
   if (section !== "citations") {
     const persistent = !!work.documentVersionId;
-    const canStart =
-      persistent &&
-      !busy &&
-      !active &&
-      permission &&
-      (mode !== "source_check" || bibliographyReady || !!selectedReady.length);
+    const outputCurrent =
+      !citationPlan ||
+      citationPlan.status !== "applied" ||
+      citationPlan.resultVersionId === work.documentVersionId;
+    const blockedReason = !persistent
+      ? "The workspace service is unavailable. Your text is saved in this browser."
+      : busy
+        ? `${busy}…`
+        : active
+          ? "A check is already running."
+          : !editorReady
+            ? "Save your changes before starting a check."
+            : selectedReady.length > 100
+              ? "Use at most 100 sources. Open Edit used sources to reduce the selection."
+              : approvedClaims.length > 100
+                ? "Select at most 100 claims. Review the rest in another check."
+                : mode !== "source_check" && !approvedClaims.length
+                  ? "Select at least one claim on the Claims page."
+                  : mode === "source_check" &&
+                      !bibliographyReady &&
+                      !selectedReady.length
+                    ? sources.some((source) => !ready.includes(source))
+                      ? "Sources are still processing or unavailable. Select a ready source or add references."
+                      : "Upload and select a source, or add references to continue."
+                    : !permission
+                      ? "Allow AI processing to start this check."
+                      : undefined;
+    const canStart = !blockedReason;
+    const sourceInputs = (
+      <>
+        <div className="ps-setup-head">
+          <button
+            className="ps-setup-toggle"
+            type="button"
+            aria-expanded={sourcesExpanded}
+            aria-controls="ps-setup-sources"
+            onClick={() => setSourcesExpanded((expanded) => !expanded)}
+          >
+            <strong>Your sources</strong>
+            <span>{selectedReady.length} in use</span>
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={sourcesExpanded ? "is-expanded" : ""}
+            />
+          </button>
+          <button className="ps-review-link" onClick={onOpenSources}>
+            Edit used sources
+          </button>
+        </div>
+        <div id="ps-setup-sources" hidden={!sourcesExpanded}>
+          {selected.length ? (
+            <ul className="ps-setup-sources">
+              {sources
+                .filter((source) => selected.includes(source.id))
+                .map((source) => {
+                  const usable = ready.some((s) => s.id === source.id);
+                  return (
+                    <li
+                      key={`${source.id}:${source.extraction_id || "pending"}`}
+                      className={`ps-setup-source ${usable ? "" : "is-waiting"}`}
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                      <span>
+                        <strong>{source.metadata.title}</strong>
+                        <small>
+                          {source.contentKind === "bibliography"
+                            ? `${source.referenceCount} references found. Proof will match the cited works; this list is not evidence.`
+                            : usable
+                              ? source.extraction_status === "partial"
+                                ? "Some pages could not be read"
+                                : source.access === "abstract"
+                                  ? "Abstract only"
+                                  : "Ready"
+                              : source.status === "unavailable"
+                                ? "Source text unavailable — add the source file"
+                                : "Reading the text…"}
+                        </small>
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : (
+            <p className="ps-setup-copy">
+              No sources in use. Add or include a source on the Sources page.
+            </p>
+          )}
+        </div>
+        <label className={`ps-setup-upload ${busy ? "is-disabled" : ""}`}>
+          <Upload size={16} />
+          <span>
+            Upload sources<small>PDF, Word, text, or Markdown</small>
+          </span>
+          {uploadInput}
+        </label>
+        <details className="ps-setup-options">
+          <summary>Bibliography (optional)</summary>
+          <p className="ps-setup-copy">
+            References identify cited works. Source text lets Proof check the
+            evidence behind your claims.
+          </p>
+          <p className="ps-setup-row">
+            <BookOpen size={15} />
+            <span>
+              {bibliographyReady
+                ? `Bibliography included · ${citations.length} ${citations.length === 1 ? "reference" : "references"}`
+                : importing
+                  ? "Formatting your bibliography…"
+                  : "Bibliography"}
+            </span>
+            <button className="ps-review-link" onClick={onOpenSources}>
+              {bibliographyReady ? "Manage" : "Add references"}
+            </button>
+          </p>
+        </details>
+        {mode === "source_check" && hasBibliography && (
+          <label className="ps-setup-consent">
+            <input
+              type="checkbox"
+              checked={resolveReferences}
+              onChange={(event) => setResolveReferences(event.target.checked)}
+            />
+            <span>
+              Allow Proof to retrieve the works in this bibliography. It will
+              not search for unrelated sources.
+            </span>
+          </label>
+        )}
+      </>
+    );
     const setup = !persistent ? (
       <p className="ps-setup-copy">
         This text is saved in this browser. Checks need the workspace service,
@@ -343,78 +781,117 @@ export default function StudioAnalysis({
       </p>
     ) : (
       <div className="ps-setup">
-        {mode === "source_check" ? (
-          <>
-            {sources.length > 0 && (
-              <div className="ps-setup-head">
-                <strong>Your sources</strong>
-                <span>{selectedReady.length} selected</span>
-              </div>
-            )}
-            {sources.length ? (
-              <div className="ps-setup-sources">
-                {sources.map((source) => {
-                  const usable = ready.some((s) => s.id === source.id);
-                  return (
-                    <label
-                      key={`${source.id}:${source.extraction_id || "pending"}`}
-                      className={`ps-setup-source ${usable ? "" : "is-waiting"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(source.id)}
-                        disabled={!usable}
-                        onChange={(event) =>
-                          setSelected((current) =>
-                            event.target.checked
-                              ? [...current, source.id]
-                              : current.filter((id) => id !== source.id),
-                          )
-                        }
-                      />
-                      <span>
-                        <strong>{source.metadata.title}</strong>
-                        <small>
-                          {usable
-                            ? source.extraction_status === "partial"
-                              ? "Some pages could not be read"
-                              : "Ready"
-                            : "Reading the text…"}
-                        </small>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="ps-setup-copy">
-                Add sources to check your claims against.
-              </p>
-            )}
-            <label className={`ps-setup-upload ${busy ? "is-disabled" : ""}`}>
-              <Upload size={16} />
-              <span>Upload sources<small>PDF, Word, text, or Markdown</small></span>
-              {uploadInput}
-            </label>
-            <p className="ps-setup-row">
-              <BookOpen size={15} />
-              <span>
-                {bibliographyReady
-                  ? `Bibliography included · ${citations.length} ${citations.length === 1 ? "reference" : "references"}`
-                  : importing
-                    ? "Formatting your bibliography…"
-                    : "Bibliography"}
-              </span>
-              <button className="ps-review-link" onClick={onOpenSources}>
-                {bibliographyReady ? "Manage" : "Add references"}
-              </button>
+        {mode !== "source_check" && (
+          <fieldset className="ps-setup-scope" disabled={!!busy || active}>
+            <legend>Search scope</legend>
+            <div>
+              {(
+                [
+                  ["public", "Web and academic sources"],
+                  ["academic", "Academic sources"],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value}>
+                  <input
+                    type="radio"
+                    name="studio-search-scope"
+                    value={value}
+                    checked={
+                      (mode === "fact_check" ? factScope : discoveryScope) ===
+                      value
+                    }
+                    onChange={() =>
+                      mode === "fact_check"
+                        ? setFactScope(value)
+                        : setDiscoveryScope(value)
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="ps-setup-copy">
+              {(mode === "fact_check" ? factScope : discoveryScope) ===
+              "academic"
+                ? "Use eligible academic sources. Missing full text or unconfirmed eligibility stays a gap."
+                : "Search public sources and show their quality. Scientific claims still require academic evidence."}
             </p>
-          </>
+          </fieldset>
+        )}
+        {mode === "source_check" ? (
+          <div className="ps-setup-inputs">
+            <p className="ps-setup-copy">
+              Upload source documents so Proof can compare them with your draft.
+            </p>
+            {sourceInputs}
+          </div>
         ) : (
+          <details className="ps-setup-options">
+            <summary>My sources and bibliography (optional)</summary>
+            <p className="ps-setup-copy">
+              Proof checks selected sources first, then researches evidence
+              gaps. Literary and personal claims need relevant supplied text.
+            </p>
+            {sourceInputs}
+          </details>
+        )}
+        <details className="ps-setup-options">
+          <summary>More options</summary>
+          <label className="ps-setup-profile">
+            <span>Citation profile</span>
+            <select
+              aria-label="Citation profile"
+              value={citationProfile}
+              disabled={!!busy || active}
+              onChange={(event) =>
+                setCitationProfile(event.target.value as "mla9" | "classroom")
+              }
+            >
+              <option value="mla9">Standard MLA 9</option>
+              <option value="classroom" disabled={mode !== "source_check"}>
+                Classroom audit
+              </option>
+            </select>
+          </label>
+          {citationProfile === "classroom" && (
+            <>
+              <label className="ps-setup-profile">
+                <span>Assignment checks</span>
+                <select
+                  aria-label="Assignment checks"
+                  value={assignmentProfile}
+                  disabled={!!busy || active}
+                  onChange={(event) =>
+                    setAssignmentProfile(
+                      event.target.value as "" | "draft" | "bibliography",
+                    )
+                  }
+                >
+                  <option value="">Formatting only</option>
+                  <option value="draft">600-word draft</option>
+                  <option value="bibliography">Four-source bibliography</option>
+                </select>
+              </label>
+              <p className="ps-setup-copy">
+                Check the class citation rules against your own draft.
+                Assignment history and requirements for writing in the class
+                document still need your review.
+              </p>
+            </>
+          )}
+        </details>
+        <div className="ps-setup-claims">
+          <span>
+            {approvedClaims.length}{" "}
+            {approvedClaims.length === 1 ? "claim" : "claims"} selected
+          </span>
+          <button className="ps-review-link" onClick={onOpenClaims}>
+            Review claims
+          </button>
+        </div>
+        {mode === "source_check" && approvedClaims.length === 0 && (
           <p className="ps-setup-copy">
-            {mode === "fact_check"
-              ? "Proof searches open academic research, reads the passages it can access, and compares each claim with them. Titles and abstracts alone never count as support."
-              : "Proof searches open academic research for claims that need a source and shows the passages it found. You decide what to cite."}
+            Your citations and bibliography will still be audited.
           </p>
         )}
         <label className="ps-setup-consent">
@@ -425,15 +902,13 @@ export default function StudioAnalysis({
           />
           <span>
             Allow AI providers to process my text
-            {mode === "source_check"
-              ? " and sources"
-              : " and search research"}
-            .
+            {mode === "source_check" ? " and sources" : " and search research"}.
           </span>
         </label>
         <button
           className="ps-primary ps-setup-start"
           disabled={!canStart}
+          aria-describedby={blockedReason ? "studio-start-reason" : undefined}
           onClick={() =>
             void action("Starting check", async () => {
               const body: RunInput = {
@@ -443,28 +918,41 @@ export default function StudioAnalysis({
                   selectedReady.length,
                   bibliographyReady,
                 ),
-                referenceImportVersionId:
-                  mode === "source_check" && bibliographyReady
-                    ? referenceId
-                    : undefined,
-                selectedSources:
-                  mode === "source_check"
-                    ? selectedReady.map((s) => ({
-                        assetId: s.id,
-                        extractionId: s.extraction_id!,
-                        pageRanges: [],
-                      }))
-                    : [],
+                referenceImportVersionId: bibliographyReady
+                  ? referenceId
+                  : undefined,
+                excludedSourceIds: sources
+                  .filter((source) => excludedSourceIds.includes(source.id))
+                  .map((source) => source.id),
+                selectedSources: selectedReady.map((s) => ({
+                  assetId: s.id,
+                  extractionId: s.extraction_id!,
+                  pageRanges: [],
+                })),
                 externalAccess:
                   mode === "source_check"
-                    ? bibliographyReady && !selectedReady.length
+                    ? hasBibliography && resolveReferences
                       ? "resolve_selected_references"
                       : "none"
                     : "research",
                 sourcePolicy:
-                  mode === "source_check" ? "user_supplied" : "academic",
+                  mode === "source_check"
+                    ? "user_supplied"
+                    : mode === "fact_check"
+                      ? factScope
+                      : discoveryScope,
+                citationProfile,
+                citationOutput: mode === "discover" ? "generate" : "audit",
+                ...(citationProfile === "classroom" && assignmentProfile
+                  ? { assignmentProfile }
+                  : {}),
                 allowProviderProcessing: permission,
                 budgetPreset: "standard",
+                claimSpans: approvedClaimSpans(
+                  approvedClaims,
+                  work.content,
+                  citationOverrides,
+                ),
               };
               const response = await fetch("/api/v1/runs", {
                 method: "POST",
@@ -477,6 +965,11 @@ export default function StudioAnalysis({
               const result = await response.json();
               if (!response.ok)
                 throw Error(result.error || "Could not start the check.");
+              track("check_started", {
+                mode,
+                source_count: selectedReady.length,
+                claim_count: approvedClaims.length,
+              });
               setFindings([]);
               await openRun(result.id);
             }).catch(() => {})
@@ -487,11 +980,15 @@ export default function StudioAnalysis({
           ) : (
             <ArrowRight size={17} />
           )}
-          {mode === "discover" ? "Find sources" : "Check my text"}
+          {mode === "source_check"
+            ? "Check citations"
+            : mode === "discover"
+              ? "Generate citations"
+              : "Fact-check claims"}
         </button>
-        {permission && mode === "source_check" && !selectedReady.length && !bibliographyReady && (
-          <p className="ps-setup-hint">
-            {sources.length ? "Select a source or add references to continue." : "Upload a source or add references to continue."}
+        {blockedReason && (
+          <p id="studio-start-reason" className="ps-setup-hint" role="status">
+            {blockedReason}
           </p>
         )}
       </div>
@@ -499,7 +996,77 @@ export default function StudioAnalysis({
     return (
       <div className="ps-live ps-live-workspace">
         {errorNotice}
+        {section === "claims" && (
+          <StudioClaims
+            rows={claimReviewRows(
+              work.content,
+              preview,
+              findings,
+              stale,
+              currentOverrides,
+            )}
+            selectedCount={approvedClaims.length}
+            mode={mode}
+            active={active}
+            stale={stale}
+            search={claimSearch}
+            onSearch={setClaimSearch}
+            controls={(claim) => {
+              return (
+                <>
+                  <label className="ps-claim-option">
+                    <input
+                      type="checkbox"
+                      checked={
+                        preview.skipped.some(
+                          (item) => item.start === claim.start,
+                        )
+                          ? includedSkipped.has(claim.start)
+                          : !excludedClaims.has(claim.start)
+                      }
+                      disabled={!!busy || active}
+                      onChange={(event) => {
+                        const skipped = preview.skipped.some(
+                          (item) => item.start === claim.start,
+                        );
+                        if (skipped)
+                          setIncludedSkipped((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(claim.start);
+                            else next.delete(claim.start);
+                            return next;
+                          });
+                        else
+                          setExcludedClaims((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.delete(claim.start);
+                            else next.add(claim.start);
+                            return next;
+                          });
+                      }}
+                    />
+                    <span>{claim.text}</span>
+                  </label>
+                </>
+              );
+            }}
+            onLocate={(claim) => {
+              setClaimFocus({
+                start: claim.start,
+                end: claim.end,
+                token: Date.now(),
+              });
+              onOpenReview();
+            }}
+            locateDisabled={!editorReady}
+            sourceTitle={(id) =>
+              sources.find((source) => source.id === id)?.metadata.title
+            }
+          />
+        )}
         <StudioDocument
+          hidden={section === "claims"}
+          claimFocus={claimFocus}
           content={work.content}
           findings={findings}
           run={
@@ -515,12 +1082,170 @@ export default function StudioAnalysis({
           canCheck={persistent}
           onMode={(next) => {
             if (next === mode) return;
+            initializedRun.current = true;
             setMode(next);
+            const nextRun = history.find((item) => runMode(item) === next);
+            setCitationProfile(
+              next === "source_check" &&
+                nextRun?.input?.citationProfile === "classroom"
+                ? "classroom"
+                : "mla9",
+            );
+            setAssignmentProfile(
+              nextRun?.input?.citationProfile === "classroom"
+                ? nextRun.input.assignmentProfile || ""
+                : "",
+            );
+            if (
+              nextRun?.input?.sourcePolicy === "academic" ||
+              nextRun?.input?.sourcePolicy === "public"
+            ) {
+              if (next === "fact_check")
+                setFactScope(nextRun.input.sourcePolicy);
+              if (next === "discover")
+                setDiscoveryScope(nextRun.input.sourcePolicy);
+            }
             setPermission(false);
             setFindings([]);
-            setRun(history.find((item) => runMode(item) === next));
+            setRun(nextRun);
           }}
+          resultSettings={
+            run
+              ? `${run.input?.citationProfile === "classroom" ? "Classroom audit" : "Standard MLA 9"}${run.input?.assignmentProfile ? ` · ${run.input.assignmentProfile === "draft" ? "600-word draft" : "Four-source bibliography"}` : ""} · ${run.input?.sourcePolicy === "academic" ? "Academic only" : run.input?.sourcePolicy === "public" ? "All sources" : run.input?.sourcePolicy === "matched" ? "Academic and authoritative sources" : "Your selected sources"}`
+              : undefined
+          }
+          citationReview={
+            citationPlan ? (
+              <>
+                {citationPlan.audit && (
+                  <StudioCitationAudit
+                    audit={citationPlan.audit}
+                    stale={stale || !editorReady}
+                    onLocate={(start, end) =>
+                      setCitationFocus({ start, end, token: Date.now() })
+                    }
+                  />
+                )}
+                <StudioCitationPlan
+                  key={citationPlan.id}
+                  plan={citationPlan}
+                  content={work.content}
+                  documentVersionId={work.documentVersionId}
+                  findings={findings}
+                  blocked={!editorReady || !!busy || active}
+                  sourceTitle={(id) =>
+                    sources.find((source) => source.id === id)?.metadata.title
+                  }
+                  sourcePagination={(id) =>
+                    sources.find((source) => source.id === id)?.metadata
+                      .pagination
+                  }
+                  onApply={applyCitationPlan}
+                />
+              </>
+            ) : planError ? (
+              <p className="ps-review-error" role="alert">
+                Citation proposals unavailable. {planError}
+              </p>
+            ) : undefined
+          }
+          citationFocus={citationFocus}
+          documentOptionsTarget={documentOptionsTarget}
+          documentActions={
+            <div
+              className="ps-document-output"
+              aria-label="Saved document output"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div>
+                <strong>Saved document</strong>
+                <p>
+                  Copy or download the complete saved version. Plain text does
+                  not preserve italics or indentation.
+                </p>
+                {!outputCurrent && (
+                  <p role="status">
+                    Citations are saved. Reload the saved document before
+                    copying or downloading it.
+                  </p>
+                )}
+              </div>
+              <div className="ps-document-output-actions">
+                <button
+                  className="ps-outline"
+                  disabled={
+                    !persistent ||
+                    !editorReady ||
+                    !!busy ||
+                    active ||
+                    !outputCurrent
+                  }
+                  onClick={() =>
+                    void action("Copying document", async () => {
+                      await navigator.clipboard.writeText(work.content);
+                      setCopiedId(`document:${work.documentVersionId}`);
+                    }).catch(() => {})
+                  }
+                >
+                  {copiedId === `document:${work.documentVersionId}` ? (
+                    <Check size={15} />
+                  ) : (
+                    <Clipboard size={15} />
+                  )}
+                  {copiedId === `document:${work.documentVersionId}`
+                    ? "Document copied"
+                    : "Copy document"}
+                </button>
+                <button
+                  className="ps-outline"
+                  disabled={
+                    !persistent ||
+                    !editorReady ||
+                    !!busy ||
+                    active ||
+                    !outputCurrent
+                  }
+                  onClick={() => void downloadDocument("txt")}
+                >
+                  <Download size={15} />
+                  Download text
+                </button>
+                <button
+                  className="ps-outline"
+                  disabled={
+                    !persistent ||
+                    !editorReady ||
+                    !!busy ||
+                    active ||
+                    !outputCurrent
+                  }
+                  onClick={() => void downloadDocument("html")}
+                >
+                  <Download size={15} />
+                  Download formatted HTML
+                </button>
+                {!outputCurrent && (
+                  <button
+                    className="ps-outline"
+                    disabled={!!busy}
+                    onClick={() =>
+                      void action("Reloading saved document", onUpdated).catch(
+                        () => {},
+                      )
+                    }
+                  >
+                    Reload saved document
+                  </button>
+                )}
+              </div>
+            </div>
+          }
           setup={setup}
+          onEditorReady={setEditorReady}
+          sourcePagination={(id) =>
+            sources.find((source) => source.id === id)?.metadata.pagination
+          }
+          researchResults={researchResults}
           sourceTitle={(id) =>
             sources.find((source) => source.id === id)?.metadata.title
           }
@@ -531,42 +1256,23 @@ export default function StudioAnalysis({
           onAccept={(finding) =>
             action("Applying edit", async () => {
               if (!work.documentVersionId) return;
-              const result = await applyFix(finding.id, work.documentVersionId);
+              const result = await applyFixes(
+                [finding.id],
+                work.documentVersionId,
+              );
               await onUpdated();
               await openRun(result.runId);
             }).catch(() => {})
           }
           onAcceptAll={(chosen) =>
             action("Applying edits", async () => {
-              let version = work.documentVersionId!;
-              let current = chosen.map((finding) => finding.id);
-              const keys = new Set(
-                chosen.map(
-                  (finding) =>
-                    `${finding.claim.text}\u0000${finding.fix?.original}`,
-                ),
+              if (!work.documentVersionId) return;
+              const result = await applyFixes(
+                chosen.map((finding) => finding.id),
+                work.documentVersionId,
               );
-              let runId: string | undefined;
-              while (current.length) {
-                const result = await applyFix(current[0], version);
-                version = result.id;
-                runId = result.runId;
-                if (!runId) break;
-                const page = await api<{ items: BackendFinding[] }>(
-                  `/api/v1/runs/${runId}/findings?limit=100&offset=0`,
-                );
-                current = page.items
-                  .filter(
-                    (finding) =>
-                      finding.fix &&
-                      keys.has(
-                        `${finding.claim.text}\u0000${finding.fix.original}`,
-                      ),
-                  )
-                  .map((finding) => finding.id);
-              }
               await onUpdated();
-              await openRun(runId);
+              await openRun(result.runId);
             }).catch(() => {})
           }
           onCancel={() =>
@@ -609,7 +1315,8 @@ export default function StudioAnalysis({
             <span className="ps-analysis-count">{sources.length}</span>
           </div>
           <p className="ps-analysis-intro">
-            Sources you upload here can be used in “My sources” checks.
+            All sources are included by default. Uncheck a source to leave it
+            out of checks for this work.
           </p>
           <label className={`ps-analysis-upload ${busy ? "is-disabled" : ""}`}>
             <Upload size={22} />
@@ -640,9 +1347,7 @@ export default function StudioAnalysis({
             <div className="ps-analysis-empty">
               <BookOpen size={26} />
               <strong>No sources yet</strong>
-              <p>
-                Upload a paper or book excerpt to check your text against it.
-              </p>
+              <p>Upload a paper, book excerpt, or Works Cited document.</p>
             </div>
           )}
           {!!sources.length && !visibleSources.length && (
@@ -659,12 +1364,12 @@ export default function StudioAnalysis({
                 <input
                   type="checkbox"
                   checked={selected.includes(source.id)}
-                  disabled={!ready.some((s) => s.id === source.id)}
+                  disabled={!!busy}
                   onChange={(event) =>
-                    setSelected((current) =>
+                    setExcludedSourceIds((current) =>
                       event.target.checked
-                        ? [...current, source.id]
-                        : current.filter((id) => id !== source.id),
+                        ? current.filter((id) => id !== source.id)
+                        : [...new Set([...current, source.id])],
                     )
                   }
                 />
@@ -674,18 +1379,26 @@ export default function StudioAnalysis({
                 <span className="ps-analysis-source-copy">
                   <strong>{source.metadata.title}</strong>
                   <small className="ps-analysis-source-state">
-                    {source.extraction_status === "complete" &&
-                    source.status === "ready"
-                      ? "Text extracted"
-                      : source.extraction_status === "partial" &&
+                    {source.contentKind === "bibliography"
+                      ? `Bibliography · ${source.referenceCount} references`
+                      : source.extraction_status === "complete" &&
                           source.status === "ready"
-                        ? "Partial text"
-                        : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
+                        ? "Text extracted"
+                        : source.extraction_status === "partial" &&
+                            source.status === "ready"
+                          ? "Partial text"
+                          : `${source.status.replaceAll("_", " ")} · ${source.extraction_status?.replaceAll("_", " ") || "awaiting extraction"}`}
                   </small>
                   <small>
                     {source.access.replaceAll("_", " ")} · Eligibility{" "}
                     {source.eligibility}
                   </small>
+                  {source.metadata.importedDocumentIds?.includes(work.id) && (
+                    <small>Detected in your document</small>
+                  )}
+                  {source.metadata.importNotice && (
+                    <small>{source.metadata.importNotice}</small>
+                  )}
                   {source.extraction_status === "partial" && (
                     <small>
                       Some pages could not be read. Analysis covers extracted
@@ -752,7 +1465,7 @@ export default function StudioAnalysis({
           {importStatus && (
             <p className="ps-analysis-import-status" role="status">
               {importing
-                ? "Your references are being processed."
+                ? "Your references are being processed. Available source text is retrieved for automatic imports."
                 : importStatus === "complete"
                   ? `${citations.length} formatted ${citations.length === 1 ? "reference" : "references"}`
                   : `Import ${importStatus.replaceAll("_", " ")}`}
@@ -764,44 +1477,54 @@ export default function StudioAnalysis({
                 <h3>Formatted references</h3>
                 <span>MLA 9</span>
               </div>
-              {citations.map((c, index) => (
-                <article className="ps-source ps-analysis-citation" key={c.id}>
-                  <span className="ps-source-icon">
-                    <FileText size={20} />
-                  </span>
-                  <div>
-                    <p className="ps-analysis-reference-text">{c.text}</p>
-                    {[
-                      ...c.warnings,
-                      ...c.missingMetadata.map((m) => `Missing: ${m}`),
-                    ].map((warning, i) => (
-                      <p className="ps-analysis-warning" key={i}>
-                        <CircleAlert size={14} />
-                        {warning}
-                      </p>
-                    ))}
-                    <button
-                      className="ps-outline"
-                      onClick={() =>
-                        void action("Copying citation...", async () => {
-                          await navigator.clipboard.writeText(c.text);
-                          setCopiedId(c.id);
-                        }).catch(() => {})
-                      }
-                    >
-                      {copiedId === c.id ? (
-                        <Check size={15} />
-                      ) : (
-                        <Clipboard size={15} />
-                      )}
-                      {copiedId === c.id ? "Copied" : "Copy citation"}
-                    </button>
-                  </div>
-                  <span className="ps-source-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                </article>
-              ))}
+              <div
+                className="ps-analysis-citation-scroll"
+                role="region"
+                aria-label="Formatted citations"
+                tabIndex={0}
+              >
+                {citations.map((c, index) => (
+                  <article
+                    className="ps-source ps-analysis-citation"
+                    key={c.id}
+                  >
+                    <span className="ps-source-icon">
+                      <FileText size={20} />
+                    </span>
+                    <div>
+                      <p className="ps-analysis-reference-text">{c.text}</p>
+                      {[
+                        ...c.warnings,
+                        ...c.missingMetadata.map((m) => `Missing: ${m}`),
+                      ].map((warning, i) => (
+                        <p className="ps-analysis-warning" key={i}>
+                          <CircleAlert size={14} />
+                          {warning}
+                        </p>
+                      ))}
+                      <button
+                        className="ps-outline"
+                        onClick={() =>
+                          void action("Copying citation...", async () => {
+                            await navigator.clipboard.writeText(c.text);
+                            setCopiedId(c.id);
+                          }).catch(() => {})
+                        }
+                      >
+                        {copiedId === c.id ? (
+                          <Check size={15} />
+                        ) : (
+                          <Clipboard size={15} />
+                        )}
+                        {copiedId === c.id ? "Copied" : "Copy citation"}
+                      </button>
+                    </div>
+                    <span className="ps-source-number">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                  </article>
+                ))}
+              </div>
             </div>
           )}
         </section>

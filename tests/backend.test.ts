@@ -456,6 +456,38 @@ test("a 300-page PDF indexes the last page and retrieval respects physical page 
   assert.ok(cited.passages.some((passage) => passage.pageIndex === 300));
 });
 
+async function attachCurrentEvidence(
+  ws: string,
+  runId: string,
+  selection: Selection,
+) {
+  const p = (
+    await db.query(
+      "SELECT p.*,g.page_index,g.label,g.label_status FROM source_passages p JOIN source_pages g ON g.id=p.page_id WHERE p.workspace_id=$1 AND p.extraction_id=$2 LIMIT 1",
+      [ws, selection.extractionId],
+    )
+  ).rows[0];
+  const evidence = [
+    {
+      id: p.id,
+      assetId: selection.assetId,
+      extractionId: selection.extractionId,
+      pageIndex: p.page_index,
+      pageLabel: p.label,
+      labelStatus: p.label_status,
+      start: p.start_offset,
+      end: p.end_offset,
+      text: p.text,
+      role: "selected",
+      support: "contradicted",
+    },
+  ];
+  await db.query(
+    "UPDATE findings SET data=jsonb_set(data,'{evidence}',$3::jsonb) WHERE workspace_id=$1 AND run_id=$2",
+    [ws, runId, JSON.stringify(evidence)],
+  );
+}
+
 test("verified edits create a document version and stale findings cannot edit it again", async () => {
   const ws = await workspace(db, randomUUID()),
     saved = await source(ws),
@@ -487,6 +519,7 @@ test("verified edits create a document version and stale findings cannot edit it
       }),
     ],
   );
+  await attachCurrentEvidence(ws, run.id, saved.selection);
   const edited = await applyFix(db, ws, doc.id, doc.versionId, findingId);
   assert.equal(edited.text, "The review included 218 studies.");
   assert.notEqual(edited.id, doc.versionId);
@@ -506,6 +539,170 @@ test("verified edits create a document version and stale findings cannot edit it
   await assert.rejects(
     applyFix(db, ws, doc.id, edited.id, findingId),
     status(409),
+  );
+});
+
+test("applying one verified edit carries the other findings onto the new version", async () => {
+  const ws = await workspace(db, randomUUID()),
+    saved = await source(ws),
+    doc = await draft(
+      ws,
+      "The review included 300 studies. Participants numbered 14,170 in total. Effects were small.",
+    );
+  const run = await sourceRun(ws, doc.versionId, saved.selection);
+  await db.query("UPDATE runs SET status='complete' WHERE id=$1", [run.id]);
+  const span = (text: string) => {
+    const start = doc.text.indexOf(text);
+    return { text, start, end: start + text.length };
+  };
+  const seed = async (
+    ordinal: number,
+    claimText: string,
+    fix?: { original: string; replacement: string },
+  ) => {
+    const claimId = randomUUID(),
+      findingId = randomUUID(),
+      claim = span(claimText);
+    await db.query(
+      "INSERT INTO claims(id,workspace_id,run_id,ordinal,data) VALUES($1,$2,$3,$4,$5)",
+      [claimId, ws, run.id, ordinal, JSON.stringify(claim)],
+    );
+    const fixSpan = fix && span(fix.original);
+    await db.query(
+      "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,$5,$6)",
+      [
+        findingId,
+        ws,
+        run.id,
+        claimId,
+        ordinal,
+        JSON.stringify({
+          id: findingId,
+          claim: { ...claim, kind: "numeric", context: claimText },
+          support: "overstated",
+          evidence: [],
+          explanation: [],
+          checkedPassageIds: [],
+          ...(fix && fixSpan
+            ? {
+                fix: {
+                  start: fixSpan.start,
+                  end: fixSpan.end,
+                  original: fix.original,
+                  replacement: fix.replacement,
+                  documentVersionId: doc.versionId,
+                  kind: "number",
+                },
+              }
+            : {}),
+        }),
+      ],
+    );
+    return findingId;
+  };
+  const first = await seed(0, "The review included 300 studies.", {
+    original: "300",
+    replacement: "218",
+  });
+  await seed(1, "Participants numbered 14,170 in total.", {
+    original: "14,170",
+    replacement: "14,171",
+  });
+  await seed(2, "Effects were small.");
+
+  await attachCurrentEvidence(ws, run.id, saved.selection);
+  const edited = await applyFix(db, ws, doc.id, doc.versionId, first);
+  assert.equal((await ownedRun(db, ws, run.id)).invalidated, true);
+  assert.ok(edited.runId);
+  const derived = await ownedRun(db, ws, edited.runId!);
+  assert.equal(derived.document_version_id, edited.id);
+  assert.equal(derived.invalidated, false);
+  const carried = (
+    await db.query(
+      "SELECT data FROM findings WHERE run_id=$1 ORDER BY ordinal",
+      [derived.id],
+    )
+  ).rows.map((row) => row.data);
+  assert.deepEqual(
+    carried.map((finding) => finding.claim.text),
+    ["Participants numbered 14,170 in total.", "Effects were small."],
+  );
+  for (const finding of carried)
+    assert.equal(
+      edited.text.slice(finding.claim.start, finding.claim.end),
+      finding.claim.text,
+    );
+  const next = carried[0];
+  assert.equal(next.fix.documentVersionId, edited.id);
+  const again = await applyFix(db, ws, doc.id, edited.id, next.id);
+  assert.equal(
+    again.text,
+    "The review included 218 studies. Participants numbered 14,171 in total. Effects were small.",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM findings WHERE run_id=$1",
+        [run.id],
+      )
+    ).rows[0].n,
+    3,
+  );
+});
+
+test("accepting the last suggestion keeps a finished report for the new version", async () => {
+  const ws = await workspace(db, randomUUID()),
+    saved = await source(ws),
+    doc = await draft(ws, "The review included 300 studies.");
+  const run = await sourceRun(ws, doc.versionId, saved.selection);
+  await db.query("UPDATE runs SET status='complete' WHERE id=$1", [run.id]);
+  const claimId = randomUUID(),
+    findingId = randomUUID(),
+    claim = { text: doc.text, start: 0, end: doc.text.length };
+  await db.query(
+    "INSERT INTO claims(id,workspace_id,run_id,ordinal,data) VALUES($1,$2,$3,0,$4)",
+    [claimId, ws, run.id, JSON.stringify(claim)],
+  );
+  await db.query(
+    "INSERT INTO findings(id,workspace_id,run_id,claim_id,ordinal,data) VALUES($1,$2,$3,$4,0,$5)",
+    [
+      findingId,
+      ws,
+      run.id,
+      claimId,
+      JSON.stringify({
+        id: findingId,
+        claim: { ...claim, kind: "numeric", context: doc.text },
+        support: "overstated",
+        evidence: [],
+        explanation: [],
+        checkedPassageIds: [],
+        fix: {
+          start: doc.text.indexOf("300"),
+          end: doc.text.indexOf("300") + 3,
+          original: "300",
+          replacement: "218",
+          documentVersionId: doc.versionId,
+          kind: "number",
+        },
+      }),
+    ],
+  );
+  await attachCurrentEvidence(ws, run.id, saved.selection);
+  const edited = await applyFix(db, ws, doc.id, doc.versionId, findingId);
+  assert.ok(edited.runId);
+  const derived = await ownedRun(db, ws, edited.runId!);
+  assert.equal(derived.document_version_id, edited.id);
+  assert.equal(derived.status, "complete");
+  assert.equal(derived.coverage.retiredFindings, 1);
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM findings WHERE run_id=$1",
+        [derived.id],
+      )
+    ).rows[0].n,
+    0,
   );
 });
 
@@ -717,6 +914,52 @@ const noResolution = async () => ({
   notices: [] as string[],
 });
 
+test("citation generation from supplied sources never researches unresolved claims", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const saved = await source(ws, "The class had 24 students.");
+  const doc = await draft(ws, "The class had 42 students.");
+  const input = {
+    mode: "discover",
+    citationOutput: "generate",
+    externalAccess: "none",
+    sourcePolicy: "user_supplied",
+    checkScope: "selected_library",
+    claimSpans: [{ start: 0, end: doc.text.length }],
+  };
+  assert.equal(
+    runInput.safeParse({ documentVersionId: doc.versionId, ...input }).success,
+    false,
+  );
+  const run = await engineRun(ws, doc.versionId, [saved.selection], input);
+  let searches = 0;
+  await processRun(db, saved.blobs, ws, run.id, {
+    judge: async (claim, _item, passages) => ({
+      ...claim,
+      method: "Jev",
+      status: "not_addressed",
+      evidence: passages![0],
+      checkedPassages: passages,
+      explanation: "The selected source does not support this claim.",
+    }),
+    research: async () => {
+      searches++;
+      return noResearch();
+    },
+    resolveReferences: noResolution,
+  });
+  assert.equal(searches, 0);
+  const result = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+  ).rows[0].data;
+  assert.equal(result.support, "not_verified");
+  assert.equal(
+    (await db.query("SELECT stage FROM runs WHERE id=$1", [run.id])).rows[0]
+      .stage,
+    "done",
+  );
+});
+
 test("testing materials retain text support without academic eligibility and distinguish irrelevant passages", async () => {
   const { processRun } = await import("../server/backend/engine.js");
   const ws = await workspace(db, randomUUID());
@@ -762,7 +1005,10 @@ test("one-click corrections for materials must quote an inspected passage", asyn
   const { processRun } = await import("../server/backend/engine.js");
   const ws = await workspace(db, randomUUID());
   const sentence = "The class had 24 students.";
-  const saved = await source(ws, sentence);
+  const saved = await source(
+    ws,
+    `${sentence} The record covers only this class and makes no statement about other classes.`,
+  );
   const doc = await draft(ws, "Every class has 24 students.");
   for (const quote of [sentence, "Every class has 100 students."]) {
     const run = await engineRun(ws, doc.versionId, [saved.selection], {
@@ -799,6 +1045,34 @@ test("one-click corrections for materials must quote an inspected passage", asyn
       );
     }
   }
+});
+
+test("exhausted research budget produces an explained partial result", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const { HttpError } = await import("../server/backend/config.js");
+  const ws = await workspace(db, randomUUID());
+  const doc = await draft(ws);
+  const run = await engineRun(ws, doc.versionId, [], {
+    mode: "fact_check",
+    externalAccess: "research",
+    sourcePolicy: "academic",
+    claimSpans: [{ start: 0, end: doc.text.length }],
+  });
+  await processRun(db, memoryBlobs().blobs, ws, run.id, {
+    judge: async () => {
+      throw Error("No passage was available");
+    },
+    research: async () => {
+      throw new HttpError(429, "Run provider-call budget exhausted.");
+    },
+    resolveReferences: noResolution,
+  });
+  assert.equal((await ownedRun(db, ws, run.id)).status, "partial");
+  const result = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+  ).rows[0].data;
+  assert.equal(result.evidenceGap, "check_incomplete");
+  assert.equal(result.support, "not_verified");
 });
 
 test("a successfully retrieved reference is no longer counted as unresolved", async () => {
@@ -1574,4 +1848,80 @@ test("the judge receives the exact surrounding paragraph for a selected claim", 
     if (oldKey === undefined) delete process.env.TYPESAFE_API_KEY;
     else process.env.TYPESAFE_API_KEY = oldKey;
   }
+});
+
+test("the UI source scope inspects the cited page with selected uploads", async () => {
+  const { processRun } = await import("../server/backend/engine.js");
+  const ws = await workspace(db, randomUUID());
+  const saved = await source(
+    ws,
+    "CITED PAGE discusses recruitment methods without testing exercise outcomes.",
+  );
+  await authorizeSource(ws, saved.id, "Brown");
+  await db.query(
+    "UPDATE source_pages SET label='1',label_status='confirmed' WHERE extraction_id=$1",
+    [saved.extractionId],
+  );
+  await db.query(
+    "UPDATE extractions SET coverage=jsonb_set(coverage,'{totalPages}','2') WHERE id=$1",
+    [saved.extractionId],
+  );
+  const pageId = randomUUID(),
+    passageId = randomUUID();
+  const supportingText =
+    "OTHER PAGE found exercise reduces depression in the study population.";
+  await db.query(
+    "INSERT INTO source_pages(id,workspace_id,extraction_id,page_index,label,label_status,text,status) VALUES($1,$2,$3,2,'2','confirmed',$4,'readable')",
+    [pageId, ws, saved.extractionId, supportingText],
+  );
+  await db.query(
+    "INSERT INTO source_passages(id,workspace_id,extraction_id,page_id,start_offset,end_offset,text) VALUES($1,$2,$3,$4,0,$5,$6)",
+    [
+      passageId,
+      ws,
+      saved.extractionId,
+      pageId,
+      supportingText.length,
+      supportingText,
+    ],
+  );
+  const doc = await draft(ws, "Exercise reduces depression (Brown 1).");
+  const run = await engineRun(ws, doc.versionId, [saved.selection], {
+    claimSpans: [{ start: 0, end: doc.text.length }],
+    checkScope: (await import("../src/studio-document.js")).sourceCheckScope(
+      1,
+      true,
+    ),
+  });
+  let calls = 0;
+  await processRun(db, saved.blobs, ws, run.id, {
+    judge: async (claim, _item, passages) => {
+      calls++;
+      assert.ok(
+        !(
+          passages!.some((p) => p.startsWith("CITED PAGE")) &&
+          passages!.some((p) => p.startsWith("OTHER PAGE"))
+        ),
+        "The cited page needs its own assessment",
+      );
+      return {
+        ...claim,
+        method: "Jev",
+        status: passages![0].startsWith("OTHER PAGE")
+          ? "supported"
+          : "not_addressed",
+        evidence: passages![0],
+        checkedPassages: passages,
+        explanation: "Checked physical page.",
+      };
+    },
+    research: noResearch,
+    resolveReferences: noResolution,
+  });
+  assert.equal(calls, 2);
+  const result = (
+    await db.query("SELECT data FROM findings WHERE run_id=$1", [run.id])
+  ).rows[0].data;
+  assert.equal(result.support, "supported");
+  assert.equal(result.citation, "wrong_locator");
 });

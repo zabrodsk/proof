@@ -1,8 +1,11 @@
+import { uploadedBibliography } from "./references.js";
+import { validateFixEvidence } from "./verified-fixes.js";
 import { randomUUID } from "node:crypto";
-import { runInput, type RunInput } from "../../shared/backend.js";
+import { runInput, type RunRequest } from "../../shared/backend.js";
 import { type Database, type Sql, enqueue, event } from "./db.js";
 import { asset, checksum, validateSelection } from "./library.js";
 import { HttpError, notFound, limits, versions } from "./config.js";
+import { carryForward } from "./carry-forward.js";
 export async function ownedRun(db: Sql, ws: string, id: string, lock = false) {
   const r = await db.query(
     `SELECT * FROM runs WHERE workspace_id=$1 AND id=$2${lock ? " FOR UPDATE" : ""}`,
@@ -14,11 +17,11 @@ export async function ownedRun(db: Sql, ws: string, id: string, lock = false) {
 export async function createRun(
   db: Database,
   ws: string,
-  input: RunInput,
+  inputValue: RunRequest,
   key: string,
   trusted: { researchQuery?: string } = {},
 ) {
-  input = runInput.parse(input);
+  const input = runInput.parse(inputValue);
   if (!key || key.length > 200)
     throw new HttpError(
       400,
@@ -69,6 +72,7 @@ export async function createRun(
         )
       ).rows;
       for (const ref of references.filter((r) => r.asset_id)) {
+        if (input.excludedSourceIds?.includes(ref.asset_id)) continue;
         if (input.selectedSources.some((s) => s.assetId === ref.asset_id))
           continue;
         const ext = await tx.query(
@@ -84,6 +88,31 @@ export async function createRun(
       }
     }
     await validateSelection(tx, ws, input.selectedSources);
+    const bibliographyAssets: string[] = [];
+    for (const selection of [...input.selectedSources]) {
+      const source = await asset(tx, ws, selection.assetId, true);
+      if (source.access !== "uploaded") continue;
+      const entries = await uploadedBibliography(
+        tx,
+        ws,
+        selection.extractionId,
+      );
+      if (!entries) continue;
+      bibliographyAssets.push(selection.assetId);
+      for (const [ordinal, entry] of entries.entries())
+        if (!references.some((r) => r.original === entry.original))
+          references.push({
+            id: randomUUID(),
+            ordinal,
+            ...entry,
+            status: "unidentified",
+            asset_id: null,
+            originAssetId: selection.assetId,
+          });
+    }
+    input.selectedSources = input.selectedSources.filter(
+      (s) => !bibliographyAssets.includes(s.assetId),
+    );
     const sourceSnapshots: Record<string, unknown> = {};
     for (const selection of input.selectedSources) {
       const source = await asset(tx, ws, selection.assetId, true);
@@ -104,6 +133,7 @@ export async function createRun(
       researchQuery: trusted.researchQuery,
       limits: limits[input.budgetPreset],
       references,
+      bibliographyAssets,
       sourceSnapshots,
     };
     const id = randomUUID();
@@ -146,7 +176,7 @@ export async function applyFix(
       );
     const row = (
       await tx.query(
-        "SELECT f.data,r.document_version_id,r.invalidated FROM findings f JOIN runs r ON r.id=f.run_id AND r.workspace_id=f.workspace_id WHERE f.workspace_id=$1 AND f.id=$2",
+        "SELECT f.data,r.document_version_id,r.invalidated,r.config FROM findings f JOIN runs r ON r.id=f.run_id AND r.workspace_id=f.workspace_id WHERE f.workspace_id=$1 AND f.id=$2",
         [ws, findingId],
       )
     ).rows[0];
@@ -158,6 +188,7 @@ export async function applyFix(
       fix.documentVersionId !== versionId
     )
       throw new HttpError(409, "This finding has no current verified edit.");
+    await validateFixEvidence(tx, ws, row.data, row.config);
     const version = (
       await tx.query(
         "SELECT text FROM document_versions WHERE workspace_id=$1 AND id=$2",
@@ -179,10 +210,22 @@ export async function applyFix(
       "UPDATE documents SET current_version_id=$3 WHERE workspace_id=$1 AND id=$2",
       [ws, documentId, id],
     );
+    const runId = await carryForward(
+      tx,
+      ws,
+      { versionId, text: version.text },
+      { versionId: id, text },
+      {
+        start: fix.start,
+        end: fix.end,
+        delta: fix.replacement.length - (fix.end - fix.start),
+      },
+      { kind: "fix", findingId },
+    );
     await tx.query(
       "UPDATE runs SET invalidated=true WHERE workspace_id=$1 AND document_version_id=$2",
       [ws, versionId],
     );
-    return { id, text };
+    return { id, text, runId };
   });
 }

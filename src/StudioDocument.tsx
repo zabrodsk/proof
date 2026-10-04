@@ -16,30 +16,34 @@ import {
   findingAssessment,
   findingDetail,
   findingTone,
+  citationExempt,
 } from "./studio-document";
 import { citationLabel, runStageLabel } from "./studio-status";
 import "./studio-review.css";
+import { createPortal } from "react-dom";
 
 export type CheckMode = RunInput["mode"];
 
 export const checkModes = [
   {
     value: "source_check",
-    label: "My sources",
-    description: "Compare each claim with the sources you upload or cite.",
+    label: "Check citations",
+    description:
+      "Check whether your cited sources support your claims and whether your citations match.",
     icon: BookOpen,
   },
   {
-    value: "fact_check",
-    label: "Research",
-    description: "Compare claims with published academic research.",
-    icon: ShieldCheck,
+    value: "discover",
+    label: "Generate citations",
+    description:
+      "Find sources for claims that need citations. Review suggestions before adding them.",
+    icon: Search,
   },
   {
-    value: "discover",
-    label: "Find sources",
-    description: "Find academic research you could cite for each claim.",
-    icon: Search,
+    value: "fact_check",
+    label: "Fact-check",
+    description: "Check your claims against web or academic sources.",
+    icon: ShieldCheck,
   },
 ] as const;
 
@@ -68,10 +72,20 @@ export default function StudioDocument({
   setup,
   canCheck,
   sourceTitle,
+  sourcePagination,
+  researchResults = [],
+  resultSettings,
+  citationReview,
+  citationFocus,
+  documentActions,
+  documentOptionsTarget,
+  onEditorReady,
   onSave,
   onAccept,
   onAcceptAll,
   onCancel,
+  hidden = false,
+  claimFocus,
 }: {
   content: string;
   findings: BackendFinding[];
@@ -81,6 +95,8 @@ export default function StudioDocument({
     stage: string;
     error?: string;
     carried?: boolean;
+    coverage?: Record<string, unknown>;
+    usage?: { provider: string; status: string; requests: number }[];
   };
   stale: boolean;
   active: boolean;
@@ -90,10 +106,31 @@ export default function StudioDocument({
   setup: ReactNode;
   canCheck: boolean;
   sourceTitle: (assetId: string) => string | undefined;
+  sourcePagination?: (assetId: string) => string | undefined;
+  researchResults?: {
+    candidates: {
+      title: string;
+      url: string;
+      doi?: string;
+      access?: string;
+      eligibility: string;
+      reason?: string;
+      assetId?: string;
+    }[];
+    notices?: string[];
+  }[];
+  resultSettings?: string;
+  citationReview?: ReactNode;
+  citationFocus?: { start: number; end: number; token: number };
+  documentActions?: ReactNode;
+  documentOptionsTarget: HTMLElement | null;
+  onEditorReady?: (ready: boolean) => void;
   onSave: (text: string) => Promise<void>;
   onAccept: (finding: BackendFinding) => Promise<void>;
   onAcceptAll: (findings: BackendFinding[]) => Promise<void>;
   onCancel: () => void;
+  hidden?: boolean;
+  claimFocus?: { start: number; end: number; token: number };
 }) {
   const [draft, setDraft] = useState(content);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -111,14 +148,52 @@ export default function StudioDocument({
   latest.current = draft;
 
   useEffect(() => {
-    setDraft((current) => (current === saved.current ? content : current));
+    const previous = saved.current;
+    setDraft((current) => (current === previous ? content : current));
     saved.current = content;
   }, [content]);
   useEffect(() => setSetupOpen(false), [run?.id, mode]);
   useEffect(() => setSelected(undefined), [run?.id]);
+  useEffect(() => {
+    if (
+      !citationFocus ||
+      stale ||
+      !input.current ||
+      citationFocus.start < 0 ||
+      citationFocus.end < citationFocus.start ||
+      citationFocus.end > latest.current.length
+    )
+      return;
+    input.current.focus({ preventScroll: true });
+    input.current.setSelectionRange(citationFocus.start, citationFocus.end);
+    input.current.scrollIntoView({
+      block: "center",
+      behavior: reducedMotion() ? "instant" : "smooth",
+    });
+  }, [citationFocus, stale]);
+
+  useEffect(() => {
+    if (
+      hidden ||
+      !claimFocus ||
+      !input.current ||
+      claimFocus.start < 0 ||
+      claimFocus.end > latest.current.length
+    )
+      return;
+    input.current.focus({ preventScroll: true });
+    input.current.setSelectionRange(claimFocus.start, claimFocus.end);
+    input.current.scrollIntoView({
+      block: "center",
+      behavior: reducedMotion() ? "instant" : "smooth",
+    });
+  }, [claimFocus, hidden]);
 
   const dirty = draft !== saved.current;
   const readOnly = active || locked;
+  useEffect(() => {
+    onEditorReady?.(!dirty && saveState === "saved");
+  }, [dirty, saveState, onEditorReady]);
 
   async function save() {
     if (saving.current || latest.current === saved.current) return;
@@ -152,19 +227,28 @@ export default function StudioDocument({
     (finding) => showDismissed || !dismissed.has(dismissKey(finding)),
   );
   const highlights = useMemo(
-    () => documentHighlights(draft, visible, stale),
-    [draft, visible, stale],
+    () =>
+      documentHighlights(
+        draft,
+        visible.filter((finding) => !citationExempt(finding, mode)),
+        stale,
+      ),
+    [draft, visible, stale, mode],
   );
   const counts = {
-    review: visible.filter((f) => findingTone(f) !== "supported").length,
+    review: visible.filter(
+      (f) => findingTone(f) !== "supported" && !citationExempt(f, mode),
+    ).length,
     supported: visible.filter((f) => findingTone(f) === "supported").length,
+    citationExempt: visible.filter((f) => citationExempt(f, mode)).length,
   };
   const listed = visible.filter((finding) =>
     filter === "all"
       ? true
       : filter === "supported"
         ? findingTone(finding) === "supported"
-        : findingTone(finding) !== "supported",
+        : findingTone(finding) !== "supported" &&
+          !citationExempt(finding, mode),
   );
   const acceptable = visible.filter(
     (finding) => finding.fix && !dismissed.has(dismissKey(finding)),
@@ -237,7 +321,7 @@ export default function StudioDocument({
   const showSetup = !run || setupOpen;
 
   return (
-    <div className="ps-workspace">
+    <div className="ps-workspace" hidden={hidden}>
       <section className="ps-draft" aria-label="Your text">
         <div className="ps-draft-bar">
           <span
@@ -300,6 +384,8 @@ export default function StudioDocument({
             />
           </div>
         </div>
+        {documentOptionsTarget &&
+          createPortal(documentActions, documentOptionsTarget)}
       </section>
 
       <aside className="ps-review" aria-label="Proposed changes">
@@ -316,10 +402,18 @@ export default function StudioDocument({
             </button>
           ))}
         </div>
-        {!showSetup && <p className="ps-review-mode-note">{modeInfo.description}</p>}
+        {!showSetup && (
+          <p className="ps-review-mode-note">{modeInfo.description}</p>
+        )}
+        {!showSetup && resultSettings && (
+          <p className="ps-review-muted">{resultSettings}</p>
+        )}
 
         {showSetup ? (
           <div className="ps-review-setup">
+            <p className="ps-setup-copy ps-setup-description">
+              {modeInfo.description}
+            </p>
             {setup}
             {run && (
               <button
@@ -336,7 +430,13 @@ export default function StudioDocument({
               <div className="ps-review-progress" role="status">
                 <LoaderCircle size={18} className="ps-spin" />
                 <div>
-                  <strong>Checking your text</strong>
+                  <strong>
+                    {mode === "source_check"
+                      ? "Checking citations"
+                      : mode === "discover"
+                        ? "Finding evidence for citations"
+                        : "Fact-checking selected claims"}
+                  </strong>
                   <span>
                     {runStageLabel(run.stage)} · results appear as each claim is
                     checked
@@ -352,6 +452,14 @@ export default function StudioDocument({
                   <strong>{counts.review}</strong> to review
                   <span aria-hidden="true"> · </span>
                   <strong>{counts.supported}</strong> supported
+                  {counts.citationExempt > 0 && (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <strong>{counts.citationExempt}</strong>{" "}
+                      {counts.citationExempt === 1 ? "needs" : "need"} no
+                      citation
+                    </>
+                  )}
                 </p>
                 <button
                   className="ps-review-link"
@@ -362,6 +470,108 @@ export default function StudioDocument({
                 </button>
               </div>
             )}
+            {typeof run.coverage?.completedClaims === "number" && (
+              <p className="ps-review-muted" role="status">
+                {run.coverage.completedClaims} of{" "}
+                {String(
+                  run.coverage.selectedClaims ?? run.coverage.totalClaims ?? 0,
+                )}{" "}
+                selected claims checked.
+                {Array.isArray(run.coverage.unprocessedSpans) &&
+                  run.coverage.unprocessedSpans.length > 0 &&
+                  ` ${run.coverage.unprocessedSpans.length} claims were left unchecked by the limit.`}
+              </p>
+            )}
+            {run.usage && run.usage.length > 0 && (
+              <details className="ps-research-details">
+                <summary>
+                  API usage ·{" "}
+                  {run.usage.reduce((n, item) => n + item.requests, 0)} requests
+                </summary>
+                <ul>
+                  {run.usage.map((item) => (
+                    <li key={`${item.provider}:${item.status}`}>
+                      {item.provider}: {item.requests} ·{" "}
+                      {item.status.replaceAll("_", " ")}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {Array.isArray(run.coverage?.sources) &&
+              run.coverage.sources.some(
+                (source) =>
+                  source.unreadablePages?.length || source.omittedPages?.length,
+              ) && (
+                <details className="ps-research-details" open>
+                  <summary>Source extraction gaps</summary>
+                  <ul>
+                    {run.coverage.sources
+                      .filter(
+                        (source) =>
+                          source.unreadablePages?.length ||
+                          source.omittedPages?.length,
+                      )
+                      .map((source) => (
+                        <li key={source.extractionId}>
+                          {sourceTitle(source.assetId) || "Selected source"}
+                          <p>
+                            {source.unreadablePages?.length > 0 &&
+                              `Unreadable physical pages: ${source.unreadablePages.join(", ")}. `}
+                            {source.omittedPages?.length > 0 &&
+                              `Omitted physical pages: ${source.omittedPages.join(", ")}.`}
+                          </p>
+                        </li>
+                      ))}
+                  </ul>
+                </details>
+              )}
+            {researchResults.some((item) => item.candidates.length > 0) && (
+              <details className="ps-research-details">
+                <summary>Retrieved sources and access gaps</summary>
+                <ul>
+                  {Array.from(
+                    new Map(
+                      researchResults
+                        .flatMap((item) => item.candidates)
+                        .map((candidate) => [
+                          candidate.doi || candidate.url,
+                          candidate,
+                        ]),
+                    ).values(),
+                  ).map((candidate) => (
+                    <li key={candidate.doi || candidate.url}>
+                      <a
+                        href={
+                          /^https:\/\//.test(candidate.url)
+                            ? candidate.url
+                            : undefined
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {candidate.title}
+                      </a>
+                      <p>
+                        {candidate.access?.replaceAll("_", " ") ||
+                          "No readable text"}{" "}
+                        · {candidate.eligibility}
+                        <br />
+                        {candidate.reason}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {Array.isArray(run.coverage?.skippedSpans) &&
+              run.coverage.skippedSpans.length > 0 && (
+                <p className="ps-review-muted" role="status">
+                  {run.coverage.skippedSpans.length} text segments skipped.
+                  Names, dates, headings, questions, preferences, and assignment
+                  instructions do not need an evidence check.
+                </p>
+              )}
             {stale && !active && (
               <div className="ps-review-stale" role="status">
                 <CircleAlert size={16} />
@@ -383,6 +593,7 @@ export default function StudioDocument({
                 {run.error}
               </p>
             )}
+            {citationReview}
             {findings.length > 0 && (
               <div className="ps-review-toolbar">
                 <div
@@ -437,7 +648,7 @@ export default function StudioDocument({
                 const tone = findingTone(finding);
                 const open = selected === finding.id;
                 const isDismissed = dismissed.has(dismissKey(finding));
-                const assessment = findingAssessment(finding);
+                const assessment = findingAssessment(finding, mode);
                 return (
                   <li
                     key={finding.id}
@@ -450,7 +661,7 @@ export default function StudioDocument({
                       onClick={() => selectFinding(finding)}
                     >
                       <span className={`ps-change-tag ${tone}`}>
-                        {findingDetail(finding)}
+                        {findingDetail(finding, mode)}
                       </span>
                       <span className="ps-change-claim">
                         {finding.claim.text}
@@ -518,8 +729,13 @@ export default function StudioDocument({
                               <figcaption>
                                 {sourceTitle(passage.assetId) ||
                                   "Source passage"}
-                                {" · "}page{" "}
-                                {passage.pageLabel || passage.pageIndex}
+                                {" · "}
+                                {sourcePagination?.(passage.assetId) ===
+                                "unavailable"
+                                  ? "Retrieved text. Citation page unavailable"
+                                  : passage.labelStatus === "unknown"
+                                    ? `Physical page ${passage.pageIndex}. Printed page unconfirmed`
+                                    : `Page ${passage.pageLabel || passage.pageIndex}`}
                                 {" · "}
                                 {passage.support.replaceAll("_", " ")}
                               </figcaption>
@@ -545,7 +761,9 @@ export default function StudioDocument({
               <p className="ps-review-muted">
                 {run.carried && !stale
                   ? "You have handled every finding from this check. Run a new check to review the edited text."
-                  : "No findings were returned. This does not verify the text."}
+                  : run.coverage?.totalClaims === 0
+                    ? "No candidate claims found. Skipped text has not been fact-checked."
+                    : "No findings were returned. This does not verify the text."}
               </p>
             )}
             {findings.length > 0 && listed.length === 0 && (

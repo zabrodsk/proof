@@ -1,6 +1,7 @@
 import type { Finding, Source } from "./types";
 import type { MlaSource } from "./mla";
-import { formatMla } from "./mla";
+import { mlaMetadata } from "./mla";
+import { citationHtmlToMarkdown, formatReference } from "./citation-format.js";
 
 export const classReferences = {
   assignment:
@@ -62,44 +63,31 @@ export type ClassReport = {
   sentences: SentenceReview[];
   papers: ClassPaper[];
   words: number;
+  wordCounts?: {
+    body: number;
+    title: number;
+    bibliography: number;
+    combined: number;
+    convention: "body-and-title";
+  };
   citationCount: number;
-  coverage: { total: number; completed: number; evidenceChecked: number };
+  coverage: {
+    total: number;
+    completed: number;
+    evidenceChecked: number;
+    skipped?: number;
+  };
 };
 export function classMla(paper: Pick<ClassPaper, "mla" | "url" | "accessed">) {
-  let entry = formatMla(paper.mla).entry;
-  const authors = paper.mla.authors
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  // The class slides explicitly invert both names and use Vol.; keep this
-  // local convention separate from the general MLA tool.
-  if (authors.length === 2) {
-    const titleAt = entry.indexOf('"');
-    entry = `${authors[0]} and ${authors[1]}. ${entry.slice(titleAt)}`;
-  }
-  entry = entry.replace(/, vol\. /, ", Vol. ");
-  if (!paper.mla.doi && /^https:\/\//.test(paper.url))
-    entry = entry.replace(/\.$/, "") + `, ${paper.url}.`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(paper.accessed)) {
-    const [y, m, d] = paper.accessed.split("-").map(Number);
-    const months = [
-      "Jan.",
-      "Feb.",
-      "Mar.",
-      "Apr.",
-      "May",
-      "June",
-      "July",
-      "Aug.",
-      "Sept.",
-      "Oct.",
-      "Nov.",
-      "Dec.",
-    ];
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31)
-      entry += ` Accessed ${d} ${months[m - 1]} ${y}.`;
-  }
-  return entry;
+  const result = formatReference(
+    {
+      ...mlaMetadata(paper.mla),
+      url: /^https:\/\//.test(paper.url) ? paper.url : undefined,
+      accessed: paper.accessed,
+    },
+    { profile: "classroom" },
+  );
+  return citationHtmlToMarkdown(result.html).replace(/[–]/g, "-");
 }
 export function pageRange(value: string): [number, number] | undefined {
   const m = /^(\d+)\s*[-–]\s*(\d+)$/.exec(

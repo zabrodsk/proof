@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { formatReference, toCslItem } from "../server/backend/citations.js";
+import {
+  formatReference,
+  formatCitation,
+  formatBibliography,
+  toCslItem,
+  citationWorkIdentity,
+} from "../server/backend/citations.js";
+import assets from "../shared/citation-style-assets.json";
 import { parseReference } from "../server/backend/references.js";
 import manifest from "../server/backend/styles/manifest.json";
 
@@ -138,5 +145,179 @@ test("vendored citation assets match their pinned SHA-256 hashes", () => {
     );
     assert.match(metadata.commit, /^[a-f0-9]{40}$/);
     assert.equal(metadata.license, "CC-BY-SA-3.0");
+    assert.equal(
+      assets[filename as keyof typeof assets],
+      content.toString("utf8"),
+    );
   }
+});
+
+test("in-text and bibliography output share MLA source identity and verified locators", () => {
+  const result = formatCitation(article, {
+    id: "article",
+    locator: { kind: "page", value: "104-105", verified: true },
+  });
+  assert.equal(result.inText, "(Smith 104–05)");
+  assert.equal(result.text, formatReference(article).text);
+  assert.equal(result.profile.id, "mla9");
+  assert.equal(result.csl.id, "article");
+  assert.equal(
+    formatCitation(article, {
+      narrative: true,
+      locator: { kind: "page", value: "104", verified: true },
+    }).inText,
+    "(104)",
+  );
+  assert.equal(formatCitation(article, { narrative: true }).inText, "");
+});
+
+test("CSL disambiguates multiple works by the same author instead of picking one", () => {
+  const second = { ...article, title: "Another Study", doi: "10.1234/another" };
+  const result = formatCitation(article, {
+    id: "one",
+    references: [{ id: "two", metadata: second }],
+    locator: { kind: "page", value: "104", verified: true },
+  });
+  assert.equal(result.inText, "(Smith, “Evidence and Its Limits” 104)");
+  assert.equal(
+    formatCitation(article, { distinguishTitle: true }).inText,
+    "(Smith, “Evidence and Its Limits”)",
+  );
+  const bibliography = formatBibliography([
+    { id: "one", metadata: article },
+    { id: "two", metadata: second },
+  ]);
+  assert.deepEqual(
+    bibliography.entries.map((entry) => entry.id),
+    ["two", "one"],
+  );
+  assert.match(bibliography.entries[1].text, /Evidence and Its Limits/);
+});
+
+test("classroom CSL applies verified examples without changing source metadata", () => {
+  const metadata = {
+    ...article,
+    authors: [
+      { family: "Smith", given: "Jane" },
+      { family: "Jones", given: "Robert" },
+    ],
+    accessed: "2026-09-29",
+  };
+  const original = structuredClone(metadata);
+  const result = formatCitation(metadata, {
+    profile: "classroom",
+    locator: { kind: "page", value: "104", verified: true },
+  });
+  assert.equal(
+    result.text,
+    "Smith, Jane and Jones, Robert. “Evidence and Its Limits”. Journal of Examples, Vol. 12, no. 3, 2024, pp. 101–115, https://doi.org/10.1234/example. Accessed 29 Sept. 2026.",
+  );
+  assert.match(result.html, /<i>Journal of Examples<\/i>/);
+  const many = formatReference(
+    {
+      ...metadata,
+      authors: [...metadata.authors, { family: "Adams", given: "Abby" }],
+    },
+    { profile: "classroom" },
+  );
+  assert.match(many.text, /^Smith et al\./);
+  assert.deepEqual(metadata, original);
+});
+
+test("unverified locators and impossible dates are omitted with actionable warnings", () => {
+  const result = formatCitation(
+    { ...article, accessed: "2026-02-30" },
+    {
+      profile: "classroom",
+      locator: { kind: "page", value: "104", verified: false } as never,
+    },
+  );
+  assert.equal(result.inText, "(Smith)");
+  assert.equal(result.csl.accessed, undefined);
+  assert.equal(result.locator, undefined);
+  assert.doesNotMatch(result.text, /Accessed/);
+  assert.match(result.warnings.join(" "), /invalid|unverified/);
+  assert.match(result.warnings.join(" "), /recorded access date/);
+  assert.match(result.warnings.join(" "), /printed page/);
+});
+
+test("title-based, literal organizational and Unicode author citations do not guess identities", () => {
+  const anonymous = formatCitation({ ...article, authors: [] });
+  assert.equal(anonymous.inText, "(“Evidence and Its Limits”)");
+  const organization = formatCitation({
+    ...article,
+    authors: [{ literal: "World Health Organization" }],
+  });
+  assert.equal(organization.inText, "(World Health Organization)");
+  const unicode = formatCitation({
+    ...article,
+    authors: [{ family: "García Márquez", given: "Gabriel" }],
+  });
+  assert.equal(unicode.inText, "(García Márquez)");
+});
+
+test("verified work identity ignores duplicate upload IDs and supports works without DOI", () => {
+  assert.equal(
+    citationWorkIdentity(article),
+    citationWorkIdentity({
+      ...article,
+      doi: `https://doi.org/${article.doi.toUpperCase()}`,
+    }),
+  );
+  const withoutDoi = { ...article, doi: undefined };
+  assert.equal(
+    citationWorkIdentity(withoutDoi),
+    citationWorkIdentity({
+      ...withoutDoi,
+      authors: [{ family: "Smith", given: "Jane" }],
+    }),
+  );
+  assert.notEqual(
+    citationWorkIdentity(withoutDoi),
+    citationWorkIdentity({ ...withoutDoi, title: "Another Work" }),
+  );
+  assert.equal(citationWorkIdentity({ authors: ["Smith, Jane"] }), undefined);
+});
+
+test("separate bibliography lines with non-inverted authors are not merged", async () => {
+  const { reconstructReferences } =
+    await import("../server/backend/references.js");
+  const entries = reconstructReferences(
+    'Huxley, Aldous. Brave New World. 1932.\nTest Author. "Synthetic source." 2026.',
+  );
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].parsed.title, "Brave New World");
+  assert.equal(entries[1].parsed.title, "Synthetic source.");
+});
+
+test("Word bibliography wraps preserve four works, full author initials and publication year", async () => {
+  const { bibliographyIntake } =
+    await import("../server/backend/references.js");
+  const text = `Works Cited\n\nHao, Liu, and Fabio Tronchetti. “The Act of 2017: A Study?” Space Policy, vol. 47, Feb. 2019, pp. 1–6. doi:10.1016/j.spacepol.2018.02.004.\n\nKrause, Jason. “A Treaty Turns 50.” ABA\nJournal, Apr. 2017, p. 1.\n\nLee, Yong Bum. “Public Space, Private Patents.” Harvard Journal of Law & Technology, vol. 33, no. 1, Fall 2019.\n\nReinhart, Alexander P. “Updating the Liability Regime\nin Outer Space.” William & Mary Law Review, 2020.`;
+  const entries = bibliographyIntake(text)!;
+  assert.equal(entries.length, 4);
+  assert.equal(entries[0].parsed.year, "2019");
+  assert.deepEqual(entries[0].parsed.authorDetails, [
+    { family: "Hao", given: "Liu" },
+    { given: "Fabio", family: "Tronchetti" },
+  ]);
+  assert.deepEqual(entries[3].parsed.authorDetails, [
+    { family: "Reinhart", given: "Alexander P." },
+  ]);
+  assert.equal(
+    entries[3].parsed.title,
+    "Updating the Liability Regime in Outer Space.",
+  );
+  assert.equal(
+    bibliographyIntake(
+      "An essay discusses law.\nWorks Cited\nLee, Yong Bum. Book. 2019.",
+    ),
+    undefined,
+  );
+  const paragraphWrapped = bibliographyIntake(
+    text.replace("ABA\nJournal", "ABA\n\nJournal"),
+  )!;
+  assert.equal(paragraphWrapped.length, 4);
+  assert.equal(paragraphWrapped[1].parsed.year, "2017");
+  assert.equal(paragraphWrapped[1].parsed.containerTitle, "ABA Journal");
 });

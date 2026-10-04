@@ -6,7 +6,7 @@ import {
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { allSentences } from "./classroom.js";
+import { selectClaims } from "./claims.js";
 import { resolveDOI, clean, recordPublicationNotice } from "./sources.js";
 import { resolveScholarly, judgeScholarlyClaim } from "./scholarly.js";
 import { withUsage } from "./usage.js";
@@ -157,9 +157,9 @@ export function discoveryRouter() {
     const { text } = z
       .object({ text: z.string().min(10).max(100000) })
       .parse(req.body);
-    const sentences = allSentences(text);
+    const { candidates: sentences, skipped } = selectClaims(text);
     if (sentences.length > 1000) throw new Error("Use up to 1,000 sentences.");
-    res.json({ sentences });
+    res.json({ sentences, skipped });
   });
   type Job = {
     id: string;

@@ -1,6 +1,19 @@
 import mammoth from "mammoth";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PaperPage } from "../shared/classroom.js";
+import { skipReason } from "../shared/claims.js";
+// Multipart libraries decode legacy filename headers as Latin-1. Recover valid
+// UTF-8 without corrupting a filename that was already decoded correctly.
+export function uploadFilename(name: string): string {
+  if ([...name].some((c) => c.codePointAt(0)! > 255)) return name;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      Buffer.from(name, "latin1"),
+    );
+  } catch {
+    return name;
+  }
+}
 export async function readPdfPages(buffer: Buffer): Promise<PaperPage[]> {
   if (!buffer.subarray(0, 1024).toString().includes("%PDF-"))
     throw new Error("Upload the full article as a PDF.");
@@ -96,7 +109,16 @@ export async function parseDocument(
               line.height > previous.height * 1.15 ||
               heading(previous.text) ||
               heading(line.text));
-          page += (n ? (paragraph ? "\n\n" : " ") : "") + line.text;
+          // Preserve line boundaries around headers and non-prose. Otherwise
+          // a tightly spaced PDF can attach metadata to a factual sentence.
+          const previousReason = previous && skipReason(previous.text);
+          const currentReason = skipReason(line.text);
+          const structural =
+            previousReason ||
+            (currentReason && currentReason !== "not_assertion");
+          page +=
+            (n ? (paragraph ? "\n\n" : structural ? "\n" : " ") : "") +
+            line.text;
         }
         pages.push(page.trim());
       }

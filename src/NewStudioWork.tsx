@@ -20,7 +20,12 @@ export default function NewStudioWork({
 }: {
   initialMode?: "upload" | "paste";
   busy: boolean;
-  onCreate: (title: string, text: string, icon: WorkIconName) => void;
+  onCreate: (
+    title: string,
+    text: string,
+    icon: WorkIconName,
+    retrieveSources: boolean,
+  ) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -28,6 +33,7 @@ export default function NewStudioWork({
   const [pickerOpen, setPickerOpen] = useState(false);
   const iconTrigger = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
+  const [retrieveSources, setRetrieveSources] = useState(true);
   const [filename, setFilename] = useState("");
   const [mode, setMode] = useState<"upload" | "paste">(initialMode);
   const [importing, setImporting] = useState(false);
@@ -73,9 +79,7 @@ export default function NewStudioWork({
       setText(result.text);
       setFilename(file.name);
       if (!titleRef.current.trim())
-        setTitle(
-          file.name.replace(/\.[^.]+$/, "").slice(0, 300),
-        );
+        setTitle(file.name.replace(/\.[^.]+$/, "").slice(0, 300));
     } catch (e) {
       if (!controller.signal.aborted) setError((e as Error).message);
     } finally {
@@ -88,7 +92,7 @@ export default function NewStudioWork({
       onSubmit={(event) => {
         event.preventDefault();
         if (title.trim() && !busy && !importing)
-          onCreate(title.trim(), text, icon);
+          onCreate(title.trim(), text, icon, retrieveSources);
       }}
     >
       <label className="ps-field-label" htmlFor="new-work-title">
@@ -303,6 +307,22 @@ export default function NewStudioWork({
           </small>
         </div>
       )}
+      <p className="ps-editor-hint">
+        References in your document are automatically added to Your sources. You
+        can add more sources afterward.
+      </p>
+      <label className="ps-setup-consent">
+        <input
+          type="checkbox"
+          checked={retrieveSources}
+          onChange={(event) => setRetrieveSources(event.target.checked)}
+          disabled={busy || importing}
+        />
+        <span>
+          Allow Proof to look up cited works and retrieve available source text
+          using external services.
+        </span>
+      </label>
       <div className="ps-actions">
         <button
           type="button"

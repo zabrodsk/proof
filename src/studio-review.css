@@ -202,7 +202,7 @@
 }
 
 .proof-studio .ps-review-modes button {
-  height: 36px;
+  min-height: 44px;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -213,9 +213,10 @@
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.3;
   transition:
     background-color 140ms ease,
     color 140ms ease,
@@ -284,16 +285,252 @@
   padding-top: 4px;
 }
 
+.ps-setup-profile {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.proof-studio .ps-setup-profile select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+}
+
+.ps-setup-scope {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ps-setup-scope legend {
+  margin-bottom: 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ps-setup-scope > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 9px;
+}
+
+.ps-setup-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.ps-setup-scope input,
+.ps-citation-operation input {
+  accent-color: var(--forest);
+}
+
+.ps-document-output {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  font-size: 13px;
+}
+
+.ps-document-output p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ps-document-output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proof-studio .ps-document-output-actions .ps-outline {
+  gap: 6px;
+  padding: 8px 11px;
+  font-size: 12px;
+}
+
+.ps-citation-review {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--sage-mid);
+  border-radius: 12px;
+  background: var(--white);
+  font-size: 13px;
+}
+
+.ps-citation-review h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ps-citation-review p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ps-citation-operation {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.ps-citation-operation > label {
+  display: flex;
+  align-items: start;
+  gap: 9px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ps-citation-operation input {
+  margin-top: 3px;
+}
+
+.ps-citation-operation details {
+  margin-top: 9px;
+}
+
+.ps-citation-operation summary {
+  color: var(--forest);
+  cursor: pointer;
+}
+
+.ps-citation-preview {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  max-height: 300px;
+  overflow: auto;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ps-citation-gaps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ps-citation-gaps li + li {
+  margin-top: 8px;
+}
+
+.ps-citation-audit-list {
+  display: grid;
+  gap: 12px;
+  padding-left: 18px;
+  margin: 12px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ps-citation-audit-list li p + p {
+  margin-top: 5px;
+}
+
+.proof-studio .ps-citation-location {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ps-claim-preview-row + .ps-claim-preview-row {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.ps-claim-citation-choice {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 10px 25px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.proof-studio .ps-claim-citation-choice select {
+  min-width: 0;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+}
+
+.ps-claim-citation-choice small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .ps-setup-head {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
   justify-content: space-between;
   align-items: baseline;
   font-size: 14px;
 }
 
+.ps-setup-head .ps-review-link {
+  margin-left: auto;
+}
+
 .ps-setup-head span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.ps-setup-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ps-setup-toggle > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.ps-setup-toggle > svg.is-expanded {
+  transform: rotate(180deg);
+}
+
+.ps-setup-toggle:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 .ps-setup-copy {
@@ -309,6 +546,8 @@
   max-height: 232px;
   overflow: auto;
   margin: 0 -6px;
+  padding: 0;
+  list-style: none;
 }
 
 .ps-setup-source {
@@ -317,16 +556,13 @@
   gap: 10px;
   padding: 8px 6px;
   border-radius: 8px;
-  cursor: pointer;
+  cursor: default;
 }
 
-.ps-setup-source:hover {
-  background: var(--paper);
-}
-
-.ps-setup-source input {
-  margin: 3px 0 0;
-  accent-color: var(--forest);
+.ps-setup-source > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--muted);
 }
 
 .ps-setup-source span {
@@ -858,4 +1094,88 @@
   .ps-spin {
     animation: none;
   }
+}
+
+.ps-claim-tools {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--sage-light, #eff3ed);
+  border-radius: 10px;
+}
+.ps-claim-counts {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+.ps-claim-search {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.proof-studio .ps-claim-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  background: var(--white);
+  color: var(--ink);
+}
+.proof-studio .ps-claim-search input:focus-visible {
+  outline: 2px solid var(--sage-dark, #326b4d);
+  outline-offset: 2px;
+}
+
+/* Setup keeps the primary inputs visible and secondary choices compact. */
+.ps-setup-description {
+  margin: 0 0 16px;
+}
+.ps-setup-inputs {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ps-setup-options {
+  min-width: 0;
+}
+.ps-setup-options > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ps-setup-options[open] > :not(summary) {
+  margin-top: 12px;
+}
+.ps-setup-options > summary:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 4px;
+}
+.ps-setup-claims {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.ps-setup-upload {
+  padding: 12px 14px;
+}
+.ps-document-popover[hidden] {
+  display: none;
+}
+.ps-document-popover .ps-document-output {
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.ps-document-popover .ps-document-output-actions {
+  display: grid;
 }

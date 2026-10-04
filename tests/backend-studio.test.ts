@@ -109,6 +109,38 @@ async function seedRun(owner: string, versionId: string, createdAt: string) {
   return id;
 }
 
+test("browser draft migration preserves IDs, retries safely, and cannot overwrite another owner's document", async () => {
+  const owner = randomUUID(),
+    localDraftId = randomUUID();
+  const body = {
+    title: "Saved browser draft",
+    text: "Paris is the capital of France.",
+    localDraftId,
+  };
+  const first = await request(owner, "/documents", "POST", body);
+  assert.equal(first.status, 201);
+  const doc = await first.json();
+  assert.equal(doc.id, localDraftId);
+  const revised = await request(
+    owner,
+    `/documents/${doc.id}/versions`,
+    "POST",
+    { text: "Revised saved draft.", expectedVersionId: doc.documentVersionId },
+  );
+  assert.equal(revised.status, 201);
+  const version = await revised.json();
+  const retry = await request(owner, "/documents", "POST", body);
+  assert.equal(retry.status, 201);
+  assert.equal((await retry.json()).documentVersionId, version.id);
+  const items = (await (await request(owner, "/documents")).json()).items;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].text, "Revised saved draft.");
+  assert.equal(
+    (await request(randomUUID(), "/documents", "POST", body)).status,
+    409,
+  );
+});
+
 test("Studio document list returns only the owner's current versions in paginated order", async () => {
   const owner = randomUUID(),
     other = randomUUID();
@@ -437,5 +469,98 @@ test("Studio bibliography rejects foreign and archived documents without queuing
       })
     ).status,
     404,
+  );
+});
+
+test("document creation automatically queues its supplied bibliography and preserves manual additions", async () => {
+  const owner = randomUUID();
+  const doc = await document(
+    owner,
+    "Imported work",
+    "A finding (Smith 2024).\n\nReferences\nSmith, Jane. “A study.” Journal, 2024. https://doi.org/10.1234/study",
+  );
+  const result = await (
+    await request(owner, `/documents/${doc.id}/bibliography`)
+  ).json();
+  assert.ok(result.item.id);
+  assert.equal(result.item.input.automatic, true);
+  assert.equal(result.item.input.externalAccess, false);
+  assert.equal(result.item.input.text.includes("A finding"), false);
+  const ws = await workspace(db, owner);
+  assert.equal(
+    (
+      await db.query(
+        "SELECT kind FROM job_outbox WHERE workspace_id=$1 AND target_id=$2",
+        [ws, result.item.id],
+      )
+    ).rows[0].kind,
+    "import",
+  );
+  const manual = await request(owner, "/source-imports", "POST", {
+    kind: "text",
+    documentId: doc.id,
+    text: "Additional evidence",
+    metadata: { title: "Extra source", authors: [], year: "" },
+  });
+  assert.equal(manual.status, 202);
+  assert.equal(
+    (await (await request(owner, `/documents/${doc.id}/bibliography`)).json())
+      .item.id,
+    result.item.id,
+  );
+  assert.equal(
+    (await request(randomUUID(), `/documents/${doc.id}/bibliography`)).status,
+    404,
+  );
+});
+
+test("replacement imports detect references once; ordinary edits do not start retrieval", async () => {
+  const owner = randomUUID();
+  const doc = await document(owner, "Replace work");
+  const text = "A finding.\nReferences\nhttps://example.org/study";
+  const replaced = await request(
+    owner,
+    `/documents/${doc.id}/versions`,
+    "POST",
+    {
+      text,
+      expectedVersionId: doc.documentVersionId,
+      importSources: true,
+      retrieveSources: true,
+    },
+  );
+  assert.equal(replaced.status, 201);
+  let version = (await replaced.json()).id;
+  const first = (
+    await (await request(owner, `/documents/${doc.id}/bibliography`)).json()
+  ).item;
+  assert.equal(first.input.externalAccess, true);
+  const repeated = await request(
+    owner,
+    `/documents/${doc.id}/versions`,
+    "POST",
+    {
+      text,
+      expectedVersionId: version,
+      importSources: true,
+      retrieveSources: true,
+    },
+  );
+  assert.equal(repeated.status, 201);
+  version = (await repeated.json()).id;
+  assert.equal(
+    (await (await request(owner, `/documents/${doc.id}/bibliography`)).json())
+      .item.id,
+    first.id,
+  );
+  const edited = await request(owner, `/documents/${doc.id}/versions`, "POST", {
+    text: text + "\nhttps://example.org/new",
+    expectedVersionId: version,
+  });
+  assert.equal(edited.status, 201);
+  assert.equal(
+    (await (await request(owner, `/documents/${doc.id}/bibliography`)).json())
+      .item.id,
+    first.id,
   );
 });
